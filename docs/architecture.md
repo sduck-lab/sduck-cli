@@ -26,3 +26,5 @@ This bootstrap focuses on a strict toolchain, predictable structure, and verifia
 - `sduck init` treats `sduck-assets/` as the template source of truth.
 - Safe mode creates only missing files and preserves existing user content.
 - Force mode regenerates bundled asset files without mutating existing workspace task directories.
+- `sduck init` can also generate agent-specific repository rule files for selected tools.
+- Root instruction files are updated with a managed sduck block, while dedicated rule files are owned entirely by sduck.

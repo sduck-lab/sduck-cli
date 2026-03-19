@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  hasManagedBlock,
+  listAgentRuleTargets,
+  parseAgentsOption,
+  planAgentRuleActions,
+  prependManagedBlock,
+  replaceManagedBlock,
+} from '../../src/core/agent-rules.js';
+
+describe('parseAgentsOption', () => {
+  it('parses and deduplicates selected agents', () => {
+    expect(parseAgentsOption('claude-code,codex,claude-code')).toEqual(['claude-code', 'codex']);
+  });
+
+  it('throws on unsupported agents', () => {
+    expect(() => parseAgentsOption('unknown-agent')).toThrow('Unsupported agent');
+  });
+});
+
+describe('listAgentRuleTargets', () => {
+  it('maps codex and opencode to a shared AGENTS file', () => {
+    expect(listAgentRuleTargets(['codex', 'opencode'])).toEqual([
+      { agentId: 'codex', outputPath: 'AGENTS.md', kind: 'root-file' },
+    ]);
+  });
+
+  it('returns multiple target files for mixed agents', () => {
+    expect(
+      listAgentRuleTargets(['claude-code', 'cursor']).map((target) => target.outputPath),
+    ).toEqual(['CLAUDE.md', '.cursor/rules/sduck-core.mdc']);
+  });
+});
+
+describe('managed rule block helpers', () => {
+  it('prepends a managed block to existing content', () => {
+    const result = prependManagedBlock(
+      '# Existing file\n',
+      '<!-- sduck:begin -->\nrule\n<!-- sduck:end -->',
+    );
+
+    expect(result.startsWith('<!-- sduck:begin -->')).toBe(true);
+    expect(result).toContain('# Existing file');
+  });
+
+  it('replaces an existing managed block without touching user content', () => {
+    const existing = '<!-- sduck:begin -->\nold\n<!-- sduck:end -->\n\n# User section\n';
+    const replaced = replaceManagedBlock(existing, '<!-- sduck:begin -->\nnew\n<!-- sduck:end -->');
+
+    expect(replaced).toContain('new');
+    expect(replaced).toContain('# User section');
+    expect(replaced).not.toContain('old');
+  });
+
+  it('detects existing managed blocks', () => {
+    expect(hasManagedBlock('<!-- sduck:begin -->\nrules\n<!-- sduck:end -->')).toBe(true);
+  });
+});
+
+describe('planAgentRuleActions', () => {
+  it('uses prepend in safe mode for existing root files without managed block', () => {
+    const targets = listAgentRuleTargets(['claude-code']);
+    const actions = planAgentRuleActions(
+      'safe',
+      targets,
+      new Map([['CLAUDE.md', 'file']]),
+      new Map([['CLAUDE.md', '# Existing\n']]),
+    );
+
+    expect(actions[0]?.mergeMode).toBe('prepend');
+  });
+
+  it('uses replace-block in force mode for existing root files with managed block', () => {
+    const targets = listAgentRuleTargets(['claude-code']);
+    const actions = planAgentRuleActions(
+      'force',
+      targets,
+      new Map([['CLAUDE.md', 'file']]),
+      new Map([['CLAUDE.md', '<!-- sduck:begin -->\nold\n<!-- sduck:end -->\n']]),
+    );
+
+    expect(actions[0]?.mergeMode).toBe('replace-block');
+  });
+
+  it('keeps managed files in safe mode and overwrites them in force mode', () => {
+    const targets = listAgentRuleTargets(['cursor']);
+    const safeActions = planAgentRuleActions(
+      'safe',
+      targets,
+      new Map([['.cursor/rules/sduck-core.mdc', 'file']]),
+      new Map(),
+    );
+    const forceActions = planAgentRuleActions(
+      'force',
+      targets,
+      new Map([['.cursor/rules/sduck-core.mdc', 'file']]),
+      new Map(),
+    );
+
+    expect(safeActions[0]?.mergeMode).toBe('keep');
+    expect(forceActions[0]?.mergeMode).toBe('overwrite');
+  });
+});

@@ -32,6 +32,7 @@ it('normalizes whitespace and casing', () => {
 ```bash
 sduck init
 sduck init --force
+sduck init --agents claude-code,codex,gemini-cli
 ```
 
 ## Plan asset actions
@@ -39,4 +40,11 @@ sduck init --force
 ```ts
 const actions = planInitActions('safe', existingEntries);
 const summary = summarizeInitActions(actions);
+```
+
+## Generate agent rule files
+
+```bash
+sduck init --agents claude-code,codex
+sduck init --force --agents cursor,antigravity
 ```

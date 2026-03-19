@@ -18,13 +18,16 @@ program
   .command('init')
   .description('Initialize the current repository for the SDD workflow')
   .option('--force', 'Regenerate the bundled assets in sduck-assets')
-  .action(async (options: { force?: boolean }) => {
-    const result = await runInitCommand(
-      {
-        force: options.force ?? false,
-      },
-      process.cwd(),
-    );
+  .option(
+    '--agents <agents>',
+    'Comma-separated agents (claude-code,codex,opencode,gemini-cli,cursor,antigravity)',
+  )
+  .action(async (options: { agents?: string; force?: boolean }) => {
+    const initOptions =
+      options.agents === undefined
+        ? { force: options.force ?? false }
+        : { agents: options.agents, force: options.force ?? false };
+    const result = await runInitCommand(initOptions, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);

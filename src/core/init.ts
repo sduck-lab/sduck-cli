@@ -1,6 +1,17 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  type AgentRuleTarget,
+  listAgentRuleTargets,
+  planAgentRuleActions,
+  prependManagedBlock,
+  renderAgentRuleContent,
+  replaceManagedBlock,
+  type PlannedAgentRuleAction,
+  type SupportedAgentId,
+} from './agent-rules.js';
 import {
   copyFileIntoPlace,
   ensureDirectory,
@@ -9,13 +20,10 @@ import {
   type FsEntryKind,
 } from './fs.js';
 
+import type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-types.js';
+
 export type { FsEntryKind } from './fs.js';
-
-export interface InitCommandOptions {
-  force: boolean;
-}
-
-export type InitMode = 'safe' | 'force';
+export type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-types.js';
 
 export type AssetTemplateKey =
   | 'spec-evaluation'
@@ -50,7 +58,11 @@ export interface PlannedAssetAction {
   collision: AssetCollisionKind;
 }
 
-export type InitWarningCode = 'kept-existing-asset' | 'type-conflict' | 'force-recommended';
+export type InitWarningCode =
+  | 'kept-existing-asset'
+  | 'kept-existing-rule'
+  | 'type-conflict'
+  | 'force-recommended';
 
 export type InitErrorCode =
   | 'asset-root-conflict'
@@ -60,11 +72,12 @@ export type InitErrorCode =
 
 export interface InitSummaryRow {
   path: string;
-  status: 'created' | 'kept' | 'overwritten';
+  status: 'created' | 'prepended' | 'kept' | 'overwritten';
 }
 
 export interface InitExecutionSummary {
   created: string[];
+  prepended: string[];
   kept: string[];
   overwritten: string[];
   warnings: string[];
@@ -74,6 +87,7 @@ export interface InitExecutionSummary {
 
 export interface InitExecutionResult {
   mode: InitMode;
+  agents: string[];
   summary: InitExecutionSummary;
   didChange: boolean;
 }
@@ -156,6 +170,7 @@ export function planInitActions(
 export function summarizeInitActions(actions: PlannedAssetAction[]): InitExecutionSummary {
   const summary: InitExecutionSummary = {
     created: [],
+    prepended: [],
     kept: [],
     overwritten: [],
     warnings: [],
@@ -197,6 +212,13 @@ function getInitMode(options: InitCommandOptions): InitMode {
   return options.force ? 'force' : 'safe';
 }
 
+function resolveInitOptions(options: InitCommandOptions): ResolvedInitOptions {
+  return {
+    mode: getInitMode(options),
+    agents: [...new Set(options.agents)],
+  };
+}
+
 async function getAssetSourceRoot(): Promise<string> {
   const currentFilePath = fileURLToPath(import.meta.url);
   const currentDirectoryPath = dirname(currentFilePath);
@@ -227,10 +249,27 @@ async function collectExistingEntries(projectRoot: string): Promise<Map<string, 
   return existingEntries;
 }
 
+async function collectExistingFileContents(
+  projectRoot: string,
+  targets: readonly AgentRuleTarget[],
+): Promise<Map<string, string>> {
+  const contents = new Map<string, string>();
+
+  for (const target of targets) {
+    const targetPath = join(projectRoot, target.outputPath);
+
+    if ((await getFsEntryKind(targetPath)) === 'file') {
+      contents.set(target.outputPath, await readFile(targetPath, 'utf8'));
+    }
+  }
+
+  return contents;
+}
+
 async function ensureRootDirectory(
   targetPath: string,
   errorCode: InitErrorCode,
-): Promise<'created' | 'kept'> {
+): Promise<'created' | 'kept' | 'overwritten'> {
   const kind = await getFsEntryKind(targetPath);
 
   if (kind === 'missing') {
@@ -249,13 +288,15 @@ export async function initProject(
   options: InitCommandOptions,
   projectRoot: string,
 ): Promise<InitExecutionResult> {
-  const mode = getInitMode(options);
+  const resolvedOptions = resolveInitOptions(options);
+  const { mode } = resolvedOptions;
   const assetSourceRoot = await getAssetSourceRoot();
   const assetsRoot = join(projectRoot, 'sduck-assets');
   const workspaceRoot = join(projectRoot, 'sduck-workspace');
 
   const summary: InitExecutionSummary = {
     created: [],
+    prepended: [],
     kept: [],
     overwritten: [],
     warnings: [],
@@ -303,9 +344,88 @@ export async function initProject(
     await copyFileIntoPlace(sourcePath, targetPath);
   }
 
+  const agentTargets = listAgentRuleTargets(resolvedOptions.agents);
+  const agentEntryKinds = new Map<string, FsEntryKind>();
+
+  for (const target of agentTargets) {
+    agentEntryKinds.set(
+      target.outputPath,
+      await getFsEntryKind(join(projectRoot, target.outputPath)),
+    );
+  }
+
+  const existingContents = await collectExistingFileContents(projectRoot, agentTargets);
+  const agentActions = planAgentRuleActions(mode, agentTargets, agentEntryKinds, existingContents);
+
+  await applyAgentRuleActions(
+    projectRoot,
+    agentActions,
+    existingContents,
+    summary,
+    resolvedOptions.agents,
+  );
+
   return {
     mode,
+    agents: resolvedOptions.agents,
     summary,
-    didChange: summary.created.length > 0 || summary.overwritten.length > 0,
+    didChange:
+      summary.created.length > 0 || summary.prepended.length > 0 || summary.overwritten.length > 0,
   };
+}
+
+async function applyAgentRuleActions(
+  projectRoot: string,
+  actions: readonly PlannedAgentRuleAction[],
+  existingContents: Map<string, string>,
+  summary: InitExecutionSummary,
+  selectedAgents: SupportedAgentId[],
+): Promise<void> {
+  for (const action of actions) {
+    const targetPath = join(projectRoot, action.outputPath);
+    const content = await renderAgentRuleContent(action, selectedAgents);
+
+    if (action.mergeMode === 'create') {
+      await mkdir(dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, content, 'utf8');
+      summary.created.push(action.outputPath);
+      summary.rows.push({ path: action.outputPath, status: 'created' });
+      continue;
+    }
+
+    if (action.mergeMode === 'keep') {
+      summary.kept.push(action.outputPath);
+      summary.rows.push({ path: action.outputPath, status: 'kept' });
+      summary.warnings.push(`Kept existing rule file: ${action.outputPath}`);
+      continue;
+    }
+
+    await mkdir(dirname(targetPath), { recursive: true });
+
+    if (action.mergeMode === 'prepend') {
+      const currentContent = existingContents.get(action.outputPath) ?? '';
+      await writeFile(targetPath, prependManagedBlock(currentContent, content.trimEnd()), 'utf8');
+      summary.prepended.push(action.outputPath);
+      summary.rows.push({ path: action.outputPath, status: 'prepended' });
+      continue;
+    }
+
+    if (action.mergeMode === 'replace-block') {
+      const currentContent = existingContents.get(action.outputPath) ?? '';
+      await writeFile(targetPath, replaceManagedBlock(currentContent, content.trimEnd()), 'utf8');
+      summary.overwritten.push(action.outputPath);
+      summary.rows.push({ path: action.outputPath, status: 'overwritten' });
+      continue;
+    }
+
+    await writeFile(targetPath, content, 'utf8');
+    summary.overwritten.push(action.outputPath);
+    summary.rows.push({ path: action.outputPath, status: 'overwritten' });
+  }
+
+  if (summary.kept.some((path) => path.endsWith('.md') || path.endsWith('.mdc'))) {
+    summary.warnings.push(
+      'Run `sduck init --force` to refresh managed rule content for selected agents.',
+    );
+  }
 }
