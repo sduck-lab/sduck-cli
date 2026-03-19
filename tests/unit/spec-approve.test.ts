@@ -76,10 +76,14 @@ describe('resolveTargetCandidates', () => {
     ).toEqual(['20260319-0100-feature-login']);
   });
 
-  it('matches by slug suffix', () => {
+  it('matches by exact slug', () => {
     expect(resolveTargetCandidates(tasks, 'login').map((task) => task.id)).toEqual([
       '20260319-0100-feature-login',
     ]);
+  });
+
+  it('does not match by id suffix', () => {
+    expect(resolveTargetCandidates(tasks, 'feature-login')).toEqual([]);
   });
 });
 

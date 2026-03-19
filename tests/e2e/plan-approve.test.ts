@@ -95,6 +95,20 @@ describe('sduck plan approve', () => {
     expect(meta).toContain('status: IN_PROGRESS');
   });
 
+  it('rejects suffix targets that are not exact ids or slugs', async () => {
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
+    await initRepo();
+    await createApprovedTask('profile', '# Plan\n\n## Step 1. Profile\n');
+
+    const result = await runCli(['plan', 'approve', 'feature-profile'], {
+      cliRoot,
+      cwd: tempWorkspace,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('No matching tasks awaiting plan approval');
+  });
+
   it('returns partial success when one selected task fails step parsing', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();

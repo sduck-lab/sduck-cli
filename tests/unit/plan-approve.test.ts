@@ -61,10 +61,14 @@ describe('resolvePlanApprovalCandidates', () => {
     ).toEqual(['20260319-0100-feature-login']);
   });
 
-  it('matches by slug suffix', () => {
+  it('matches by exact slug', () => {
     expect(resolvePlanApprovalCandidates(tasks, 'login').map((task) => task.id)).toEqual([
       '20260319-0100-feature-login',
     ]);
+  });
+
+  it('does not match by id suffix', () => {
+    expect(resolvePlanApprovalCandidates(tasks, 'feature-login')).toEqual([]);
   });
 });
 

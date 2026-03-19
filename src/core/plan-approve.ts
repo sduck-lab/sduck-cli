@@ -53,10 +53,7 @@ export function resolvePlanApprovalCandidates(
 
   const trimmedTarget = target.trim();
 
-  return candidates.filter(
-    (task) =>
-      task.id === trimmedTarget || task.slug === trimmedTarget || task.id.endsWith(trimmedTarget),
-  );
+  return candidates.filter((task) => task.id === trimmedTarget || task.slug === trimmedTarget);
 }
 
 export function countPlanSteps(planContent: string): number {

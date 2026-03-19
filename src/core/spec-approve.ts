@@ -41,10 +41,7 @@ export function resolveTargetCandidates(
 
   const trimmedTarget = target.trim();
 
-  return candidates.filter(
-    (task) =>
-      task.id === trimmedTarget || task.slug === trimmedTarget || task.id.endsWith(trimmedTarget),
-  );
+  return candidates.filter((task) => task.id === trimmedTarget || task.slug === trimmedTarget);
 }
 
 export function validateSpecApprovalTargets(tasks: readonly SpecApproveTarget[]): void {

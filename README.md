@@ -56,6 +56,7 @@ sduck start fix auth-bug
 ### 2. 스펙 승인 (Approve Spec)
 
 작성된 `spec.md`를 검토한 후 승인합니다. 상태가 `SPEC_APPROVED`로 변경됩니다.
+target을 지정할 때는 정확한 `slug` 또는 전체 task `id`만 허용됩니다.
 
 ```bash
 sduck spec approve [slug]
@@ -72,6 +73,7 @@ sduck fast-track <type> <slug>
 ### 4. 플랜 승인 (Approve Plan)
 
 `plan.md`에 작성된 단계(Steps)를 검토하고 승인합니다. 상태가 `IN_PROGRESS`로 변경되며 구현 권한이 부여됩니다.
+target을 지정할 때는 정확한 `slug` 또는 전체 task `id`만 허용됩니다.
 
 ```bash
 sduck plan approve [slug]

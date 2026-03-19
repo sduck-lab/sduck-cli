@@ -70,6 +70,20 @@ describe('sduck spec approve', () => {
     expect(meta).toContain('status: SPEC_APPROVED');
   });
 
+  it('rejects suffix targets that are not exact ids or slugs', async () => {
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
+    await initRepo();
+    await runCli(['start', 'feature', 'login'], { cliRoot, cwd: tempWorkspace });
+
+    const result = await runCli(['spec', 'approve', 'feature-login'], {
+      cliRoot,
+      cwd: tempWorkspace,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('No matching tasks awaiting spec approval');
+  });
+
   it('fails when there are no approvable tasks', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
