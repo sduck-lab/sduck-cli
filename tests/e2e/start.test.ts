@@ -3,16 +3,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runCli } from '../helpers/run-cli.js';
-import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+import { prepareProjectWorkspace, removeProjectWorkspace } from '../helpers/temp-workspace.js';
 
 describe('sduck start', () => {
   const cliRoot = process.cwd();
   let tempWorkspace = '';
+  const workspaceName = 'start-e2e';
 
   afterEach(async () => {
-    if (tempWorkspace !== '') {
-      await removeTempWorkspace(tempWorkspace);
-    }
+    await removeProjectWorkspace(cliRoot, workspaceName);
+    tempWorkspace = '';
   });
 
   async function initRepo(): Promise<void> {
@@ -23,7 +23,7 @@ describe('sduck start', () => {
   }
 
   it('creates a feature task workspace with meta, spec, and plan', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
     const before = new Set(await readdir(join(tempWorkspace, 'sduck-workspace')));
@@ -53,7 +53,7 @@ describe('sduck start', () => {
   });
 
   it('uses the build type template from the types directory', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
     const before = new Set(await readdir(join(tempWorkspace, 'sduck-workspace')));
@@ -75,7 +75,7 @@ describe('sduck start', () => {
   });
 
   it('rejects an unsupported type', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
     const result = await runCli(['start', 'unknown', 'task'], {
@@ -88,7 +88,7 @@ describe('sduck start', () => {
   });
 
   it('rejects when an active task already exists', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     await mkdir(join(tempWorkspace, 'sduck-workspace', '20260319-0000-feature-existing'));
     await writeFile(

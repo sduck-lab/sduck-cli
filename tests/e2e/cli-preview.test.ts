@@ -5,27 +5,28 @@ import { afterEach, describe, expect, it } from 'vitest';
 import packageMetadata from '../../package.json' with { type: 'json' };
 import { copyFixture } from '../helpers/fixture.js';
 import { runCli } from '../helpers/run-cli.js';
-import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+import { prepareProjectWorkspace, removeProjectWorkspace } from '../helpers/temp-workspace.js';
 
 describe('CLI preview command', () => {
+  const cliRoot = process.cwd();
   let tempWorkspace = '';
+  const workspaceName = 'cli-preview-e2e';
 
   afterEach(async () => {
-    if (tempWorkspace !== '') {
-      await removeTempWorkspace(tempWorkspace);
-    }
+    await removeProjectWorkspace(cliRoot, workspaceName);
+    tempWorkspace = '';
   });
 
   it('runs the real CLI and works with fixture files in a temp workspace', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
 
     const copiedFixture = await copyFixture('sample-workspace', tempWorkspace);
 
     await expect(access(join(copiedFixture, 'README.md'))).resolves.toBeUndefined();
 
     const result = await runCli(['preview', 'Bootstrap Ready'], {
-      cliRoot: process.cwd(),
-      cwd: process.cwd(),
+      cliRoot,
+      cwd: tempWorkspace,
     });
 
     expect(result.exitCode).toBe(0);
@@ -34,9 +35,11 @@ describe('CLI preview command', () => {
   });
 
   it('prints the package version through the real CLI', async () => {
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
+
     const result = await runCli(['--version'], {
-      cliRoot: process.cwd(),
-      cwd: process.cwd(),
+      cliRoot,
+      cwd: tempWorkspace,
     });
 
     expect(result.exitCode).toBe(0);

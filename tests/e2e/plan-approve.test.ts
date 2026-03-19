@@ -3,16 +3,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runCli } from '../helpers/run-cli.js';
-import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+import { prepareProjectWorkspace, removeProjectWorkspace } from '../helpers/temp-workspace.js';
 
 describe('sduck plan approve', () => {
   const cliRoot = process.cwd();
   let tempWorkspace = '';
+  const workspaceName = 'plan-approve-e2e';
 
   afterEach(async () => {
-    if (tempWorkspace !== '') {
-      await removeTempWorkspace(tempWorkspace);
-    }
+    await removeProjectWorkspace(cliRoot, workspaceName);
+    tempWorkspace = '';
   });
 
   async function initRepo(): Promise<void> {
@@ -45,7 +45,7 @@ describe('sduck plan approve', () => {
   }
 
   it('approves a valid plan and moves the task to IN_PROGRESS', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     const taskDir = await createApprovedTask(
       'login',
@@ -67,7 +67,7 @@ describe('sduck plan approve', () => {
   });
 
   it('fails when the plan has no valid titled steps', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     await createApprovedTask('invalid-plan', '# Plan\n\n## Step 1.\n');
 
@@ -81,7 +81,7 @@ describe('sduck plan approve', () => {
   });
 
   it('supports explicit target approval', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     const taskDir = await createApprovedTask('profile', '# Plan\n\n## Step 1. Profile\n');
 
@@ -96,7 +96,7 @@ describe('sduck plan approve', () => {
   });
 
   it('returns partial success when one selected task fails step parsing', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     const successTask = await createApprovedTask('success-plan', '# Plan\n\n## Step 1. Works\n');
     const failedTask = await createApprovedTask('failed-plan', '# Plan\n\n## Step 1.\n');

@@ -3,16 +3,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runCli } from '../helpers/run-cli.js';
-import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+import { prepareProjectWorkspace, removeProjectWorkspace } from '../helpers/temp-workspace.js';
 
 describe('sduck spec approve', () => {
   const cliRoot = process.cwd();
   let tempWorkspace = '';
+  const workspaceName = 'spec-approve-e2e';
 
   afterEach(async () => {
-    if (tempWorkspace !== '') {
-      await removeTempWorkspace(tempWorkspace);
-    }
+    await removeProjectWorkspace(cliRoot, workspaceName);
+    tempWorkspace = '';
   });
 
   async function initRepo(): Promise<void> {
@@ -23,7 +23,7 @@ describe('sduck spec approve', () => {
   }
 
   it('approves a single pending task', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     await runCli(['start', 'feature', 'login'], { cliRoot, cwd: tempWorkspace });
 
@@ -48,7 +48,7 @@ describe('sduck spec approve', () => {
   });
 
   it('approves an explicitly targeted task', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     await runCli(['start', 'feature', 'login'], { cliRoot, cwd: tempWorkspace });
 
@@ -71,7 +71,7 @@ describe('sduck spec approve', () => {
   });
 
   it('fails when there are no approvable tasks', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
     const result = await runCli(['spec', 'approve'], { cliRoot, cwd: tempWorkspace });
@@ -81,7 +81,7 @@ describe('sduck spec approve', () => {
   });
 
   it('fails for already approved tasks', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
     await mkdir(join(tempWorkspace, 'sduck-workspace', '20260319-0000-feature-login'));
     await writeFile(

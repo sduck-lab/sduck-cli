@@ -3,20 +3,20 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runCli } from '../helpers/run-cli.js';
-import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+import { prepareProjectWorkspace, removeProjectWorkspace } from '../helpers/temp-workspace.js';
 
 describe('sduck init', () => {
   const cliRoot = process.cwd();
   let tempWorkspace = '';
+  const workspaceName = 'init-e2e';
 
   afterEach(async () => {
-    if (tempWorkspace !== '') {
-      await removeTempWorkspace(tempWorkspace);
-    }
+    await removeProjectWorkspace(cliRoot, workspaceName);
+    tempWorkspace = '';
   });
 
   it('creates the default assets and workspace directories', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
 
     const result = await runCli(['init'], {
       cliRoot,
@@ -38,7 +38,7 @@ describe('sduck init', () => {
   });
 
   it('keeps existing files in safe mode and restores them in force mode', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
 
     await runCli(['init'], {
       cliRoot,
@@ -75,7 +75,7 @@ describe('sduck init', () => {
   });
 
   it('fails when an asset path is occupied by a directory', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
 
     await mkdir(join(tempWorkspace, 'sduck-assets', 'types', 'build.md'), { recursive: true });
 
@@ -89,7 +89,7 @@ describe('sduck init', () => {
   });
 
   it('recovers a missing asset file on rerun', async () => {
-    tempWorkspace = await createTempWorkspace();
+    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
 
     await runCli(['init'], {
       cliRoot,
