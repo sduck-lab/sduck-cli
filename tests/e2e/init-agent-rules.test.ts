@@ -50,12 +50,19 @@ describe('sduck init agent rule generation', () => {
     );
     expect(agentContent).toContain('Use `AGENT.md` as project-level instruction context.');
     expect(agentContent).toContain('Selected agents: Codex, OpenCode');
+    expect(agentContent).toContain('다음 두 가지 승인은');
+    expect(agentContent).toContain('.sduck/sduck-workspace/');
+    expect(agentContent).toContain('.sduck/sduck-assets/eval/spec.yml');
     expect(agentContent).toContain('sduck init');
     expect(agentContent).toContain('sduck start <type> <slug>');
     expect(agentContent).toContain('sduck spec approve [target]');
     expect(agentContent).toContain('sduck plan approve [target]');
+    expect(agentContent).toContain('승인 전에는 어떤 코드도 작성하지 않는다.');
     expect(claudeContent).toContain('Keep plans highly detailed');
+    expect(claudeContent).toContain('절대 Claude가 직접 처리하지 않는다');
+    expect(claudeContent).toContain('.sduck/sduck-assets/eval/plan.yml');
     expect(geminiContent).toContain('Use `GEMINI.md` as project-level instruction context.');
+    expect(geminiContent).toContain('승인 전에는 어떤 코드도 작성하지 않는다.');
     expect(antigravityContent).toContain('Follow the repository SDD workflow exactly.');
   });
 

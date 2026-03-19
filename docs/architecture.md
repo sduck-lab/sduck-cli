@@ -23,7 +23,7 @@ This bootstrap focuses on a strict toolchain, predictable structure, and verifia
 
 ## Init Command Notes
 
-- `sduck init` treats `sduck-assets/` as the template source of truth.
+- `sduck init` materializes project state under `.sduck/sduck-assets/`.
 - Safe mode creates only missing files and preserves existing user content.
 - Force mode regenerates bundled asset files without mutating existing workspace task directories.
 - `sduck init` can also generate agent-specific repository rule files for selected tools.
@@ -31,6 +31,6 @@ This bootstrap focuses on a strict toolchain, predictable structure, and verifia
 
 ## Start Command Notes
 
-- `sduck start <type> <slug>` creates a new task workspace under `sduck-workspace/`.
+- `sduck start <type> <slug>` creates a new task workspace under `.sduck/sduck-workspace/`.
 - Workspace ids are UTC-based and match the generated directory name exactly.
-- Type templates come from `sduck-assets/types/`, and new tasks always begin in `PENDING_SPEC_APPROVAL`.
+- Type templates are copied into `.sduck/sduck-assets/types/`, and new tasks always begin in `PENDING_SPEC_APPROVAL`.

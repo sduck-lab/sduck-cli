@@ -134,8 +134,8 @@ function renderManagedBlock(lines: string[]): string {
 async function getAgentRulesAssetRoot(): Promise<string> {
   const currentDirectoryPath = dirname(fileURLToPath(import.meta.url));
   const candidatePaths = [
-    join(currentDirectoryPath, '..', '..', 'sduck-assets', 'agent-rules'),
-    join(currentDirectoryPath, '..', 'sduck-assets', 'agent-rules'),
+    join(currentDirectoryPath, '..', '..', '.sduck', 'sduck-assets', 'agent-rules'),
+    join(currentDirectoryPath, '..', '.sduck', 'sduck-assets', 'agent-rules'),
   ];
 
   for (const candidatePath of candidatePaths) {

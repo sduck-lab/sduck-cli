@@ -1,0 +1,20 @@
+id: 20260319-0523-fix-init-agent-selection-md-files
+type: fix
+slug: init-agent-selection-md-files
+created_at: 2026-03-19T05:23:21Z
+
+status: DONE
+
+spec:
+  approved: true
+  approved_at: 2026-03-19T05:34:36Z
+
+plan:
+  approved: true
+  approved_at: 2026-03-19T05:38:17Z
+
+steps:
+  total: 6
+  completed: [1, 2, 3, 4, 5, 6]
+
+completed_at: 2026-03-19T05:41:27Z

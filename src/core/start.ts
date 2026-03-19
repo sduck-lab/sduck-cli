@@ -8,6 +8,10 @@ import {
   type SupportedTaskType,
 } from './assets.js';
 import { getFsEntryKind } from './fs.js';
+import {
+  getProjectRelativeSduckWorkspacePath,
+  getProjectSduckWorkspacePath,
+} from './project-paths.js';
 import { findActiveTask, type ActiveTaskSummary } from './workspace.js';
 import { formatUtcDate, formatUtcTimestamp } from '../utils/utc-date.js';
 
@@ -127,14 +131,14 @@ export async function startTask(
   }
 
   const workspaceId = createWorkspaceId(currentDate, rawType, slug);
-  const workspacePath = join('sduck-workspace', workspaceId);
+  const workspacePath = getProjectRelativeSduckWorkspacePath(workspaceId);
   const absoluteWorkspacePath = join(projectRoot, workspacePath);
 
   if ((await getFsEntryKind(absoluteWorkspacePath)) !== 'missing') {
     throw new Error(`Workspace already exists: ${workspacePath}`);
   }
 
-  const workspaceRoot = join(projectRoot, 'sduck-workspace');
+  const workspaceRoot = getProjectSduckWorkspacePath(projectRoot);
   await mkdir(workspaceRoot, { recursive: true });
   await mkdir(absoluteWorkspacePath, { recursive: false });
 

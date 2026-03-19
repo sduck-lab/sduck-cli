@@ -42,9 +42,14 @@ describe('renderAgentRuleContent', () => {
     );
 
     expect(content).toContain('Use `AGENT.md` as project-level instruction context.');
+    expect(content).toContain('다음 두 가지 승인은 에이전트가 직접 처리하지 않는다.');
+    expect(content).toContain('.sduck/sduck-workspace/');
+    expect(content).toContain('.sduck/sduck-assets/eval/spec.yml');
+    expect(content).toContain('승인 전에는 어떤 코드도 작성하지 않는다.');
     expect(content).toContain('sduck start <type> <slug>');
     expect(content).toContain('sduck spec approve [target]');
     expect(content).toContain('sduck plan approve [target]');
+    expect(content).toContain('Write `plan.md` in detailed implementation units');
   });
 });
 

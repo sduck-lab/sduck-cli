@@ -18,7 +18,7 @@ function createTask(
   const task: WorkspaceTaskSummary = {
     createdAt,
     id,
-    path: `sduck-workspace/${id}`,
+    path: `.sduck/sduck-workspace/${id}`,
     status,
   };
 

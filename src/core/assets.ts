@@ -35,8 +35,8 @@ export const INIT_ASSET_RELATIVE_PATHS = [
 export async function getBundledAssetsRoot(): Promise<string> {
   const currentDirectoryPath = dirname(fileURLToPath(import.meta.url));
   const candidatePaths = [
-    join(currentDirectoryPath, '..', '..', 'sduck-assets'),
-    join(currentDirectoryPath, '..', 'sduck-assets'),
+    join(currentDirectoryPath, '..', '..', '.sduck', 'sduck-assets'),
+    join(currentDirectoryPath, '..', '.sduck', 'sduck-assets'),
   ];
 
   for (const candidatePath of candidatePaths) {
@@ -45,7 +45,7 @@ export async function getBundledAssetsRoot(): Promise<string> {
     }
   }
 
-  throw new Error('Unable to locate bundled sduck-assets directory.');
+  throw new Error('Unable to locate bundled .sduck/sduck-assets directory.');
 }
 
 export function isSupportedTaskType(value: string): value is SupportedTaskType {

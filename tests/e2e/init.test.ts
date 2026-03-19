@@ -23,13 +23,14 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
-    await expect(stat(join(tempWorkspace, 'sduck-assets'))).resolves.toBeDefined();
-    await expect(stat(join(tempWorkspace, 'sduck-workspace'))).resolves.toBeDefined();
+    await expect(stat(join(tempWorkspace, '.sduck'))).resolves.toBeDefined();
+    await expect(stat(join(tempWorkspace, '.sduck', 'sduck-assets'))).resolves.toBeDefined();
+    await expect(stat(join(tempWorkspace, '.sduck', 'sduck-workspace'))).resolves.toBeDefined();
     await expect(
-      stat(join(tempWorkspace, 'sduck-assets', 'eval', 'spec.yml')),
+      stat(join(tempWorkspace, '.sduck', 'sduck-assets', 'eval', 'spec.yml')),
     ).resolves.toBeDefined();
     await expect(
-      stat(join(tempWorkspace, 'sduck-assets', 'types', 'feature.md')),
+      stat(join(tempWorkspace, '.sduck', 'sduck-assets', 'types', 'feature.md')),
     ).resolves.toBeDefined();
 
     expect(result.exitCode).toBe(0);
@@ -45,10 +46,16 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
-    const targetEvaluationAssetPath = join(tempWorkspace, 'sduck-assets', 'eval', 'spec.yml');
-    const sourceEvaluationAssetPath = join(cliRoot, 'sduck-assets', 'eval', 'spec.yml');
-    const targetAssetPath = join(tempWorkspace, 'sduck-assets', 'types', 'feature.md');
-    const sourceAssetPath = join(cliRoot, 'sduck-assets', 'types', 'feature.md');
+    const targetEvaluationAssetPath = join(
+      tempWorkspace,
+      '.sduck',
+      'sduck-assets',
+      'eval',
+      'spec.yml',
+    );
+    const sourceEvaluationAssetPath = join(cliRoot, '.sduck', 'sduck-assets', 'eval', 'spec.yml');
+    const targetAssetPath = join(tempWorkspace, '.sduck', 'sduck-assets', 'types', 'feature.md');
+    const sourceAssetPath = join(cliRoot, '.sduck', 'sduck-assets', 'types', 'feature.md');
 
     await writeFile(targetEvaluationAssetPath, 'version: custom\n', 'utf8');
     await writeFile(targetAssetPath, '# custom template\n', 'utf8');
@@ -77,7 +84,9 @@ describe('sduck init', () => {
   it('fails when an asset path is occupied by a directory', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
 
-    await mkdir(join(tempWorkspace, 'sduck-assets', 'types', 'build.md'), { recursive: true });
+    await mkdir(join(tempWorkspace, '.sduck', 'sduck-assets', 'types', 'build.md'), {
+      recursive: true,
+    });
 
     const result = await runCli(['init'], {
       cliRoot,
@@ -96,7 +105,7 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
-    const targetAssetPath = join(tempWorkspace, 'sduck-assets', 'eval', 'spec.yml');
+    const targetAssetPath = join(tempWorkspace, '.sduck', 'sduck-assets', 'eval', 'spec.yml');
 
     await rm(targetAssetPath);
 
@@ -107,6 +116,6 @@ describe('sduck init', () => {
 
     await expect(stat(targetAssetPath)).resolves.toBeDefined();
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('sduck-assets/eval/spec.yml');
+    expect(result.stdout).toContain('.sduck/sduck-assets/eval/spec.yml');
   });
 });

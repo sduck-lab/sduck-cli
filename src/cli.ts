@@ -21,7 +21,7 @@ program.name(CLI_NAME).description(CLI_DESCRIPTION).version(CLI_VERSION);
 program
   .command('init')
   .description('Initialize the current repository for the SDD workflow')
-  .option('--force', 'Regenerate the bundled assets in sduck-assets')
+  .option('--force', 'Regenerate the bundled assets in .sduck/sduck-assets')
   .option(
     '--agents <agents>',
     'Comma-separated agents (claude-code,codex,opencode,gemini-cli,cursor,antigravity)',

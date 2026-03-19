@@ -19,6 +19,16 @@ import {
   getFsEntryKind,
   type FsEntryKind,
 } from './fs.js';
+import {
+  getProjectRelativeSduckAssetPath,
+  getProjectSduckAssetsPath,
+  getProjectSduckHomePath,
+  getProjectSduckWorkspacePath,
+  PROJECT_SDUCK_ASSETS_RELATIVE_PATH,
+  PROJECT_SDUCK_HOME_RELATIVE_PATH,
+  PROJECT_SDUCK_WORKSPACE_RELATIVE_PATH,
+  toBundledAssetRelativePath,
+} from './project-paths.js';
 
 import type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-types.js';
 
@@ -94,28 +104,28 @@ export interface InitExecutionResult {
 const ASSET_TEMPLATE_DEFINITIONS = [
   {
     key: 'eval-spec',
-    relativePath: join('sduck-assets', EVAL_ASSET_RELATIVE_PATHS.spec),
+    relativePath: getProjectRelativeSduckAssetPath(EVAL_ASSET_RELATIVE_PATHS.spec),
   },
   {
     key: 'eval-plan',
-    relativePath: join('sduck-assets', EVAL_ASSET_RELATIVE_PATHS.plan),
+    relativePath: getProjectRelativeSduckAssetPath(EVAL_ASSET_RELATIVE_PATHS.plan),
   },
   {
     key: 'type-build',
-    relativePath: join('sduck-assets', 'types', 'build.md'),
+    relativePath: getProjectRelativeSduckAssetPath('types', 'build.md'),
   },
   {
     key: 'type-feature',
-    relativePath: join('sduck-assets', 'types', 'feature.md'),
+    relativePath: getProjectRelativeSduckAssetPath('types', 'feature.md'),
   },
-  { key: 'type-fix', relativePath: join('sduck-assets', 'types', 'fix.md') },
+  { key: 'type-fix', relativePath: getProjectRelativeSduckAssetPath('types', 'fix.md') },
   {
     key: 'type-refactor',
-    relativePath: join('sduck-assets', 'types', 'refactor.md'),
+    relativePath: getProjectRelativeSduckAssetPath('types', 'refactor.md'),
   },
   {
     key: 'type-chore',
-    relativePath: join('sduck-assets', 'types', 'chore.md'),
+    relativePath: getProjectRelativeSduckAssetPath('types', 'chore.md'),
   },
 ] as const satisfies readonly AssetTemplateDefinition[];
 
@@ -267,8 +277,9 @@ export async function initProject(
   const resolvedOptions = resolveInitOptions(options);
   const { mode } = resolvedOptions;
   const assetSourceRoot = await getBundledAssetsRoot();
-  const assetsRoot = join(projectRoot, 'sduck-assets');
-  const workspaceRoot = join(projectRoot, 'sduck-workspace');
+  const sduckHomeRoot = getProjectSduckHomePath(projectRoot);
+  const assetsRoot = getProjectSduckAssetsPath(projectRoot);
+  const workspaceRoot = getProjectSduckWorkspacePath(projectRoot);
 
   const summary: InitExecutionSummary = {
     created: [],
@@ -280,13 +291,20 @@ export async function initProject(
     rows: [],
   };
 
+  const sduckHomeStatus = await ensureRootDirectory(sduckHomeRoot, 'asset-root-conflict');
+  summary[sduckHomeStatus].push(`${PROJECT_SDUCK_HOME_RELATIVE_PATH}/`);
+  summary.rows.push({ path: `${PROJECT_SDUCK_HOME_RELATIVE_PATH}/`, status: sduckHomeStatus });
+
   const assetsRootStatus = await ensureRootDirectory(assetsRoot, 'asset-root-conflict');
-  summary[assetsRootStatus].push('sduck-assets/');
-  summary.rows.push({ path: 'sduck-assets/', status: assetsRootStatus });
+  summary[assetsRootStatus].push(`${PROJECT_SDUCK_ASSETS_RELATIVE_PATH}/`);
+  summary.rows.push({ path: `${PROJECT_SDUCK_ASSETS_RELATIVE_PATH}/`, status: assetsRootStatus });
 
   const workspaceRootStatus = await ensureRootDirectory(workspaceRoot, 'workspace-root-conflict');
-  summary[workspaceRootStatus].push('sduck-workspace/');
-  summary.rows.push({ path: 'sduck-workspace/', status: workspaceRootStatus });
+  summary[workspaceRootStatus].push(`${PROJECT_SDUCK_WORKSPACE_RELATIVE_PATH}/`);
+  summary.rows.push({
+    path: `${PROJECT_SDUCK_WORKSPACE_RELATIVE_PATH}/`,
+    status: workspaceRootStatus,
+  });
 
   const actions = planInitActions(mode, await collectExistingEntries(projectRoot));
   const actionSummary = summarizeInitActions(actions);
@@ -313,10 +331,7 @@ export async function initProject(
     }
 
     const definition = ASSET_TEMPLATE_MAP[action.key];
-    const sourcePath = join(
-      assetSourceRoot,
-      definition.relativePath.replace(/^sduck-assets[\\/]/, ''),
-    );
+    const sourcePath = join(assetSourceRoot, toBundledAssetRelativePath(definition.relativePath));
     const targetPath = join(projectRoot, definition.relativePath);
 
     await ensureReadableFile(sourcePath);

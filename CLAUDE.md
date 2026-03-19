@@ -11,13 +11,13 @@ Selected agents: Claude Code
 
 # SDD Workflow Rules
 
-- Start each session by checking `sduck-workspace/` and any active task `meta.yml`.
+- Start each session by checking `.sduck/sduck-workspace/` and any active task `meta.yml`.
 - Do not write implementation code before spec approval.
 - Do not start implementation before plan approval.
 - Follow the workflow order: `spec -> approval -> plan -> approval -> implementation`.
 - Respect `meta.yml` state transitions and update step completion immediately.
 - Read and apply user memo text appended with `<-` in `spec.md` and `plan.md`.
-- Use `sduck-assets/eval/spec.yml`, `sduck-assets/eval/plan.yml`, and `sduck-assets/eval/task.yml` when evaluating spec, plan, and completed task quality.
+- Use `.sduck/sduck-assets/eval/spec.yml`, `.sduck/sduck-assets/eval/plan.yml`, and `.sduck/sduck-assets/eval/task.yml` when evaluating spec, plan, and completed task quality.
 - Do not mark a task `DONE` until all completion criteria are satisfied.
 <!-- sduck:end -->
 
@@ -45,7 +45,7 @@ Claude가 직접 생성하고 관리한다.
 
 ```
 프로젝트 루트/
-├── sduck-assets/
+├── .sduck/sduck-assets/
 │   ├── eval/
 │   │   ├── plan.yml
 │   │   └── spec.yml
@@ -57,7 +57,7 @@ Claude가 직접 생성하고 관리한다.
 │   │   └── refactor.md
 │   └── agent-rules/
 │
-└── sduck-workspace/
+└── .sduck/sduck-workspace/
     └── {timestamp}-{type}-{slug}/
         ├── meta.yml
         ├── spec.md
@@ -70,7 +70,7 @@ Claude가 직접 생성하고 관리한다.
 
 작업을 시작하기 전에 **반드시** 아래를 확인한다.
 
-1. `sduck-workspace/` 디렉토리가 있는지 확인
+1. `.sduck/sduck-workspace/` 디렉토리가 있는지 확인
 2. 진행 중인 작업(`IN_PROGRESS`, `PENDING_*`)이 있는지 확인
 3. 있다면 해당 작업의 `meta.yml`을 읽고 현재 상태 파악 후 이어서 진행
 
@@ -119,7 +119,7 @@ Claude가 직접 생성하고 관리한다.
 **1-2. 디렉토리 및 파일 생성**
 
 ```
-sduck-workspace/20260318-1430-feature-login/
+.sduck/sduck-workspace/20260318-1430-feature-login/
 ├── meta.yml
 ├── spec.md   (타입에 맞는 템플릿으로 생성)
 └── plan.md   (빈 파일)
@@ -154,7 +154,7 @@ completed_at: null
 
 ```
 ✅ 작업 디렉토리 생성됨
-   경로: sduck-workspace/20260318-1430-feature-login/
+   경로: .sduck/sduck-workspace/20260318-1430-feature-login/
    상태: PENDING_SPEC_APPROVAL
 ```
 
@@ -166,8 +166,8 @@ completed_at: null
 
 **spec 품질 평가 규칙:**
 
-- spec을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/eval/spec.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
-- 사용자는 `sduck-assets/eval/spec.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
+- spec을 새로 작성하거나 수정한 직후, 반드시 `.sduck/sduck-assets/eval/spec.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
+- 사용자는 `.sduck/sduck-assets/eval/spec.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
 - 별도 지시가 없으면 asset에 정의된 기본 점수 범위와 항목을 그대로 사용한다
 - 평가 결과는 사용자 메시지에 함께 보여주고, 필요하면 spec.md 본문에도 반영해 개선한다
 
@@ -265,7 +265,7 @@ spec.md 작성 또는 수정 완료 후 사용자에게 안내한다:
 
 ```
 📝 spec.md 작성 완료
-   경로: sduck-workspace/20260318-1430-feature-login/spec.md
+   경로: .sduck/sduck-workspace/20260318-1430-feature-login/spec.md
 
    Spec 평가
    - {asset 기준 항목 1}: X/{asset max}
@@ -315,8 +315,8 @@ spec:
 
 **plan 품질 평가 규칙:**
 
-- plan을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/eval/plan.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
-- 사용자는 `sduck-assets/eval/plan.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
+- plan을 새로 작성하거나 수정한 직후, 반드시 `.sduck/sduck-assets/eval/plan.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
+- 사용자는 `.sduck/sduck-assets/eval/plan.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
 - 별도 지시가 없으면 asset에 정의된 기본 점수 범위와 항목을 그대로 사용한다
 - 평가 결과는 사용자 메시지에 함께 보여주고, 필요하면 plan.md 본문에도 반영해 개선한다
 
@@ -340,7 +340,7 @@ plan.md 작성 완료 후 사용자에게 안내한다:
 
 ```
 📋 plan.md 작성 완료
-   경로: sduck-workspace/20260318-1430-feature-login/plan.md
+   경로: .sduck/sduck-workspace/20260318-1430-feature-login/plan.md
    총 N단계
 
    Plan 평가
@@ -400,7 +400,7 @@ steps:
 
 ### 7단계. 작업 완료
 
-모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증하고, `sduck-assets/eval/task.yml`을 읽어 task 평가를 수행한다.
+모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증하고, `.sduck/sduck-assets/eval/task.yml`을 읽어 task 평가를 수행한다.
 
 **미완료 항목이 있을 경우:**
 

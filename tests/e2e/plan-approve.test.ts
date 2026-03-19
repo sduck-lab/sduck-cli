@@ -28,7 +28,7 @@ describe('sduck plan approve', () => {
 
     const entries = await (
       await import('node:fs/promises')
-    ).readdir(join(tempWorkspace, 'sduck-workspace'));
+    ).readdir(join(tempWorkspace, '.sduck', 'sduck-workspace'));
     const taskDir = entries.find((entry) => entry.endsWith(`-${slug}`));
 
     if (taskDir === undefined) {
@@ -36,7 +36,7 @@ describe('sduck plan approve', () => {
     }
 
     await writeFile(
-      join(tempWorkspace, 'sduck-workspace', taskDir, 'plan.md'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', taskDir, 'plan.md'),
       planContent,
       'utf8',
     );
@@ -54,7 +54,7 @@ describe('sduck plan approve', () => {
 
     const result = await runCli(['plan', 'approve', 'login'], { cliRoot, cwd: tempWorkspace });
     const meta = await readFile(
-      join(tempWorkspace, 'sduck-workspace', taskDir, 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', taskDir, 'meta.yml'),
       'utf8',
     );
 
@@ -87,7 +87,7 @@ describe('sduck plan approve', () => {
 
     const result = await runCli(['plan', 'approve', 'profile'], { cliRoot, cwd: tempWorkspace });
     const meta = await readFile(
-      join(tempWorkspace, 'sduck-workspace', taskDir, 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', taskDir, 'meta.yml'),
       'utf8',
     );
 
@@ -103,11 +103,11 @@ describe('sduck plan approve', () => {
 
     const result = await runCli(['plan', 'approve'], { cliRoot, cwd: tempWorkspace });
     const successMeta = await readFile(
-      join(tempWorkspace, 'sduck-workspace', successTask, 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', successTask, 'meta.yml'),
       'utf8',
     );
     const failedMeta = await readFile(
-      join(tempWorkspace, 'sduck-workspace', failedTask, 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', failedTask, 'meta.yml'),
       'utf8',
     );
 

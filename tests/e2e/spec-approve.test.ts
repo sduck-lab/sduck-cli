@@ -30,14 +30,14 @@ describe('sduck spec approve', () => {
     const result = await runCli(['spec', 'approve'], { cliRoot, cwd: tempWorkspace });
     const [taskDir] = await (
       await import('node:fs/promises')
-    ).readdir(join(tempWorkspace, 'sduck-workspace'));
+    ).readdir(join(tempWorkspace, '.sduck', 'sduck-workspace'));
 
     if (taskDir === undefined) {
       throw new Error('Expected a created task directory.');
     }
 
     const meta = await readFile(
-      join(tempWorkspace, 'sduck-workspace', taskDir, 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', taskDir, 'meta.yml'),
       'utf8',
     );
 
@@ -54,7 +54,7 @@ describe('sduck spec approve', () => {
 
     const [taskDir] = await (
       await import('node:fs/promises')
-    ).readdir(join(tempWorkspace, 'sduck-workspace'));
+    ).readdir(join(tempWorkspace, '.sduck', 'sduck-workspace'));
 
     if (taskDir === undefined) {
       throw new Error('Expected a created task directory.');
@@ -62,7 +62,7 @@ describe('sduck spec approve', () => {
 
     const result = await runCli(['spec', 'approve', 'login'], { cliRoot, cwd: tempWorkspace });
     const meta = await readFile(
-      join(tempWorkspace, 'sduck-workspace', taskDir, 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', taskDir, 'meta.yml'),
       'utf8',
     );
 
@@ -83,9 +83,9 @@ describe('sduck spec approve', () => {
   it('fails for already approved tasks', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    await mkdir(join(tempWorkspace, 'sduck-workspace', '20260319-0000-feature-login'));
+    await mkdir(join(tempWorkspace, '.sduck', 'sduck-workspace', '20260319-0000-feature-login'));
     await writeFile(
-      join(tempWorkspace, 'sduck-workspace', '20260319-0000-feature-login', 'meta.yml'),
+      join(tempWorkspace, '.sduck', 'sduck-workspace', '20260319-0000-feature-login', 'meta.yml'),
       [
         'id: 20260319-0000-feature-login',
         'slug: login',

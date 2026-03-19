@@ -2,6 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { getFsEntryKind } from './fs.js';
+import {
+  getProjectRelativeSduckWorkspacePath,
+  getProjectSduckWorkspacePath,
+} from './project-paths.js';
 
 export interface ActiveTaskSummary {
   id: string;
@@ -62,7 +66,7 @@ export function sortTasksByRecency(tasks: readonly WorkspaceTaskSummary[]): Work
 }
 
 export async function listWorkspaceTasks(projectRoot: string): Promise<WorkspaceTaskSummary[]> {
-  const workspaceRoot = join(projectRoot, 'sduck-workspace');
+  const workspaceRoot = getProjectSduckWorkspacePath(projectRoot);
 
   if ((await getFsEntryKind(workspaceRoot)) !== 'directory') {
     return [];
@@ -77,7 +81,7 @@ export async function listWorkspaceTasks(projectRoot: string): Promise<Workspace
       continue;
     }
 
-    const relativePath = join('sduck-workspace', entry.name);
+    const relativePath = getProjectRelativeSduckWorkspacePath(entry.name);
     const metaPath = join(projectRoot, relativePath, 'meta.yml');
 
     if ((await getFsEntryKind(metaPath)) !== 'file') {

@@ -26,12 +26,12 @@ describe('sduck start', () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
-    const before = new Set(await readdir(join(tempWorkspace, 'sduck-workspace')));
+    const before = new Set(await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace')));
     const result = await runCli(['start', 'feature', 'Login Flow'], {
       cliRoot,
       cwd: tempWorkspace,
     });
-    const after = await readdir(join(tempWorkspace, 'sduck-workspace'));
+    const after = await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace'));
     const created = after.find((entry) => !before.has(entry));
 
     expect(result.exitCode).toBe(0);
@@ -42,7 +42,7 @@ describe('sduck start', () => {
       throw new Error('Expected created workspace entry.');
     }
 
-    const workspacePath = join(tempWorkspace, 'sduck-workspace', created);
+    const workspacePath = join(tempWorkspace, '.sduck', 'sduck-workspace', created);
     const meta = await readFile(join(workspacePath, 'meta.yml'), 'utf8');
     const spec = await readFile(join(workspacePath, 'spec.md'), 'utf8');
     const plan = await readFile(join(workspacePath, 'plan.md'), 'utf8');
@@ -56,12 +56,12 @@ describe('sduck start', () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
-    const before = new Set(await readdir(join(tempWorkspace, 'sduck-workspace')));
+    const before = new Set(await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace')));
     const result = await runCli(['start', 'build', 'bootstrap'], {
       cliRoot,
       cwd: tempWorkspace,
     });
-    const after = await readdir(join(tempWorkspace, 'sduck-workspace'));
+    const after = await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace'));
     const created = after.find((entry) => !before.has(entry));
 
     expect(result.exitCode).toBe(0);
@@ -70,7 +70,10 @@ describe('sduck start', () => {
       throw new Error('Expected created workspace entry.');
     }
 
-    const spec = await readFile(join(tempWorkspace, 'sduck-workspace', created, 'spec.md'), 'utf8');
+    const spec = await readFile(
+      join(tempWorkspace, '.sduck', 'sduck-workspace', created, 'spec.md'),
+      'utf8',
+    );
     expect(spec).toContain('# [build] bootstrap');
   });
 
@@ -90,9 +93,15 @@ describe('sduck start', () => {
   it('rejects when an active task already exists', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    await mkdir(join(tempWorkspace, 'sduck-workspace', '20260319-0000-feature-existing'));
+    await mkdir(join(tempWorkspace, '.sduck', 'sduck-workspace', '20260319-0000-feature-existing'));
     await writeFile(
-      join(tempWorkspace, 'sduck-workspace', '20260319-0000-feature-existing', 'meta.yml'),
+      join(
+        tempWorkspace,
+        '.sduck',
+        'sduck-workspace',
+        '20260319-0000-feature-existing',
+        'meta.yml',
+      ),
       ['id: 20260319-0000-feature-existing', 'status: PENDING_SPEC_APPROVAL', ''].join('\n'),
       'utf8',
     );
