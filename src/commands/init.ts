@@ -1,12 +1,13 @@
 import { checkbox } from '@inquirer/prompts';
 
 import { SUPPORTED_AGENTS, parseAgentsOption, type SupportedAgentId } from '../core/agent-rules.js';
-import {
-  type InitCommandOptions,
-  type InitExecutionResult,
-  type InitSummaryRow,
-  initProject,
-} from '../core/init.js';
+import { type InitCommandOptions, type InitSummaryRow, initProject } from '../core/init.js';
+
+const AGENT_PROMPT_MESSAGE = 'Select AI agents to generate repository rule files for';
+const AGENT_PROMPT_INSTRUCTIONS =
+  'Use space to toggle agents, arrow keys to move, and enter to submit.';
+const AGENT_PROMPT_REQUIRED_MESSAGE =
+  'Select at least one agent. Use space to toggle and enter to submit.';
 
 export interface CommandResult {
   exitCode: number;
@@ -17,6 +18,15 @@ export interface CommandResult {
 export interface InitCliOptions {
   agents?: string;
   force: boolean;
+}
+
+interface FormattableInitResult {
+  didChange: boolean;
+  agents: readonly SupportedAgentId[];
+  summary: {
+    rows: InitSummaryRow[];
+    warnings: string[];
+  };
 }
 
 function padCell(value: string, width: number): string {
@@ -36,7 +46,7 @@ function buildSummaryTable(rows: InitSummaryRow[]): string {
   return [border, header, border, ...body, border].join('\n');
 }
 
-function formatResult(result: InitExecutionResult): string {
+function formatResult(result: FormattableInitResult): string {
   const lines = [
     result.didChange ? 'sduck init completed.' : 'sduck init completed with no file changes.',
   ];
@@ -63,6 +73,20 @@ function normalizeSelectedAgents(agentIds: readonly SupportedAgentId[]): Support
   );
 }
 
+export function createAgentCheckboxConfig() {
+  return {
+    message: AGENT_PROMPT_MESSAGE,
+    instructions: AGENT_PROMPT_INSTRUCTIONS,
+    required: true,
+    validate: (choices: readonly { value: SupportedAgentId }[]) =>
+      choices.length > 0 || AGENT_PROMPT_REQUIRED_MESSAGE,
+    choices: SUPPORTED_AGENTS.map((agent) => ({
+      name: agent.label,
+      value: agent.id,
+    })),
+  };
+}
+
 async function resolveSelectedAgents(options: InitCliOptions): Promise<SupportedAgentId[]> {
   const parsedAgents = parseAgentsOption(options.agents);
 
@@ -70,15 +94,7 @@ async function resolveSelectedAgents(options: InitCliOptions): Promise<Supported
     return normalizeSelectedAgents(parsedAgents);
   }
 
-  return normalizeSelectedAgents(
-    await checkbox<SupportedAgentId>({
-      message: 'Select AI agents to generate repository rule files for',
-      choices: SUPPORTED_AGENTS.map((agent) => ({
-        name: agent.label,
-        value: agent.id,
-      })),
-    }),
-  );
+  return normalizeSelectedAgents(await checkbox<SupportedAgentId>(createAgentCheckboxConfig()));
 }
 
 export async function runInitCommand(

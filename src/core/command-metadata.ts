@@ -1,4 +1,8 @@
+import packageMetadata from '../../package.json' with { type: 'json' };
+
 export const CLI_NAME = 'sduck';
+
+export const CLI_VERSION = packageMetadata.version;
 
 export const CLI_DESCRIPTION = 'Spec-Driven Development workflow bootstrap CLI';
 

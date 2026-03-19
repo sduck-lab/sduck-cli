@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { planInitActions, summarizeInitActions, type FsEntryKind } from '../../src/core/init.js';
+import {
+  planInitActions,
+  summarizeInitActions,
+  type FsEntryKind,
+  type InitExecutionResult,
+} from '../../src/core/init.js';
 
 function createExistingEntries(entries: Record<string, FsEntryKind>): Map<string, FsEntryKind> {
   return new Map(Object.entries(entries));
@@ -59,5 +64,26 @@ describe('summarizeInitActions', () => {
     expect(summary.kept).toContain('sduck-assets/types/build.md');
     expect(summary.rows.some((row) => row.status === 'kept')).toBe(true);
     expect(summary.warnings.some((warning) => warning.includes('--force'))).toBe(true);
+  });
+});
+
+describe('InitExecutionResult', () => {
+  it('includes selected agents in the typed result shape', () => {
+    const result: InitExecutionResult = {
+      mode: 'safe',
+      agents: ['claude-code'],
+      summary: {
+        created: [],
+        prepended: [],
+        kept: [],
+        overwritten: [],
+        warnings: [],
+        errors: [],
+        rows: [],
+      },
+      didChange: true,
+    };
+
+    expect(result.agents).toEqual(['claude-code']);
   });
 });

@@ -86,7 +86,7 @@ export interface InitExecutionSummary {
 
 export interface InitExecutionResult {
   mode: InitMode;
-  agents: string[];
+  agents: SupportedAgentId[];
   summary: InitExecutionSummary;
   didChange: boolean;
 }

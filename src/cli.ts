@@ -9,13 +9,14 @@ import { runStartCommand } from './commands/start.js';
 import {
   CLI_DESCRIPTION,
   CLI_NAME,
+  CLI_VERSION,
   PLACEHOLDER_MESSAGE,
   normalizeCommandName,
 } from './core/command-metadata.js';
 
 const program = new Command();
 
-program.name(CLI_NAME).description(CLI_DESCRIPTION).version('0.1.0');
+program.name(CLI_NAME).description(CLI_DESCRIPTION).version(CLI_VERSION);
 
 program
   .command('init')
