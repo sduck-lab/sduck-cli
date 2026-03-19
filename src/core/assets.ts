@@ -14,6 +14,7 @@ export const SUPPORTED_TASK_TYPES: readonly SupportedTaskType[] = [
 ];
 
 export const EVAL_ASSET_RELATIVE_PATHS = {
+  task: join('eval', 'task.yml'),
   plan: join('eval', 'plan.yml'),
   spec: join('eval', 'spec.yml'),
 } as const;
@@ -29,6 +30,7 @@ export const SPEC_TEMPLATE_RELATIVE_PATHS: Record<SupportedTaskType, string> = {
 export const INIT_ASSET_RELATIVE_PATHS = [
   EVAL_ASSET_RELATIVE_PATHS.spec,
   EVAL_ASSET_RELATIVE_PATHS.plan,
+  EVAL_ASSET_RELATIVE_PATHS.task,
   ...Object.values(SPEC_TEMPLATE_RELATIVE_PATHS),
 ] as const;
 

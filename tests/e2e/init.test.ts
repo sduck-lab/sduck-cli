@@ -30,6 +30,9 @@ describe('sduck init', () => {
       stat(join(tempWorkspace, '.sduck', 'sduck-assets', 'eval', 'spec.yml')),
     ).resolves.toBeDefined();
     await expect(
+      stat(join(tempWorkspace, '.sduck', 'sduck-assets', 'eval', 'task.yml')),
+    ).resolves.toBeDefined();
+    await expect(
       stat(join(tempWorkspace, '.sduck', 'sduck-assets', 'types', 'feature.md')),
     ).resolves.toBeDefined();
 

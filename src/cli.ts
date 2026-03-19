@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 
+import { runDoneCommand } from './commands/done.js';
 import { runInitCommand } from './commands/init.js';
 import { runPlanApproveCommand } from './commands/plan-approve.js';
 import { runSpecApproveCommand } from './commands/spec-approve.js';
@@ -102,6 +103,26 @@ program
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
     const result = await runPlanApproveCommand(input, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('done [target]')
+  .description('Complete an in-progress task after validation')
+  .action(async (target?: string) => {
+    const input = target === undefined ? {} : { target };
+    const result = await runDoneCommand(input, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);

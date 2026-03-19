@@ -15,7 +15,7 @@ describe('planInitActions', () => {
   it('creates all assets for an empty project in safe mode', () => {
     const actions = planInitActions('safe', createExistingEntries({}));
 
-    expect(actions).toHaveLength(7);
+    expect(actions).toHaveLength(8);
     expect(actions.every((action) => action.action === 'create')).toBe(true);
   });
 
@@ -23,14 +23,15 @@ describe('planInitActions', () => {
     const existingEntries = createExistingEntries({
       '.sduck/sduck-assets/eval/spec.yml': 'file',
       '.sduck/sduck-assets/eval/plan.yml': 'file',
+      '.sduck/sduck-assets/eval/task.yml': 'file',
       '.sduck/sduck-assets/types/build.md': 'file',
     });
 
     const safeActions = planInitActions('safe', existingEntries);
     const forceActions = planInitActions('force', existingEntries);
 
-    expect(safeActions.filter((action) => action.action === 'keep')).toHaveLength(3);
-    expect(forceActions.filter((action) => action.action === 'overwrite')).toHaveLength(3);
+    expect(safeActions.filter((action) => action.action === 'keep')).toHaveLength(4);
+    expect(forceActions.filter((action) => action.action === 'overwrite')).toHaveLength(4);
   });
 
   it('marks directory collisions as errors', () => {

@@ -38,6 +38,7 @@ export type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-t
 export type AssetTemplateKey =
   | 'eval-spec'
   | 'eval-plan'
+  | 'eval-task'
   | 'type-build'
   | 'type-feature'
   | 'type-fix'
@@ -109,6 +110,10 @@ const ASSET_TEMPLATE_DEFINITIONS = [
   {
     key: 'eval-plan',
     relativePath: getProjectRelativeSduckAssetPath(EVAL_ASSET_RELATIVE_PATHS.plan),
+  },
+  {
+    key: 'eval-task',
+    relativePath: getProjectRelativeSduckAssetPath(EVAL_ASSET_RELATIVE_PATHS.task),
   },
   {
     key: 'type-build',
