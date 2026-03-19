@@ -17,7 +17,7 @@ Selected agents: Claude Code
 - Follow the workflow order: `spec -> approval -> plan -> approval -> implementation`.
 - Respect `meta.yml` state transitions and update step completion immediately.
 - Read and apply user memo text appended with `<-` in `spec.md` and `plan.md`.
-- Use `sduck-assets/eval/spec.yml` and `sduck-assets/eval/plan.yml` when evaluating spec and plan quality.
+- Use `sduck-assets/eval/spec.yml`, `sduck-assets/eval/plan.yml`, and `sduck-assets/eval/task.yml` when evaluating spec, plan, and completed task quality.
 - Do not mark a task `DONE` until all completion criteria are satisfied.
 <!-- sduck:end -->
 
@@ -396,7 +396,7 @@ steps:
 
 ### 7단계. 작업 완료
 
-모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증한다.
+모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증하고, `sduck-assets/eval/task.yml`을 읽어 task 평가를 수행한다.
 
 **미완료 항목이 있을 경우:**
 
@@ -407,7 +407,7 @@ steps:
 마저 구현한 후 완료 처리하겠습니다.
 ```
 
-**모든 항목 완료 시 `meta.yml` 업데이트:**
+**모든 항목 완료 시 task 평가를 사용자에게 보여준 뒤 `task done` 또는 완료 처리로 진행하고 `meta.yml` 업데이트:**
 
 ```yaml
 status: DONE
@@ -417,6 +417,11 @@ completed_at: 2026-03-18T16:30:00Z # 현재 UTC 시각
 ```
 ✅ 모든 완료 조건 충족
    상태: DONE
+
+   Task 평가
+   - {asset 기준 항목 1}: X/{asset max}
+   - {asset 기준 항목 2}: X/{asset max}
+   - ...
 
 커밋 메시지 제안: feat: implement email/password login with JWT
 git commit 하시겠습니까?
