@@ -26,6 +26,9 @@ describe('sduck init', () => {
     await expect(stat(join(tempWorkspace, 'sduck-assets'))).resolves.toBeDefined();
     await expect(stat(join(tempWorkspace, 'sduck-workspace'))).resolves.toBeDefined();
     await expect(
+      stat(join(tempWorkspace, 'sduck-assets', 'spec-evaluation.yml')),
+    ).resolves.toBeDefined();
+    await expect(
       stat(join(tempWorkspace, 'sduck-assets', 'spec-feature.md')),
     ).resolves.toBeDefined();
 
@@ -42,9 +45,12 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
+    const targetEvaluationAssetPath = join(tempWorkspace, 'sduck-assets', 'spec-evaluation.yml');
+    const sourceEvaluationAssetPath = join(cliRoot, 'sduck-assets', 'spec-evaluation.yml');
     const targetAssetPath = join(tempWorkspace, 'sduck-assets', 'spec-feature.md');
     const sourceAssetPath = join(cliRoot, 'sduck-assets', 'spec-feature.md');
 
+    await writeFile(targetEvaluationAssetPath, 'version: custom\n', 'utf8');
     await writeFile(targetAssetPath, '# custom template\n', 'utf8');
 
     const safeResult = await runCli(['init'], {
@@ -52,6 +58,7 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
+    expect(await readFile(targetEvaluationAssetPath, 'utf8')).toBe('version: custom\n');
     expect(await readFile(targetAssetPath, 'utf8')).toBe('# custom template\n');
     expect(safeResult.stdout).toContain('| kept');
 
@@ -60,6 +67,9 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
+    expect(await readFile(targetEvaluationAssetPath, 'utf8')).toBe(
+      await readFile(sourceEvaluationAssetPath, 'utf8'),
+    );
     expect(await readFile(targetAssetPath, 'utf8')).toBe(await readFile(sourceAssetPath, 'utf8'));
     expect(forceResult.stdout).toContain('| overwritten');
   });
@@ -86,7 +96,7 @@ describe('sduck init', () => {
       cwd: tempWorkspace,
     });
 
-    const targetAssetPath = join(tempWorkspace, 'sduck-assets', 'spec-chore.md');
+    const targetAssetPath = join(tempWorkspace, 'sduck-assets', 'spec-evaluation.yml');
 
     await rm(targetAssetPath);
 
@@ -97,6 +107,6 @@ describe('sduck init', () => {
 
     await expect(stat(targetAssetPath)).resolves.toBeDefined();
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('sduck-assets/spec-chore.md');
+    expect(result.stdout).toContain('sduck-assets/spec-evaluation.yml');
   });
 });

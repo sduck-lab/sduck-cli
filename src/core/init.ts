@@ -18,6 +18,7 @@ export interface InitCommandOptions {
 export type InitMode = 'safe' | 'force';
 
 export type AssetTemplateKey =
+  | 'spec-evaluation'
   | 'plan-evaluation'
   | 'spec-build'
   | 'spec-feature'
@@ -78,6 +79,11 @@ export interface InitExecutionResult {
 }
 
 const ASSET_TEMPLATE_DEFINITIONS = [
+  {
+    key: 'spec-evaluation',
+    fileName: 'spec-evaluation.yml',
+    relativePath: join('sduck-assets', 'spec-evaluation.yml'),
+  },
   {
     key: 'plan-evaluation',
     fileName: 'plan-evaluation.yml',
