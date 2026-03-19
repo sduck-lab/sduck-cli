@@ -42,6 +42,13 @@ sduck start feature login
 sduck start build bootstrap-cli
 ```
 
+## Approve a spec
+
+```bash
+sduck spec approve
+sduck spec approve login
+```
+
 ## Plan asset actions
 
 ```ts

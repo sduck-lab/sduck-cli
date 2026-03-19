@@ -1,0 +1,20 @@
+id: 20260319-0315-feature-spec-approve
+type: feature
+slug: spec-approve
+created_at: 2026-03-19T03:15:12Z
+
+status: DONE
+
+spec:
+  approved: true
+  approved_at: 2026-03-19T03:19:08Z
+
+plan:
+  approved: true
+  approved_at: 2026-03-19T03:21:46Z
+
+steps:
+  total: 10
+  completed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+completed_at: 2026-03-19T03:27:03Z

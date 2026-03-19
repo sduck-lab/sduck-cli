@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { runInitCommand } from './commands/init.js';
+import { runSpecApproveCommand } from './commands/spec-approve.js';
 import { runStartCommand } from './commands/start.js';
 import {
   CLI_DESCRIPTION,
@@ -55,6 +56,28 @@ program
   .description('Create a new task workspace from a type template')
   .action(async (type: string, slug: string) => {
     const result = await runStartCommand(type, slug, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('spec')
+  .description('Manage spec workflow state')
+  .command('approve [target]')
+  .description('Approve a task spec and move it to plan writing')
+  .action(async (target?: string) => {
+    const input = target === undefined ? {} : { target };
+    const result = await runSpecApproveCommand(input, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);
