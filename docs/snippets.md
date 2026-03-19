@@ -49,6 +49,13 @@ sduck spec approve
 sduck spec approve login
 ```
 
+## Approve a plan
+
+```bash
+sduck plan approve
+sduck plan approve login
+```
+
 ## Plan asset actions
 
 ```ts

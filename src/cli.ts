@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { runInitCommand } from './commands/init.js';
+import { runPlanApproveCommand } from './commands/plan-approve.js';
 import { runSpecApproveCommand } from './commands/spec-approve.js';
 import { runStartCommand } from './commands/start.js';
 import {
@@ -78,6 +79,28 @@ program
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
     const result = await runSpecApproveCommand(input, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('plan')
+  .description('Manage plan workflow state')
+  .command('approve [target]')
+  .description('Approve a task plan and move it to implementation')
+  .action(async (target?: string) => {
+    const input = target === undefined ? {} : { target };
+    const result = await runPlanApproveCommand(input, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);
