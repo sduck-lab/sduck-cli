@@ -43,6 +43,24 @@ sduck init --agents claude-code,cursor,codex
 
 ## 📖 주요 명령어
 
+### 빠른 시작 예시
+
+```bash
+# 1) 초기화
+sduck init --agents claude-code,codex
+
+# 2) 일반 흐름
+sduck start feature login-system
+sduck spec approve login-system
+sduck plan approve login-system
+
+# 3) 빠른 흐름
+sduck fast-track fix copy-bug
+
+# 4) 구현 완료 후
+sduck done login-system
+```
+
 ### 1. 작업 시작 (Start)
 
 작업 타입에 맞는 폴더와 템플릿 파일을 생성합니다.
@@ -52,6 +70,8 @@ sduck init --agents claude-code,cursor,codex
 sduck start feature login-system
 sduck start fix auth-bug
 ```
+
+생성 직후 상태는 `PENDING_SPEC_APPROVAL`입니다.
 
 ### 2. 스펙 승인 (Approve Spec)
 
@@ -65,6 +85,11 @@ sduck spec approve [slug]
 ### 3. 빠른 시작 (Fast Track)
 
 반복적이거나 범위가 명확한 작업은 minimal spec과 minimal plan을 한 번에 생성할 수 있습니다. `spec.md`는 생략되지 않으며, 비대화형 환경에서는 자동 승인 없이 생성만 수행합니다.
+
+- `spec.md`는 항상 생성됩니다
+- interactive 환경에서는 확인 1회 후 spec/plan 승인을 묶어 진행할 수 있습니다
+- 비대화형 환경에서는 생성만 수행하고, 이후 `sduck spec approve <slug>` → `sduck plan approve <slug>`로 이어집니다
+- 범위가 크거나 요구사항이 불명확한 작업은 일반 `start` 흐름을 권장합니다
 
 ```bash
 sduck fast-track <type> <slug>
@@ -83,9 +108,34 @@ sduck plan approve [slug]
 
 구현이 끝난 작업의 step 완료 여부, spec 체크리스트, task eval 자산을 확인한 뒤 `DONE` 상태로 마감합니다.
 
+- `steps.total`과 `steps.completed`가 모두 맞아야 합니다
+- `spec.md`의 체크리스트가 모두 완료돼야 합니다
+- target을 지정할 때는 정확한 `slug` 또는 전체 task `id`만 허용됩니다
+
 ```bash
 sduck done [slug]
 ```
+
+## ✅ 상태 전이
+
+```text
+PENDING_SPEC_APPROVAL -> SPEC_APPROVED -> IN_PROGRESS -> DONE
+```
+
+- `start`: `PENDING_SPEC_APPROVAL`
+- `spec approve`: `SPEC_APPROVED`
+- `plan approve`: `IN_PROGRESS`
+- `done`: `DONE`
+- `fast-track`: minimal spec/plan을 생성하고, 환경에 따라 `PENDING_SPEC_APPROVAL` 또는 `IN_PROGRESS`까지 진행
+
+## 🧭 일반 흐름 vs fast-track
+
+| 구분          | 일반 흐름                      | fast-track                                |
+| ------------- | ------------------------------ | ----------------------------------------- |
+| 문서 생성     | 타입 템플릿 기반 spec, 빈 plan | minimal spec + minimal plan               |
+| 승인 방식     | spec 승인, plan 승인 각각 진행 | interactive에서는 확인 1회로 묶을 수 있음 |
+| 비대화형 동작 | 각 명령 수동 실행              | 생성만 수행, 승인 자동 진행 없음          |
+| 추천 상황     | 범위가 크거나 애매한 작업      | 반복적이고 범위가 명확한 작업             |
 
 ## 🎨 자산 커스터마이징 (Asset Customization)
 
@@ -118,10 +168,24 @@ your-project/
 │   └── sduck-workspace/    # 📝 작업 이력 (Git 추적 권장)
 │       └── 20260319-1000-feature-login/
 │           ├── meta.yml    # 작업 상태 관리 (status, timestamps)
-│           ├── spec.md     # 요구사항 명세서
-│           └── plan.md     # 상세 구현 계획서
+│           ├── spec.md     # 요구사항 명세서 또는 minimal spec
+│           └── plan.md     # 상세 구현 계획서 또는 minimal plan
 ├── CLAUDE.md               # Claude Code용 규칙
 └── AGENT.md                # Codex/OpenCode용 규칙
+```
+
+`meta.yml`에는 최소 아래 상태 정보가 들어갑니다.
+
+```yaml
+status: PENDING_SPEC_APPROVAL | SPEC_APPROVED | IN_PROGRESS | DONE
+spec:
+  approved: <boolean>
+plan:
+  approved: <boolean>
+steps:
+  total: <number | null>
+  completed: [<step numbers>]
+completed_at: <timestamp | null>
 ```
 
 ## 🤖 지원 에이전트 (Rule Generation)
