@@ -1,0 +1,31 @@
+version: 1
+
+plan_evaluation:
+  scale:
+    min: 1
+    max: 5
+
+  criteria:
+    - key: semantic_clarity
+      label: semantic clarity
+      question: 의미가 분명한가
+
+    - key: abstraction
+      label: abstraction
+      question: 추상화 수준이 적절한가
+
+    - key: typing
+      label: typing
+      question: 타입 안정성을 충분히 고려했는가
+
+    - key: security
+      label: security
+      question: 보안상 문제 가능성을 줄였는가
+
+    - key: maintainability
+      label: maintainability
+      question: 유지보수하기 쉬운 구조인가
+
+    - key: testability
+      label: testability
+      question: 테스트하기 쉬운가
