@@ -9,6 +9,7 @@ import {
 } from './assets.js';
 import { getFsEntryKind } from './fs.js';
 import { findActiveTask, type ActiveTaskSummary } from './workspace.js';
+import { formatUtcDate, formatUtcTimestamp } from '../utils/utc-date.js';
 
 export interface StartCommandInput {
   type: SupportedTaskType;
@@ -41,22 +42,14 @@ export function validateSlug(slug: string): void {
   }
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
 export function createWorkspaceId(date: Date, type: SupportedTaskType, slug: string): string {
   const year = String(date.getUTCFullYear());
-  const month = pad2(date.getUTCMonth() + 1);
-  const day = pad2(date.getUTCDate());
-  const hour = pad2(date.getUTCHours());
-  const minute = pad2(date.getUTCMinutes());
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hour = String(date.getUTCHours()).padStart(2, '0');
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
 
   return `${year}${month}${day}-${hour}${minute}-${type}-${slug}`;
-}
-
-export function formatUtcTimestamp(date: Date): string {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 export function renderInitialMeta(input: {
@@ -106,7 +99,7 @@ function applyTemplateDefaults(
   return template
     .replace(/\{기능명\}/g, displayName)
     .replace(/\{버그 요약 한 줄\}/g, displayName)
-    .replace(/YYYY-MM-DD/g, formatUtcTimestamp(currentDate).slice(0, 10))
+    .replace(/YYYY-MM-DD/g, formatUtcDate(currentDate))
     .replace(/> \*\*작성자:\*\*\s*$/m, '> **작성자:** taehee')
     .replace(/> \*\*연관 티켓:\*\*\s*$/m, '> **연관 티켓:** -')
     .replace(/^# \[(feature|fix|refactor|chore|build)\] .*/m, `# [${type}] ${displayName}`);

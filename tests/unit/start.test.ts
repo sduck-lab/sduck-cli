@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createWorkspaceId,
-  formatUtcTimestamp,
   normalizeSlug,
   renderInitialMeta,
   validateSlug,
 } from '../../src/core/start.js';
+import { formatUtcDate, formatUtcTimestamp } from '../../src/utils/utc-date.js';
 
 describe('normalizeSlug', () => {
   it('normalizes input to lowercase kebab-case', () => {
@@ -38,6 +38,12 @@ describe('createWorkspaceId', () => {
 describe('formatUtcTimestamp', () => {
   it('formats timestamps with a trailing Z', () => {
     expect(formatUtcTimestamp(new Date('2026-03-19T02:43:39.123Z'))).toBe('2026-03-19T02:43:39Z');
+  });
+});
+
+describe('formatUtcDate', () => {
+  it('formats dates as YYYY-MM-DD in UTC', () => {
+    expect(formatUtcDate(new Date('2026-03-19T02:43:39.123Z'))).toBe('2026-03-19');
   });
 });
 
