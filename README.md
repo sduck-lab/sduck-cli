@@ -41,6 +41,46 @@ npm install -g @sduck/sduck-cli
 sduck init --agents claude-code,cursor,codex
 ```
 
+### Windows 환경에서 `sduck`을 찾지 못할 때
+
+Windows(PowerShell)에서 `npm install -g` 후 `sduck`을 실행했을 때 아래와 같은 에러가 발생할 수 있습니다.
+
+```
+sduck : 이 시스템에서 스크립트를 실행할 수 없습니다.
+# 또는
+sduck: The term 'sduck' is not recognized as the name of a cmdlet...
+```
+
+이는 npm 전역 설치 경로가 시스템 PATH에 포함되지 않아서 발생합니다.
+
+**1. npm 전역 경로 확인**
+
+```powershell
+npm config get prefix
+# 예: C:\Users\사용자이름\AppData\Roaming\npm
+```
+
+**2. PATH에 포함되어 있는지 확인**
+
+```powershell
+$env:PATH -split ';' | Select-String 'npm'
+```
+
+결과가 없으면 PATH에 추가해야 합니다.
+
+**3. PATH에 영구 추가 (PowerShell)**
+
+```powershell
+# 현재 사용자에게 영구 추가
+[Environment]::SetEnvironmentVariable(
+  'Path',
+  [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + (npm config get prefix),
+  'User'
+)
+```
+
+설정 후 PowerShell을 재시작하면 `sduck` 명령어가 정상 동작합니다.
+
 ## 📖 주요 명령어
 
 ### 빠른 시작 예시
