@@ -19,6 +19,8 @@ Selected agents: Claude Code
 - Read and apply user memo text appended with `<-` in `spec.md` and `plan.md`.
 - Use `.sduck/sduck-assets/eval/spec.yml`, `.sduck/sduck-assets/eval/plan.yml`, and `.sduck/sduck-assets/eval/task.yml` when evaluating spec, plan, and completed task quality.
 - Do not mark a task `DONE` until all completion criteria are satisfied.
+- `sduck fast-track <type> <slug>`는 `spec.md`를 생략하지 않고 minimal spec + minimal plan을 준비하는 빠른 경로로만 사용한다.
+- fast-track은 interactive 환경에서만 확인 1회로 spec/plan 승인을 묶을 수 있고, 비대화형 환경에서는 생성만 수행한 뒤 일반 승인 명령으로 이어간다.
 <!-- sduck:end -->
 
 이 프로젝트는 **Spec-Driven Development(SDD)** 워크플로우를 따릅니다.

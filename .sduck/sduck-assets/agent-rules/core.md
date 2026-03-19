@@ -46,12 +46,21 @@
 
 ## 워크플로우 규칙
 
-- Use the shipped CLI commands for workflow operations: `sduck init`, `sduck start <type> <slug>`, `sduck spec approve [target]`, and `sduck plan approve [target]`.
+- Use the shipped CLI commands for workflow operations: `sduck init`, `sduck start <type> <slug>`, `sduck fast-track <type> <slug>`, `sduck spec approve [target]`, and `sduck plan approve [target]`.
 - Do not write implementation code before spec approval.
 - Do not start implementation before plan approval.
 - Follow the workflow order: `spec -> approval -> plan -> approval -> implementation`.
 - Respect `meta.yml` state transitions and update step completion immediately.
 - Write `plan.md` in detailed implementation units: include target files, the functions/sections or rough line ranges to inspect, the exact change intent for each file, and the tests or commands to verify the step.
+
+## fast-track 규칙
+
+- `sduck fast-track <type> <slug>`는 `spec.md`를 생략하지 않고 minimal spec + minimal plan을 생성하는 빠른 경로다.
+- fast-track은 반복적이거나 범위가 작고 명확한 작업에서만 사용한다.
+- 범위가 크거나 요구사항이 불확실한 작업에는 fast-track 대신 일반 `start -> spec -> plan` 흐름을 사용한다.
+- fast-track은 사용자 승인 자체를 우회하지 않는다.
+- interactive 환경에서만 확인 1회로 spec/plan 승인을 묶을 수 있다.
+- 비대화형 환경에서는 문서 생성만 수행하고, 이후 `sduck spec approve`, `sduck plan approve`로 이어간다.
 
 ## 승인 규칙
 

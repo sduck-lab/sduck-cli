@@ -23,12 +23,13 @@ sduck은 아래의 엄격한 절차를 지향하며, 각 단계는 CLI를 통해
 
 1. **Init:** 프로젝트 환경 설정 및 에이전트 규칙(`CLAUDE.md` 등) 생성
 2. **Start:** 새로운 작업(feature, fix 등) 생성 및 템플릿 준비
-3. **Spec:** AI가 요구사항을 분석하여 `spec.md` 작성 및 자체 품질 평가
-4. **Approve Spec:** 사용자가 설계를 검토하고 `sduck spec approve` 실행
-5. **Plan:** AI가 상세 구현 계획을 `plan.md`에 단계별로 작성
-6. **Approve Plan:** 사용자가 계획을 검토하고 `sduck plan approve` 실행
-7. **Implementation:** 승인된 계획의 Step에 따라 AI가 실제 코드 구현
-8. **Done:** spec 체크리스트와 task eval 기준을 확인한 뒤 `sduck done` 실행
+3. **Fast Track (optional):** minimal spec + minimal plan을 빠르게 생성하고, 대화형 환경에서는 확인 1회로 승인까지 이어질 수 있음
+4. **Spec:** AI가 요구사항을 분석하여 `spec.md` 작성 및 자체 품질 평가
+5. **Approve Spec:** 사용자가 설계를 검토하고 `sduck spec approve` 실행
+6. **Plan:** AI가 상세 구현 계획을 `plan.md`에 단계별로 작성
+7. **Approve Plan:** 사용자가 계획을 검토하고 `sduck plan approve` 실행
+8. **Implementation:** 승인된 계획의 Step에 따라 AI가 실제 코드 구현
+9. **Done:** spec 체크리스트와 task eval 기준을 확인한 뒤 `sduck done` 실행
 
 ## 🛠 설치 및 초기화
 
@@ -60,7 +61,15 @@ sduck start fix auth-bug
 sduck spec approve [slug]
 ```
 
-### 3. 플랜 승인 (Approve Plan)
+### 3. 빠른 시작 (Fast Track)
+
+반복적이거나 범위가 명확한 작업은 minimal spec과 minimal plan을 한 번에 생성할 수 있습니다. `spec.md`는 생략되지 않으며, 비대화형 환경에서는 자동 승인 없이 생성만 수행합니다.
+
+```bash
+sduck fast-track <type> <slug>
+```
+
+### 4. 플랜 승인 (Approve Plan)
 
 `plan.md`에 작성된 단계(Steps)를 검토하고 승인합니다. 상태가 `IN_PROGRESS`로 변경되며 구현 권한이 부여됩니다.
 
@@ -68,7 +77,7 @@ sduck spec approve [slug]
 sduck plan approve [slug]
 ```
 
-### 4. 작업 완료 (Done)
+### 5. 작업 완료 (Done)
 
 구현이 끝난 작업의 step 완료 여부, spec 체크리스트, task eval 자산을 확인한 뒤 `DONE` 상태로 마감합니다.
 

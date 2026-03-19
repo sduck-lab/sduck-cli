@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { runDoneCommand } from './commands/done.js';
+import { runFastTrackCommand } from './commands/fast-track.js';
 import { runInitCommand } from './commands/init.js';
 import { runPlanApproveCommand } from './commands/plan-approve.js';
 import { runSpecApproveCommand } from './commands/spec-approve.js';
@@ -59,6 +60,25 @@ program
   .description('Create a new task workspace from a type template')
   .action(async (type: string, slug: string) => {
     const result = await runStartCommand(type, slug, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('fast-track <type> <slug>')
+  .description('Create a minimal spec/plan task with optional bundled approval')
+  .action(async (type: string, slug: string) => {
+    const result = await runFastTrackCommand({ slug, type }, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);

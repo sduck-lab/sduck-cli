@@ -11,6 +11,8 @@
 
 - **스펙 승인** → 사용자가 "스펙 승인", "spec approve", "ok", "ㅇㅇ" 등 명시적으로 승인해야 한다
 - **플랜 승인** → 사용자가 "플랜 승인", "plan approve", "ok", "ㅇㅇ" 등 명시적으로 승인해야 한다
+- `sduck fast-track <type> <slug>`를 쓰더라도 `spec.md`는 생략하지 않고 minimal spec + minimal plan만 허용한다
+- fast-track의 묶음 승인은 interactive 환경에서만 가능하고, 비대화형 환경에서는 생성 후 일반 승인 명령으로 이어간다
 
 승인 전에는 **어떤 코드도 작성하지 않는다.**
 
