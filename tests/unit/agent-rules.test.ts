@@ -6,6 +6,7 @@ import {
   parseAgentsOption,
   planAgentRuleActions,
   prependManagedBlock,
+  renderAgentRuleContent,
   replaceManagedBlock,
 } from '../../src/core/agent-rules.js';
 
@@ -20,9 +21,9 @@ describe('parseAgentsOption', () => {
 });
 
 describe('listAgentRuleTargets', () => {
-  it('maps codex and opencode to a shared AGENTS file', () => {
+  it('maps codex and opencode to a shared AGENT file', () => {
     expect(listAgentRuleTargets(['codex', 'opencode'])).toEqual([
-      { agentId: 'codex', outputPath: 'AGENTS.md', kind: 'root-file' },
+      { agentId: 'codex', outputPath: 'AGENT.md', kind: 'root-file' },
     ]);
   });
 
@@ -30,6 +31,20 @@ describe('listAgentRuleTargets', () => {
     expect(
       listAgentRuleTargets(['claude-code', 'cursor']).map((target) => target.outputPath),
     ).toEqual(['CLAUDE.md', '.cursor/rules/sduck-core.mdc']);
+  });
+});
+
+describe('renderAgentRuleContent', () => {
+  it('renders shared root rules with current CLI commands', async () => {
+    const content = await renderAgentRuleContent(
+      { agentId: 'codex', outputPath: 'AGENT.md', kind: 'root-file' },
+      ['codex', 'opencode'],
+    );
+
+    expect(content).toContain('Use `AGENT.md` as project-level instruction context.');
+    expect(content).toContain('sduck start <type> <slug>');
+    expect(content).toContain('sduck spec approve [target]');
+    expect(content).toContain('sduck plan approve [target]');
   });
 });
 

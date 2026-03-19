@@ -44,8 +44,8 @@ export const SUPPORTED_AGENTS: readonly { id: SupportedAgentId; label: string }[
 
 const AGENT_RULE_TARGETS: readonly AgentRuleTarget[] = [
   { agentId: 'claude-code', outputPath: 'CLAUDE.md', kind: 'root-file' },
-  { agentId: 'codex', outputPath: 'AGENTS.md', kind: 'root-file' },
-  { agentId: 'opencode', outputPath: 'AGENTS.md', kind: 'root-file' },
+  { agentId: 'codex', outputPath: 'AGENT.md', kind: 'root-file' },
+  { agentId: 'opencode', outputPath: 'AGENT.md', kind: 'root-file' },
   { agentId: 'gemini-cli', outputPath: 'GEMINI.md', kind: 'root-file' },
   {
     agentId: 'cursor',

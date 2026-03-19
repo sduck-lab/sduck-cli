@@ -27,7 +27,7 @@ describe('sduck init agent rule generation', () => {
     );
 
     await expect(stat(join(tempWorkspace, 'CLAUDE.md'))).resolves.toBeDefined();
-    await expect(stat(join(tempWorkspace, 'AGENTS.md'))).resolves.toBeDefined();
+    await expect(stat(join(tempWorkspace, 'AGENT.md'))).resolves.toBeDefined();
     await expect(stat(join(tempWorkspace, 'GEMINI.md'))).resolves.toBeDefined();
     await expect(
       stat(join(tempWorkspace, '.cursor', 'rules', 'sduck-core.mdc')),
@@ -40,6 +40,15 @@ describe('sduck init agent rule generation', () => {
     expect(result.stdout).toContain(
       'Selected agents: claude-code, codex, gemini-cli, cursor, antigravity',
     );
+
+    const agentContent = await readFile(join(tempWorkspace, 'AGENT.md'), 'utf8');
+    const claudeContent = await readFile(join(tempWorkspace, 'CLAUDE.md'), 'utf8');
+    expect(agentContent).toContain('Use `AGENT.md` as project-level instruction context.');
+    expect(agentContent).toContain('sduck init');
+    expect(agentContent).toContain('sduck start <type> <slug>');
+    expect(agentContent).toContain('sduck spec approve [target]');
+    expect(agentContent).toContain('sduck plan approve [target]');
+    expect(claudeContent).toContain('Keep plans highly detailed');
   });
 
   it('prepends a managed block to existing root rule files in safe mode', async () => {

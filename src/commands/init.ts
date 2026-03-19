@@ -55,20 +55,30 @@ function formatResult(result: InitExecutionResult): string {
   return lines.join('\n');
 }
 
+function normalizeSelectedAgents(agentIds: readonly SupportedAgentId[]): SupportedAgentId[] {
+  const selectedAgentSet = new Set(agentIds);
+
+  return SUPPORTED_AGENTS.map((agent) => agent.id).filter((agentId) =>
+    selectedAgentSet.has(agentId),
+  );
+}
+
 async function resolveSelectedAgents(options: InitCliOptions): Promise<SupportedAgentId[]> {
   const parsedAgents = parseAgentsOption(options.agents);
 
   if (parsedAgents.length > 0 || !process.stdin.isTTY || !process.stdout.isTTY) {
-    return parsedAgents;
+    return normalizeSelectedAgents(parsedAgents);
   }
 
-  return await checkbox<SupportedAgentId>({
-    message: 'Select AI agents to generate repository rule files for',
-    choices: SUPPORTED_AGENTS.map((agent) => ({
-      name: agent.label,
-      value: agent.id,
-    })),
-  });
+  return normalizeSelectedAgents(
+    await checkbox<SupportedAgentId>({
+      message: 'Select AI agents to generate repository rule files for',
+      choices: SUPPORTED_AGENTS.map((agent) => ({
+        name: agent.label,
+        value: agent.id,
+      })),
+    }),
+  );
 }
 
 export async function runInitCommand(
