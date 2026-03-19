@@ -1,6 +1,6 @@
 {
   "name": "@sduck/sduck-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Spec-Driven Development CLI bootstrap",
   "type": "module",
   "bin": {
@@ -8,7 +8,7 @@
   },
   "files": [
     "dist",
-    "sduck-assets"
+    ".sduck/sduck-assets"
   ],
   "engines": {
     "node": ">=20"
