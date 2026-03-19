@@ -16,9 +16,9 @@ describe('planInitActions', () => {
 
   it('keeps existing files in safe mode and overwrites in force mode', () => {
     const existingEntries = createExistingEntries({
-      'sduck-assets/spec-evaluation.yml': 'file',
-      'sduck-assets/plan-evaluation.yml': 'file',
-      'sduck-assets/spec-build.md': 'file',
+      'sduck-assets/eval/spec.yml': 'file',
+      'sduck-assets/eval/plan.yml': 'file',
+      'sduck-assets/types/build.md': 'file',
     });
 
     const safeActions = planInitActions('safe', existingEntries);
@@ -32,11 +32,11 @@ describe('planInitActions', () => {
     const actions = planInitActions(
       'safe',
       createExistingEntries({
-        'sduck-assets/spec-feature.md': 'directory',
+        'sduck-assets/types/feature.md': 'directory',
       }),
     );
 
-    const collision = actions.find((action) => action.key === 'spec-feature');
+    const collision = actions.find((action) => action.key === 'type-feature');
 
     expect(collision).toMatchObject({
       action: 'error',
@@ -51,12 +51,12 @@ describe('summarizeInitActions', () => {
       planInitActions(
         'safe',
         createExistingEntries({
-          'sduck-assets/spec-build.md': 'file',
+          'sduck-assets/types/build.md': 'file',
         }),
       ),
     );
 
-    expect(summary.kept).toContain('sduck-assets/spec-build.md');
+    expect(summary.kept).toContain('sduck-assets/types/build.md');
     expect(summary.rows.some((row) => row.status === 'kept')).toBe(true);
     expect(summary.warnings.some((warning) => warning.includes('--force'))).toBe(true);
   });

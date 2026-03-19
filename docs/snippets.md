@@ -35,6 +35,13 @@ sduck init --force
 sduck init --agents claude-code,codex,gemini-cli
 ```
 
+## Start a task
+
+```bash
+sduck start feature login
+sduck start build bootstrap-cli
+```
+
 ## Plan asset actions
 
 ```ts

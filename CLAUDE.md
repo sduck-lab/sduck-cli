@@ -1,3 +1,26 @@
+<!-- sduck:begin -->
+
+# sduck managed rules
+
+Selected agents: Claude Code
+
+## Claude Code Instructions
+
+- Follow the repository SDD workflow exactly.
+- Use `CLAUDE.md` as project-level instruction context.
+
+# SDD Workflow Rules
+
+- Start each session by checking `sduck-workspace/` and any active task `meta.yml`.
+- Do not write implementation code before spec approval.
+- Do not start implementation before plan approval.
+- Follow the workflow order: `spec -> approval -> plan -> approval -> implementation`.
+- Respect `meta.yml` state transitions and update step completion immediately.
+- Read and apply user memo text appended with `<-` in `spec.md` and `plan.md`.
+- Use `sduck-assets/eval/spec.yml` and `sduck-assets/eval/plan.yml` when evaluating spec and plan quality.
+- Do not mark a task `DONE` until all completion criteria are satisfied.
+<!-- sduck:end -->
+
 이 프로젝트는 **Spec-Driven Development(SDD)** 워크플로우를 따릅니다.
 `sduck` CLI가 없으므로 Claude가 직접 파일을 생성하고 상태를 관리합니다.
 워크플로우 구조와 규칙은 sduck CLI와 동일합니다.
@@ -23,13 +46,16 @@ Claude가 직접 생성하고 관리한다.
 ```
 프로젝트 루트/
 ├── sduck-assets/
-│   ├── plan-evaluation.yml
-│   ├── spec-evaluation.yml
-│   ├── spec-build.md
-│   ├── spec-feature.md
-│   ├── spec-fix.md
-│   ├── spec-refactor.md
-│   └── spec-chore.md
+│   ├── eval/
+│   │   ├── plan.yml
+│   │   └── spec.yml
+│   ├── types/
+│   │   ├── build.md
+│   │   ├── chore.md
+│   │   ├── feature.md
+│   │   ├── fix.md
+│   │   └── refactor.md
+│   └── agent-rules/
 │
 └── sduck-workspace/
     └── {timestamp}-{type}-{slug}/
@@ -140,8 +166,8 @@ completed_at: null
 
 **spec 품질 평가 규칙:**
 
-- spec을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/spec-evaluation.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
-- 사용자는 `sduck-assets/spec-evaluation.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
+- spec을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/eval/spec.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
+- 사용자는 `sduck-assets/eval/spec.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
 - 별도 지시가 없으면 asset에 정의된 기본 점수 범위와 항목을 그대로 사용한다
 - 평가 결과는 사용자 메시지에 함께 보여주고, 필요하면 spec.md 본문에도 반영해 개선한다
 
@@ -285,8 +311,8 @@ spec:
 
 **plan 품질 평가 규칙:**
 
-- plan을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/plan-evaluation.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
-- 사용자는 `sduck-assets/plan-evaluation.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
+- plan을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/eval/plan.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
+- 사용자는 `sduck-assets/eval/plan.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
 - 별도 지시가 없으면 asset에 정의된 기본 점수 범위와 항목을 그대로 사용한다
 - 평가 결과는 사용자 메시지에 함께 보여주고, 필요하면 plan.md 본문에도 반영해 개선한다
 

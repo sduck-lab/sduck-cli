@@ -1,6 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   type AgentRuleTarget,
@@ -12,6 +11,7 @@ import {
   type PlannedAgentRuleAction,
   type SupportedAgentId,
 } from './agent-rules.js';
+import { EVAL_ASSET_RELATIVE_PATHS, getBundledAssetsRoot } from './assets.js';
 import {
   copyFileIntoPlace,
   ensureDirectory,
@@ -26,17 +26,16 @@ export type { FsEntryKind } from './fs.js';
 export type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-types.js';
 
 export type AssetTemplateKey =
-  | 'spec-evaluation'
-  | 'plan-evaluation'
-  | 'spec-build'
-  | 'spec-feature'
-  | 'spec-fix'
-  | 'spec-refactor'
-  | 'spec-chore';
+  | 'eval-spec'
+  | 'eval-plan'
+  | 'type-build'
+  | 'type-feature'
+  | 'type-fix'
+  | 'type-refactor'
+  | 'type-chore';
 
 export interface AssetTemplateDefinition {
   key: AssetTemplateKey;
-  fileName: string;
   relativePath: string;
 }
 
@@ -94,35 +93,29 @@ export interface InitExecutionResult {
 
 const ASSET_TEMPLATE_DEFINITIONS = [
   {
-    key: 'spec-evaluation',
-    fileName: 'spec-evaluation.yml',
-    relativePath: join('sduck-assets', 'spec-evaluation.yml'),
+    key: 'eval-spec',
+    relativePath: join('sduck-assets', EVAL_ASSET_RELATIVE_PATHS.spec),
   },
   {
-    key: 'plan-evaluation',
-    fileName: 'plan-evaluation.yml',
-    relativePath: join('sduck-assets', 'plan-evaluation.yml'),
+    key: 'eval-plan',
+    relativePath: join('sduck-assets', EVAL_ASSET_RELATIVE_PATHS.plan),
   },
   {
-    key: 'spec-build',
-    fileName: 'spec-build.md',
-    relativePath: join('sduck-assets', 'spec-build.md'),
+    key: 'type-build',
+    relativePath: join('sduck-assets', 'types', 'build.md'),
   },
   {
-    key: 'spec-feature',
-    fileName: 'spec-feature.md',
-    relativePath: join('sduck-assets', 'spec-feature.md'),
+    key: 'type-feature',
+    relativePath: join('sduck-assets', 'types', 'feature.md'),
   },
-  { key: 'spec-fix', fileName: 'spec-fix.md', relativePath: join('sduck-assets', 'spec-fix.md') },
+  { key: 'type-fix', relativePath: join('sduck-assets', 'types', 'fix.md') },
   {
-    key: 'spec-refactor',
-    fileName: 'spec-refactor.md',
-    relativePath: join('sduck-assets', 'spec-refactor.md'),
+    key: 'type-refactor',
+    relativePath: join('sduck-assets', 'types', 'refactor.md'),
   },
   {
-    key: 'spec-chore',
-    fileName: 'spec-chore.md',
-    relativePath: join('sduck-assets', 'spec-chore.md'),
+    key: 'type-chore',
+    relativePath: join('sduck-assets', 'types', 'chore.md'),
   },
 ] as const satisfies readonly AssetTemplateDefinition[];
 
@@ -219,23 +212,6 @@ function resolveInitOptions(options: InitCommandOptions): ResolvedInitOptions {
   };
 }
 
-async function getAssetSourceRoot(): Promise<string> {
-  const currentFilePath = fileURLToPath(import.meta.url);
-  const currentDirectoryPath = dirname(currentFilePath);
-  const candidatePaths = [
-    join(currentDirectoryPath, '..', '..', 'sduck-assets'),
-    join(currentDirectoryPath, '..', 'sduck-assets'),
-  ];
-
-  for (const candidatePath of candidatePaths) {
-    if ((await getFsEntryKind(candidatePath)) === 'directory') {
-      return candidatePath;
-    }
-  }
-
-  throw new Error('Unable to locate bundled sduck-assets directory.');
-}
-
 async function collectExistingEntries(projectRoot: string): Promise<Map<string, FsEntryKind>> {
   const existingEntries = new Map<string, FsEntryKind>();
 
@@ -290,7 +266,7 @@ export async function initProject(
 ): Promise<InitExecutionResult> {
   const resolvedOptions = resolveInitOptions(options);
   const { mode } = resolvedOptions;
-  const assetSourceRoot = await getAssetSourceRoot();
+  const assetSourceRoot = await getBundledAssetsRoot();
   const assetsRoot = join(projectRoot, 'sduck-assets');
   const workspaceRoot = join(projectRoot, 'sduck-workspace');
 
@@ -337,10 +313,14 @@ export async function initProject(
     }
 
     const definition = ASSET_TEMPLATE_MAP[action.key];
-    const sourcePath = join(assetSourceRoot, definition.fileName);
+    const sourcePath = join(
+      assetSourceRoot,
+      definition.relativePath.replace(/^sduck-assets[\\/]/, ''),
+    );
     const targetPath = join(projectRoot, definition.relativePath);
 
     await ensureReadableFile(sourcePath);
+    await mkdir(dirname(targetPath), { recursive: true });
     await copyFileIntoPlace(sourcePath, targetPath);
   }
 

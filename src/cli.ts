@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { runInitCommand } from './commands/init.js';
+import { runStartCommand } from './commands/start.js';
 import {
   CLI_DESCRIPTION,
   CLI_NAME,
@@ -47,6 +48,25 @@ program
   .description('Print the normalized command name for bootstrap verification')
   .action((name: string) => {
     console.log(normalizeCommandName(name));
+  });
+
+program
+  .command('start <type> <slug>')
+  .description('Create a new task workspace from a type template')
+  .action(async (type: string, slug: string) => {
+    const result = await runStartCommand(type, slug, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
   });
 
 program

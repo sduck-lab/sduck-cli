@@ -28,3 +28,9 @@ This bootstrap focuses on a strict toolchain, predictable structure, and verifia
 - Force mode regenerates bundled asset files without mutating existing workspace task directories.
 - `sduck init` can also generate agent-specific repository rule files for selected tools.
 - Root instruction files are updated with a managed sduck block, while dedicated rule files are owned entirely by sduck.
+
+## Start Command Notes
+
+- `sduck start <type> <slug>` creates a new task workspace under `sduck-workspace/`.
+- Workspace ids are UTC-based and match the generated directory name exactly.
+- Type templates come from `sduck-assets/types/`, and new tasks always begin in `PENDING_SPEC_APPROVAL`.
