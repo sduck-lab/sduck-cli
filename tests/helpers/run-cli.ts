@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 
 export interface RunCliResult {
   exitCode: number;
@@ -6,10 +7,18 @@ export interface RunCliResult {
   stdout: string;
 }
 
-export async function runCli(args: string[], cwd: string): Promise<RunCliResult> {
+export interface RunCliOptions {
+  cliRoot: string;
+  cwd: string;
+}
+
+export async function runCli(args: string[], options: RunCliOptions): Promise<RunCliResult> {
   return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--import', 'tsx', 'src/cli.ts', ...args], {
-      cwd,
+    const tsxBinaryName = process.platform === 'win32' ? 'tsx.cmd' : 'tsx';
+    const tsxBinaryPath = join(options.cliRoot, 'node_modules', '.bin', tsxBinaryName);
+
+    const child = spawn(tsxBinaryPath, [join(options.cliRoot, 'src/cli.ts'), ...args], {
+      cwd: options.cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

@@ -20,3 +20,9 @@ This bootstrap focuses on a strict toolchain, predictable structure, and verifia
 3. Command handlers delegate to domain-oriented modules.
 4. Domain modules read or write workspace files.
 5. Output is emitted to stdout or stderr.
+
+## Init Command Notes
+
+- `sduck init` treats `sduck-assets/` as the template source of truth.
+- Safe mode creates only missing files and preserves existing user content.
+- Force mode regenerates bundled asset files without mutating existing workspace task directories.

@@ -22,7 +22,10 @@ describe('CLI preview command', () => {
 
     await expect(access(join(copiedFixture, 'README.md'))).resolves.toBeUndefined();
 
-    const result = await runCli(['preview', 'Bootstrap Ready'], process.cwd());
+    const result = await runCli(['preview', 'Bootstrap Ready'], {
+      cliRoot: process.cwd(),
+      cwd: process.cwd(),
+    });
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');

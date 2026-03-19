@@ -26,3 +26,17 @@ it('normalizes whitespace and casing', () => {
   expect(normalizeCommandName('  Build   Sduck CLI  ')).toBe('build-sduck-cli');
 });
 ```
+
+## Initialize a repository
+
+```bash
+sduck init
+sduck init --force
+```
+
+## Plan asset actions
+
+```ts
+const actions = planInitActions('safe', existingEntries);
+const summary = summarizeInitActions(actions);
+```

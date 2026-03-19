@@ -24,18 +24,12 @@ opencode가 직접 생성하고 관리한다.
 프로젝트 루트/
 ├── sduck-assets/
 │   ├── plan-evaluation.yml
+│   ├── spec-evaluation.yml
 │   ├── spec-build.md
 │   ├── spec-feature.md
 │   ├── spec-fix.md
 │   ├── spec-refactor.md
 │   └── spec-chore.md
-│
-├── .sduck/
-│   └── types/
-│       ├── feature.yml
-│       ├── fix.yml
-│       ├── refactor.yml
-│       └── chore.yml
 │
 └── sduck-workspace/
     └── {timestamp}-{type}-{slug}/
@@ -91,6 +85,11 @@ opencode가 직접 생성하고 관리한다.
 예시: 20260318-1430-feature-login
 ```
 
+- 폴더명과 `meta.yml`의 `id`는 반드시 같은 값을 사용한다
+- 타임스탬프는 반드시 UTC 기준으로 생성한다
+- `created_at`, `approved_at`, `completed_at` 같은 모든 시각 필드도 UTC ISO 8601(`Z`) 형식으로 기록한다
+- 로컬 시각에 `Z`를 붙여 기록하면 안 된다
+
 **1-2. 디렉토리 및 파일 생성**
 
 ```
@@ -138,6 +137,13 @@ completed_at: null
 ### 2단계. 스펙 작성
 
 `spec.md`를 타입에 맞는 템플릿으로 작성한다.
+
+**spec 품질 평가 규칙:**
+
+- spec을 새로 작성하거나 수정한 직후, 반드시 `sduck-assets/spec-evaluation.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
+- 사용자는 `sduck-assets/spec-evaluation.yml`을 수정해 평가 항목, 표시 이름, 질문, 점수 범위를 커스터마이즈할 수 있다
+- 별도 지시가 없으면 asset에 정의된 기본 점수 범위와 항목을 그대로 사용한다
+- 평가 결과는 사용자 메시지에 함께 보여주고, 필요하면 spec.md 본문에도 반영해 개선한다
 
 **feature 템플릿:**
 
@@ -229,11 +235,16 @@ completed_at: null
 - [ ]
 ```
 
-spec.md 작성 완료 후 사용자에게 안내한다:
+spec.md 작성 또는 수정 완료 후 사용자에게 안내한다:
 
 ```
 📝 spec.md 작성 완료
    경로: sduck-workspace/20260318-1430-feature-login/spec.md
+
+   Spec 평가
+   - {asset 기준 항목 1}: X/{asset max}
+   - {asset 기준 항목 2}: X/{asset max}
+   - ...
 
 검토 후 "스펙 승인" 또는 "ok"라고 말씀해주세요.
 수정이 필요하면 피드백을 주세요.
@@ -252,7 +263,7 @@ status: SPEC_APPROVED
 
 spec:
   approved: true
-  approved_at: 2026-03-18T14:45:00Z # 현재 시각
+  approved_at: 2026-03-18T14:45:00Z # 현재 UTC 시각
 ```
 
 ```
@@ -324,7 +335,7 @@ status: IN_PROGRESS
 
 plan:
   approved: true
-  approved_at: 2026-03-18T15:00:00Z # 현재 시각
+  approved_at: 2026-03-18T15:00:00Z # 현재 UTC 시각
 
 steps:
   total: N # plan.md에서 파싱한 Step 수
@@ -374,7 +385,7 @@ steps:
 
 ```yaml
 status: DONE
-completed_at: 2026-03-18T16:30:00Z
+completed_at: 2026-03-18T16:30:00Z # 현재 UTC 시각
 ```
 
 ```
