@@ -1,0 +1,20 @@
+id: 20260320-0832-chore-refine-agent-rule-wording
+type: chore
+slug: refine-agent-rule-wording
+created_at: 2026-03-20T08:32:41Z
+
+status: DONE
+
+spec:
+  approved: true
+  approved_at: 2026-03-20T08:51:37Z
+
+plan:
+  approved: true
+  approved_at: 2026-03-20T08:51:37Z
+
+steps:
+  total: 3
+  completed: [1, 2, 3]
+
+completed_at: 2026-03-20T08:53:23Z

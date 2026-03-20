@@ -46,6 +46,9 @@ describe('renderAgentRuleContent', () => {
     expect(content).toContain('.sduck/sduck-workspace/');
     expect(content).toContain('.sduck/sduck-assets/eval/spec.yml');
     expect(content).toContain('승인 전에는 어떤 코드도 작성하지 않는다.');
+    expect(content).toContain('task 생성과 상태 전이는 `sduck` CLI로 관리한다.');
+    expect(content).toContain('에이전트는 `spec.md`, `plan.md` 본문 작성/수정과 구현을 담당한다.');
+    expect(content).not.toContain('`sduck` CLI가 없으므로');
     expect(content).toContain('sduck start <type> <slug>');
     expect(content).toContain('sduck spec approve [target]');
     expect(content).toContain('sduck plan approve [target]');
