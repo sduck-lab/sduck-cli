@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 
+import { runArchiveCommand } from './commands/archive.js';
 import { runDoneCommand } from './commands/done.js';
 import { runFastTrackCommand } from './commands/fast-track.js';
 import { runInitCommand } from './commands/init.js';
@@ -143,6 +144,27 @@ program
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
     const result = await runDoneCommand(input, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('archive')
+  .description('Archive completed tasks into monthly directories')
+  .option('--keep <n>', 'Keep the N most recently completed tasks in workspace', '0')
+  .action(async (options: { keep: string }) => {
+    const keep = Number(options.keep);
+    const result = await runArchiveCommand({ keep }, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);

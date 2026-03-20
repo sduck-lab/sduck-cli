@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import {
@@ -10,6 +10,10 @@ import {
   replaceManagedBlock,
   type PlannedAgentRuleAction,
   type SupportedAgentId,
+  needsClaudeCodeHook,
+  CLAUDE_CODE_HOOK_SETTINGS_PATH,
+  CLAUDE_CODE_HOOK_SCRIPT_PATH,
+  CLAUDE_CODE_HOOK_SOURCE_PATH,
 } from './agent-rules.js';
 import { EVAL_ASSET_RELATIVE_PATHS, getBundledAssetsRoot } from './assets.js';
 import {
@@ -365,6 +369,10 @@ export async function initProject(
     resolvedOptions.agents,
   );
 
+  if (needsClaudeCodeHook(resolvedOptions.agents)) {
+    await installClaudeCodeHook(projectRoot, summary);
+  }
+
   return {
     mode,
     agents: resolvedOptions.agents,
@@ -372,6 +380,61 @@ export async function initProject(
     didChange:
       summary.created.length > 0 || summary.prepended.length > 0 || summary.overwritten.length > 0,
   };
+}
+
+async function installClaudeCodeHook(
+  projectRoot: string,
+  summary: InitExecutionSummary,
+): Promise<void> {
+  const assetRoot = await getBundledAssetsRoot();
+  const hookSourcePath = join(assetRoot, 'agent-rules', CLAUDE_CODE_HOOK_SOURCE_PATH);
+  const hookTargetPath = join(projectRoot, CLAUDE_CODE_HOOK_SCRIPT_PATH);
+  const settingsPath = join(projectRoot, CLAUDE_CODE_HOOK_SETTINGS_PATH);
+
+  // Copy hook script
+  await mkdir(dirname(hookTargetPath), { recursive: true });
+  await copyFileIntoPlace(hookSourcePath, hookTargetPath);
+  await chmod(hookTargetPath, 0o755);
+  summary.created.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
+  summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'created' });
+
+  // Create or merge settings.json
+  const hookConfig = {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: 'Edit|Write',
+          hooks: [
+            {
+              type: 'command',
+              command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/sdd-guard.sh',
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  if ((await getFsEntryKind(settingsPath)) === 'file') {
+    const existingContent = await readFile(settingsPath, 'utf8');
+
+    try {
+      const existing = JSON.parse(existingContent) as Record<string, unknown>;
+      existing['hooks'] = hookConfig.hooks;
+      await writeFile(settingsPath, JSON.stringify(existing, null, 2) + '\n', 'utf8');
+      summary.overwritten.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+      summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'overwritten' });
+    } catch {
+      await writeFile(settingsPath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf8');
+      summary.overwritten.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+      summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'overwritten' });
+    }
+  } else {
+    await mkdir(dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf8');
+    summary.created.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+    summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'created' });
+  }
 }
 
 async function applyAgentRuleActions(

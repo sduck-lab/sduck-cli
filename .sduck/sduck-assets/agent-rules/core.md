@@ -1,5 +1,20 @@
 # SDD Workflow Rules
 
+## ⚠️ CRITICAL: 상태별 파일 접근 제한
+
+- 코드를 작성하기 전에 반드시 `.sduck/sduck-workspace/`의 활성 태스크 `meta.yml`을 읽고 `status`를 확인한다.
+- `IN_PROGRESS` 상태에서만 구현 코드를 작성할 수 있다.
+- 승인된 `spec.md`/`plan.md`는 수정하지 않는다. 요구사항이 바뀌면 새 태스크를 시작한다.
+- `spec.md` 또는 `plan.md`를 작성한 직후라도, 사용자가 승인하기 전까지 구현하지 않는다.
+- "같은 세션"이라는 이유로 승인을 생략하지 않는다.
+
+| 상태                  | spec.md | plan.md | 구현 파일 |
+| --------------------- | ------- | ------- | --------- |
+| PENDING_SPEC_APPROVAL | 허용    | 허용    | 차단      |
+| SPEC_APPROVED         | 차단    | 허용    | 차단      |
+| IN_PROGRESS           | 차단    | 차단    | 허용      |
+| DONE                  | 차단    | 차단    | 차단      |
+
 ## 디렉토리 구조
 
 에이전트는 아래 경로를 기준으로 `sduck` 상태를 읽고 쓴다.

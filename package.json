@@ -1,6 +1,6 @@
 {
   "name": "@sduck/sduck-cli",
-  "version": "0.1.3",
+  "version": "0.1.6",
   "description": "Spec-Driven Development CLI bootstrap",
   "type": "module",
   "bin": {
