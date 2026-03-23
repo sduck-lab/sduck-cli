@@ -78,6 +78,16 @@ describe('countPlanSteps', () => {
     expect(countPlanSteps(content)).toBe(2);
   });
 
+  it('counts h3 step headers', () => {
+    const content = ['# Plan', '', '### Step 1. First', '### Step 2. Second'].join('\n');
+    expect(countPlanSteps(content)).toBe(2);
+  });
+
+  it('counts mixed h2 and h3 step headers', () => {
+    const content = ['# Plan', '', '## Step 1. First', '### Step 2. Second'].join('\n');
+    expect(countPlanSteps(content)).toBe(2);
+  });
+
   it('ignores untitled step headers', () => {
     const content = ['# Plan', '', '## Step 1.', '## Step 2. Second'].join('\n');
     expect(countPlanSteps(content)).toBe(1);
@@ -88,6 +98,12 @@ describe('validatePlanHasSteps', () => {
   it('accepts valid titled steps', () => {
     expect(() => {
       validatePlanHasSteps('## Step 1. First');
+    }).not.toThrow();
+  });
+
+  it('accepts h3 titled steps', () => {
+    expect(() => {
+      validatePlanHasSteps('### Step 1. First');
     }).not.toThrow();
   });
 

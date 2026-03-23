@@ -57,13 +57,15 @@ export function resolvePlanApprovalCandidates(
 }
 
 export function countPlanSteps(planContent: string): number {
-  const matches = planContent.match(/^## Step \d+\. .+$/gm);
+  const matches = planContent.match(/^#{2,3} Step \d+\. .+$/gm);
   return matches?.length ?? 0;
 }
 
 export function validatePlanHasSteps(planContent: string): void {
   if (countPlanSteps(planContent) === 0) {
-    throw new Error('Plan does not contain any valid `## Step N. 제목` headers.');
+    throw new Error(
+      'Plan does not contain any valid `## Step N. 제목` or `### Step N. 제목` headers.',
+    );
   }
 }
 

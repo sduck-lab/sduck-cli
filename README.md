@@ -30,6 +30,7 @@ sduck은 아래의 엄격한 절차를 지향하며, 각 단계는 CLI를 통해
 7. **Approve Plan:** 사용자가 계획을 검토하고 `sduck plan approve` 실행
 8. **Implementation:** 승인된 계획의 Step에 따라 AI가 실제 코드 구현
 9. **Done:** spec 체크리스트와 task eval 기준을 확인한 뒤 `sduck done` 실행
+10. **Reopen (optional):** 완료된 작업을 다시 열어 후속 수정 사이클을 진행
 
 ## 🛠 설치 및 초기화
 
@@ -99,6 +100,9 @@ sduck fast-track fix copy-bug
 
 # 4) 구현 완료 후
 sduck done login-system
+
+# 5) 완료된 작업을 다시 열 때
+sduck reopen login-system
 ```
 
 ### 1. 작업 시작 (Start)
@@ -156,17 +160,34 @@ sduck plan approve [slug]
 sduck done [slug]
 ```
 
+### 6. 작업 다시 열기 (Reopen)
+
+완료된 작업에 작은 후속 수정이 필요하면 `DONE` 상태 task를 다시 열 수 있습니다.
+
+- `reopen`은 완료된 task를 새 작업 사이클로 되돌립니다
+- target을 지정할 때는 정확한 `slug` 또는 전체 task `id`만 허용됩니다
+- 큰 요구사항 변경이나 범위 확장은 기존 task를 reopen하기보다 새 task를 만드는 편이 더 적합합니다
+- 방금 끝낸 작업의 누락 수정, 작은 보완, 후속 검증 보강 같은 경우에 적합합니다
+
+```bash
+sduck reopen [slug]
+```
+
 ## ✅ 상태 전이
 
 ```text
 PENDING_SPEC_APPROVAL -> SPEC_APPROVED -> IN_PROGRESS -> DONE
+DONE -> IN_PROGRESS (reopen)
 ```
 
 - `start`: `PENDING_SPEC_APPROVAL`
 - `spec approve`: `SPEC_APPROVED`
 - `plan approve`: `IN_PROGRESS`
 - `done`: `DONE`
+- `reopen`: `DONE`인 task를 다시 열어 `IN_PROGRESS`로 되돌림
 - `fast-track`: minimal spec/plan을 생성하고, 환경에 따라 `PENDING_SPEC_APPROVAL` 또는 `IN_PROGRESS`까지 진행
+
+`reopen`은 기존 task의 연속 수정에 사용하고, 요구사항이 바뀌거나 범위가 커지면 새 task를 만드는 것을 권장합니다.
 
 ## 🧭 일반 흐름 vs fast-track
 

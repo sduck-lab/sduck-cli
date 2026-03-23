@@ -7,6 +7,7 @@ import { runDoneCommand } from './commands/done.js';
 import { runFastTrackCommand } from './commands/fast-track.js';
 import { runInitCommand } from './commands/init.js';
 import { runPlanApproveCommand } from './commands/plan-approve.js';
+import { runReopenCommand } from './commands/reopen.js';
 import { runSpecApproveCommand } from './commands/spec-approve.js';
 import { runStartCommand } from './commands/start.js';
 import {
@@ -144,6 +145,26 @@ program
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
     const result = await runDoneCommand(input, process.cwd());
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('reopen [target]')
+  .description('Reopen a completed task for a new cycle')
+  .action(async (target?: string) => {
+    const input = target === undefined ? {} : { target };
+    const result = await runReopenCommand(input, process.cwd());
 
     if (result.stdout !== '') {
       console.log(result.stdout);

@@ -115,6 +115,8 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 - `PENDING_SPEC_APPROVAL` 상태에서는 spec.md 작성/수정만 가능하고 코드 작성은 금지한다
 - `PENDING_PLAN_APPROVAL` 상태에서는 plan.md 작성/수정만 가능하고 코드 작성은 금지한다
 - `IN_PROGRESS` 상태에서만 구현과 step 완료 기록을 진행한다
+- `sduck reopen [target]`으로 다시 열린 task는 `IN_PROGRESS` 기준으로 이어서 작업한다
+- reopen은 작은 후속 수정에 사용하고, 요구사항 변경이나 범위 확장은 새 task로 분리한다
 - Do not mark a task `DONE` until all completion criteria are satisfied.
 
 ## 평가 규칙
