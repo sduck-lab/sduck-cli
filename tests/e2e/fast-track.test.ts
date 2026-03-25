@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -27,7 +27,7 @@ describe('sduck fast-track', () => {
     await initRepo();
 
     const before = new Set(await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace')));
-    const result = await runCli(['fast-track', 'feature', 'login-flow'], {
+    const result = await runCli(['fast-track', 'feature', 'login-flow', '--no-git'], {
       cliRoot,
       cwd: tempWorkspace,
     });
@@ -57,7 +57,7 @@ describe('sduck fast-track', () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
-    await runCli(['fast-track', 'feature', 'login-flow'], {
+    await runCli(['fast-track', 'feature', 'login-flow', '--no-git'], {
       cliRoot,
       cwd: tempWorkspace,
     });
@@ -86,30 +86,5 @@ describe('sduck fast-track', () => {
     expect(planApproveResult.exitCode).toBe(0);
     expect(meta).toContain('status: IN_PROGRESS');
     expect(meta).toContain('total: 2');
-  });
-
-  it('rejects fast-track when another active task already exists', async () => {
-    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
-    await initRepo();
-    await mkdir(join(tempWorkspace, '.sduck', 'sduck-workspace', '20260319-0000-feature-existing'));
-    await writeFile(
-      join(
-        tempWorkspace,
-        '.sduck',
-        'sduck-workspace',
-        '20260319-0000-feature-existing',
-        'meta.yml',
-      ),
-      ['id: 20260319-0000-feature-existing', 'status: PENDING_SPEC_APPROVAL', ''].join('\n'),
-      'utf8',
-    );
-
-    const result = await runCli(['fast-track', 'feature', 'login-flow'], {
-      cliRoot,
-      cwd: tempWorkspace,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Active task exists');
   });
 });

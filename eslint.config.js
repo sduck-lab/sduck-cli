@@ -10,6 +10,8 @@ export default tseslint.config(
       'dist/**',
       'coverage/**',
       '.husky/_/**',
+      '.sduck-worktrees/**',
+      '.sduck/**',
       'eslint.config.js',
       'tsup.config.ts',
       'vitest.config.ts',

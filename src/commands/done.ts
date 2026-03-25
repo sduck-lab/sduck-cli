@@ -75,6 +75,12 @@ function formatSuccess(result: DoneResult): string {
     }
   }
 
+  for (const row of result.succeeded) {
+    if (row.reviewWarning !== undefined) {
+      lines.push(`경고: ${row.reviewWarning}`);
+    }
+  }
+
   lines.push(...formatFailureDetails(result.failed));
 
   return lines.join('\n');

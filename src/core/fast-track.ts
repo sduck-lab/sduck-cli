@@ -11,7 +11,7 @@ import {
   type PlanApproveTarget,
 } from './plan-approve.js';
 import { approveSpecs, createSpecApprovedAt, type SpecApproveTarget } from './spec-approve.js';
-import { startTask } from './start.js';
+import { startTask, type StartTaskOptions } from './start.js';
 
 export interface FastTrackCommandInput {
   slug: string;
@@ -116,12 +116,19 @@ export function isInteractiveApprovalAvailable(): boolean {
 export async function createFastTrackTask(
   input: FastTrackCommandInput,
   projectRoot: string,
+  startOptions?: StartTaskOptions,
 ): Promise<FastTrackResult> {
   if (!isSupportedTaskType(input.type)) {
     throw new Error(`Unsupported type: ${input.type}`);
   }
 
-  const startedTask = await startTask(input.type, input.slug, projectRoot);
+  const startedTask = await startTask(
+    input.type,
+    input.slug,
+    projectRoot,
+    new Date(),
+    startOptions,
+  );
   const taskPath = join(projectRoot, startedTask.workspacePath);
   const specPath = join(taskPath, 'spec.md');
   const planPath = join(taskPath, 'plan.md');

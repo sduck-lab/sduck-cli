@@ -50,14 +50,39 @@ describe('formatUtcDate', () => {
 describe('renderInitialMeta', () => {
   it('renders the initial meta state', () => {
     const meta = renderInitialMeta({
+      baseBranch: 'main',
+      branch: 'work/feature/login',
       createdAt: '2026-03-19T02:43:39Z',
       id: '20260319-0243-feature-login',
       slug: 'login',
       type: 'feature',
+      updatedAt: '2026-03-19T02:43:39Z',
+      worktreePath: '.sduck-worktrees/20260319-0243-feature-login',
     });
 
     expect(meta).toContain('status: PENDING_SPEC_APPROVAL');
     expect(meta).toContain('approved: false');
     expect(meta).toContain('completed: []');
+    expect(meta).toContain('branch: work/feature/login');
+    expect(meta).toContain('base_branch: main');
+    expect(meta).toContain('worktree_path: .sduck-worktrees/20260319-0243-feature-login');
+    expect(meta).toContain('updated_at: 2026-03-19T02:43:39Z');
+  });
+
+  it('renders null fields for --no-git mode', () => {
+    const meta = renderInitialMeta({
+      baseBranch: null,
+      branch: null,
+      createdAt: '2026-03-19T02:43:39Z',
+      id: '20260319-0243-feature-login',
+      slug: 'login',
+      type: 'feature',
+      updatedAt: '2026-03-19T02:43:39Z',
+      worktreePath: null,
+    });
+
+    expect(meta).toContain('branch: null');
+    expect(meta).toContain('base_branch: null');
+    expect(meta).toContain('worktree_path: null');
   });
 });

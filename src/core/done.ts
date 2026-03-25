@@ -1,8 +1,10 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
 import { getProjectRelativeSduckAssetPath } from './project-paths.js';
+import { readCurrentWorkId, throwNoCurrentWorkError, writeCurrentWorkId } from './state.js';
 import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
 
@@ -21,6 +23,7 @@ export interface DoneTarget {
 export interface DoneSuccessRow {
   completedAt: string;
   note: string;
+  reviewWarning: string | undefined;
   taskEvalCriteria: string[];
   taskId: string;
 }
@@ -46,7 +49,7 @@ interface MetaValidationSummary {
 const TASK_EVAL_ASSET_PATH = getProjectRelativeSduckAssetPath('eval', 'task.yml');
 
 export function filterDoneCandidates(tasks: readonly WorkspaceTaskSummary[]): DoneTarget[] {
-  return tasks.filter((task) => task.status === 'IN_PROGRESS');
+  return tasks.filter((task) => task.status === 'REVIEW_READY');
 }
 
 export function resolveDoneTargetMatches(
@@ -98,8 +101,8 @@ export function parseCompletedStepNumbers(value: string): number[] {
 }
 
 export function validateDoneMetaContent(metaContent: string): MetaValidationSummary {
-  const totalMatch = /^ {2}total:\s+(.+)$/m.exec(metaContent);
-  const completedMatch = /^ {2}completed:\s+\[(.*)\]$/m.exec(metaContent);
+  const totalMatch = /^ {2}total:[ \t]+(.+)$/m.exec(metaContent);
+  const completedMatch = /^ {2}completed:[ \t]+\[(.*)\]$/m.exec(metaContent);
 
   if (totalMatch?.[1] === undefined || completedMatch?.[1] === undefined) {
     throw new Error('Task meta is missing a valid steps block.');
@@ -157,9 +160,30 @@ function validateDoneTarget(task: DoneTarget): void {
     throw new Error(`Task ${task.id} is already DONE.`);
   }
 
-  if (task.status !== 'IN_PROGRESS') {
-    throw new Error(`Task ${task.id} is not in progress (${task.status}).`);
+  if (task.status !== 'REVIEW_READY') {
+    throw new Error(
+      `Task ${task.id} is not in REVIEW_READY state (${task.status}). Run \`sduck review ready\` first.`,
+    );
   }
+}
+
+async function checkReviewWarning(
+  projectRoot: string,
+  task: DoneTarget,
+): Promise<string | undefined> {
+  const reviewPath = join(projectRoot, task.path, 'review.md');
+
+  if ((await getFsEntryKind(reviewPath)) !== 'file') {
+    return `review.md is missing for task ${task.id}. Consider running \`sduck review ready\` to create it.`;
+  }
+
+  const content = await readFile(reviewPath, 'utf8');
+
+  if (content.trim().length === 0) {
+    return `review.md is empty for task ${task.id}.`;
+  }
+
+  return undefined;
 }
 
 async function loadTaskEvalCriteria(projectRoot: string): Promise<string[]> {
@@ -198,6 +222,8 @@ async function completeTask(
     throw new Error(`Missing spec.md for task ${task.id}.`);
   }
 
+  const reviewWarning = await checkReviewWarning(projectRoot, task);
+
   const metaContent = await readFile(metaPath, 'utf8');
   validateDoneMetaContent(metaContent);
 
@@ -210,9 +236,23 @@ async function completeTask(
 
   await writeFile(metaPath, updateDoneBlock(metaContent, completedAt), 'utf8');
 
+  try {
+    await writeAgentContext(projectRoot, task.id);
+  } catch {
+    // non-fatal
+  }
+
+  // Clear current work if this task was the current one
+  const currentWorkId = await readCurrentWorkId(projectRoot);
+
+  if (currentWorkId === task.id) {
+    await writeCurrentWorkId(projectRoot, null);
+  }
+
   return {
     completedAt,
     note: `task eval checked (${String(taskEvalCriteria.length)} criteria)`,
+    reviewWarning,
     taskEvalCriteria: [...taskEvalCriteria],
     taskId: task.id,
   };
@@ -259,23 +299,25 @@ export async function loadDoneTargets(
   projectRoot: string,
   input: DoneCommandInput,
 ): Promise<DoneTarget[]> {
+  if (input.target === undefined || input.target.trim() === '') {
+    const currentWorkId = await readCurrentWorkId(projectRoot);
+
+    if (currentWorkId === null) {
+      throwNoCurrentWorkError('done');
+    }
+
+    const tasks = await listWorkspaceTasks(projectRoot);
+    const match = tasks.find((task) => task.id === currentWorkId);
+
+    if (match === undefined) {
+      throw new Error(`Current work ${currentWorkId} not found in workspace.`);
+    }
+
+    return [match];
+  }
+
   const tasks = await listWorkspaceTasks(projectRoot);
   const matches = resolveDoneTargetMatches(tasks, input.target);
-
-  if (input.target === undefined || input.target.trim() === '') {
-    if (matches.length === 0) {
-      throw new Error('No IN_PROGRESS task found. Run `sduck done <slug>` after choosing a task.');
-    }
-
-    if (matches.length > 1) {
-      const labels = matches.map((task) => task.slug ?? task.id).join(', ');
-      throw new Error(
-        `Multiple IN_PROGRESS tasks found: ${labels}. Rerun with \`sduck done <slug>\` or \`sduck done <id>\`.`,
-      );
-    }
-
-    return matches;
-  }
 
   if (matches.length === 0) {
     throw new Error(`No task matches target '${input.target.trim()}'.`);

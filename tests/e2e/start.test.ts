@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -27,7 +27,7 @@ describe('sduck start', () => {
     await initRepo();
 
     const before = new Set(await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace')));
-    const result = await runCli(['start', 'feature', 'Login Flow'], {
+    const result = await runCli(['start', 'feature', 'Login Flow', '--no-git'], {
       cliRoot,
       cwd: tempWorkspace,
     });
@@ -57,7 +57,7 @@ describe('sduck start', () => {
     await initRepo();
 
     const before = new Set(await readdir(join(tempWorkspace, '.sduck', 'sduck-workspace')));
-    const result = await runCli(['start', 'build', 'bootstrap'], {
+    const result = await runCli(['start', 'build', 'bootstrap', '--no-git'], {
       cliRoot,
       cwd: tempWorkspace,
     });
@@ -81,37 +81,12 @@ describe('sduck start', () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
 
-    const result = await runCli(['start', 'unknown', 'task'], {
+    const result = await runCli(['start', 'unknown', 'task', '--no-git'], {
       cliRoot,
       cwd: tempWorkspace,
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Unsupported type');
-  });
-
-  it('rejects when an active task already exists', async () => {
-    tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
-    await initRepo();
-    await mkdir(join(tempWorkspace, '.sduck', 'sduck-workspace', '20260319-0000-feature-existing'));
-    await writeFile(
-      join(
-        tempWorkspace,
-        '.sduck',
-        'sduck-workspace',
-        '20260319-0000-feature-existing',
-        'meta.yml',
-      ),
-      ['id: 20260319-0000-feature-existing', 'status: PENDING_SPEC_APPROVAL', ''].join('\n'),
-      'utf8',
-    );
-
-    const result = await runCli(['start', 'feature', 'login'], {
-      cliRoot,
-      cwd: tempWorkspace,
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Active task exists');
   });
 });

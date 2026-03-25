@@ -1,7 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
+import { readCurrentWorkId } from './state.js';
 import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
 
@@ -57,15 +59,54 @@ export function resolvePlanApprovalCandidates(
 }
 
 export function countPlanSteps(planContent: string): number {
-  const matches = planContent.match(/^#{2,3} Step \d+\. .+$/gm);
-  return matches?.length ?? 0;
+  const regex = /^#{2,3}\s+Step\s+(\d+)\.\s+.+/gm;
+  const stepNumbers = new Set<number>();
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(planContent)) !== null) {
+    const digit = match[1];
+
+    if (digit !== undefined) {
+      stepNumbers.add(Number.parseInt(digit, 10));
+    }
+  }
+
+  return stepNumbers.size;
 }
 
 export function validatePlanHasSteps(planContent: string): void {
   if (countPlanSteps(planContent) === 0) {
     throw new Error(
-      'Plan does not contain any valid `## Step N. 제목` or `### Step N. 제목` headers.',
+      'Plan does not contain any valid Step headers. Expected format: `## Step 1. 제목`',
     );
+  }
+
+  const regex = /^#{2,3}\s+Step\s+(\d+)\.\s+.+/gm;
+  const stepNumbers: number[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(planContent)) !== null) {
+    const digit = match[1];
+
+    if (digit !== undefined) {
+      stepNumbers.push(Number.parseInt(digit, 10));
+    }
+  }
+
+  const uniqueSorted = [...new Set(stepNumbers)].sort((a, b) => a - b);
+
+  for (let i = 0; i < uniqueSorted.length; i += 1) {
+    const expected = i + 1;
+
+    if (uniqueSorted[i] !== expected) {
+      throw new Error(
+        `Step 번호가 연속적이지 않습니다: Step ${String(expected)}이(가) 누락되었습니다. 1부터 순서대로 작성하세요.`,
+      );
+    }
+  }
+
+  if (stepNumbers.length !== uniqueSorted.length) {
+    throw new Error('Step 번호에 중복이 있습니다. 각 Step은 고유한 번호를 가져야 합니다.');
   }
 }
 
@@ -120,7 +161,10 @@ export async function approvePlans(
     const totalSteps = countPlanSteps(planContent);
 
     if (totalSteps === 0) {
-      failed.push({ note: 'missing valid Step headers', taskId: task.id });
+      failed.push({
+        note: 'invalid or missing Step headers (format: ## Step N. 제목)',
+        taskId: task.id,
+      });
       continue;
     }
 
@@ -130,6 +174,12 @@ export async function approvePlans(
       totalSteps,
     );
     await writeFile(metaPath, updatedMeta, 'utf8');
+
+    try {
+      await writeAgentContext(projectRoot, task.id);
+    } catch {
+      // non-fatal
+    }
 
     succeeded.push({ note: 'moved to IN_PROGRESS', steps: totalSteps, taskId: task.id });
   }
@@ -147,7 +197,20 @@ export async function loadPlanApprovalCandidates(
   input: PlanApproveCommandInput,
 ): Promise<PlanApproveTarget[]> {
   const tasks = await listWorkspaceTasks(projectRoot);
-  return resolvePlanApprovalCandidates(tasks, input.target);
+
+  if (input.target !== undefined) {
+    return resolvePlanApprovalCandidates(tasks, input.target);
+  }
+
+  // current work fallback
+  const currentWorkId = await readCurrentWorkId(projectRoot);
+
+  if (currentWorkId !== null) {
+    return resolvePlanApprovalCandidates(tasks, currentWorkId);
+  }
+
+  // No current work: return all candidates (original behavior)
+  return resolvePlanApprovalCandidates(tasks, undefined);
 }
 
 export function createPlanApprovedAt(date = new Date()): string {

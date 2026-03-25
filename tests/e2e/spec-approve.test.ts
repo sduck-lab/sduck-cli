@@ -25,7 +25,7 @@ describe('sduck spec approve', () => {
   it('approves a single pending task', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    await runCli(['start', 'feature', 'login'], { cliRoot, cwd: tempWorkspace });
+    await runCli(['start', 'feature', 'login', '--no-git'], { cliRoot, cwd: tempWorkspace });
 
     const result = await runCli(['spec', 'approve'], { cliRoot, cwd: tempWorkspace });
     const [taskDir] = await (
@@ -50,7 +50,7 @@ describe('sduck spec approve', () => {
   it('approves an explicitly targeted task', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    await runCli(['start', 'feature', 'login'], { cliRoot, cwd: tempWorkspace });
+    await runCli(['start', 'feature', 'login', '--no-git'], { cliRoot, cwd: tempWorkspace });
 
     const [taskDir] = await (
       await import('node:fs/promises')
@@ -73,7 +73,7 @@ describe('sduck spec approve', () => {
   it('rejects suffix targets that are not exact ids or slugs', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    await runCli(['start', 'feature', 'login'], { cliRoot, cwd: tempWorkspace });
+    await runCli(['start', 'feature', 'login', '--no-git'], { cliRoot, cwd: tempWorkspace });
 
     const result = await runCli(['spec', 'approve', 'feature-login'], {
       cliRoot,

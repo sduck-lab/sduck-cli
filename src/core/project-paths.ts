@@ -1,9 +1,14 @@
+import { readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+
+import { getFsEntryKind } from './fs.js';
 
 export const SDUCK_HOME_DIR = '.sduck';
 export const SDUCK_ASSETS_DIR = 'sduck-assets';
 export const SDUCK_WORKSPACE_DIR = 'sduck-workspace';
 export const SDUCK_ARCHIVE_DIR = 'sduck-archive';
+export const SDUCK_STATE_FILE = 'sduck-state.yml';
+export const SDUCK_WORKTREES_DIR = '.sduck-worktrees';
 
 export const PROJECT_SDUCK_HOME_RELATIVE_PATH = SDUCK_HOME_DIR;
 export const PROJECT_SDUCK_ASSETS_RELATIVE_PATH = join(SDUCK_HOME_DIR, SDUCK_ASSETS_DIR);
@@ -34,6 +39,49 @@ export function getProjectRelativeSduckWorkspacePath(...segments: string[]): str
   return join(PROJECT_SDUCK_WORKSPACE_RELATIVE_PATH, ...segments);
 }
 
+export function getProjectSduckStatePath(projectRoot: string): string {
+  return join(projectRoot, SDUCK_HOME_DIR, SDUCK_STATE_FILE);
+}
+
+export function getProjectWorktreesPath(projectRoot: string): string {
+  return join(projectRoot, SDUCK_WORKTREES_DIR);
+}
+
+export function getProjectWorktreePath(projectRoot: string, workId: string): string {
+  return join(projectRoot, SDUCK_WORKTREES_DIR, workId);
+}
+
 export function toBundledAssetRelativePath(projectRelativeAssetPath: string): string {
   return relative(PROJECT_SDUCK_ASSETS_RELATIVE_PATH, projectRelativeAssetPath);
+}
+
+export async function resolveRealProjectRoot(startDir: string): Promise<string> {
+  const gitPath = join(startDir, '.git');
+
+  if ((await getFsEntryKind(gitPath)) !== 'file') {
+    return startDir;
+  }
+
+  const content = await readFile(gitPath, 'utf8');
+  const gitdirMatch = /^gitdir:\s+(.+)$/m.exec(content);
+
+  if (gitdirMatch?.[1] === undefined) {
+    return startDir;
+  }
+
+  let gitdir = gitdirMatch[1].trim();
+
+  if (!gitdir.startsWith('/')) {
+    gitdir = join(startDir, gitdir);
+  }
+
+  const worktreePrefix = '/.git/worktrees/';
+
+  const idx = gitdir.indexOf(worktreePrefix);
+
+  if (idx === -1) {
+    return startDir;
+  }
+
+  return gitdir.substring(0, idx);
 }

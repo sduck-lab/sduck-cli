@@ -33,23 +33,30 @@ function createTask(
 }
 
 describe('filterDoneCandidates', () => {
-  it('keeps only in-progress tasks', () => {
+  it('keeps only REVIEW_READY tasks', () => {
     const tasks = filterDoneCandidates([
-      createTask('a', 'IN_PROGRESS', '2026-03-19T01:00:00Z'),
+      createTask('a', 'REVIEW_READY', '2026-03-19T01:00:00Z'),
       createTask('b', 'DONE', '2026-03-19T02:00:00Z'),
+      createTask('c', 'IN_PROGRESS', '2026-03-19T03:00:00Z'),
     ]);
 
     expect(tasks.map((task) => task.id)).toEqual(['a']);
+  });
+
+  it('rejects IN_PROGRESS tasks (must go through review ready first)', () => {
+    const tasks = filterDoneCandidates([createTask('a', 'IN_PROGRESS', '2026-03-19T01:00:00Z')]);
+
+    expect(tasks).toEqual([]);
   });
 });
 
 describe('resolveDoneTargetMatches', () => {
   const tasks = [
-    createTask('20260319-0100-feature-login', 'IN_PROGRESS', '2026-03-19T01:00:00Z', 'login'),
+    createTask('20260319-0100-feature-login', 'REVIEW_READY', '2026-03-19T01:00:00Z', 'login'),
     createTask('20260319-0200-feature-profile', 'DONE', '2026-03-19T02:00:00Z', 'profile'),
   ];
 
-  it('returns in-progress candidates when no target is given', () => {
+  it('returns REVIEW_READY candidates when no target is given', () => {
     expect(resolveDoneTargetMatches(tasks, undefined).map((task) => task.id)).toEqual([
       '20260319-0100-feature-login',
     ]);

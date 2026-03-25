@@ -23,7 +23,7 @@ describe('sduck plan approve', () => {
   }
 
   async function createApprovedTask(slug: string, planContent: string): Promise<string> {
-    await runCli(['start', 'feature', slug], { cliRoot, cwd: tempWorkspace });
+    await runCli(['start', 'feature', slug, '--no-git'], { cliRoot, cwd: tempWorkspace });
     await runCli(['spec', 'approve', slug], { cliRoot, cwd: tempWorkspace });
 
     const entries = await (
@@ -69,7 +69,7 @@ describe('sduck plan approve', () => {
   it('fails when the plan has no valid titled steps', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    await createApprovedTask('invalid-plan', '# Plan\n\n## Step 1.\n');
+    await createApprovedTask('invalid-plan', '# Plan\n\nNo step headers at all.\n');
 
     const result = await runCli(['plan', 'approve', 'invalid-plan'], {
       cliRoot,
@@ -77,7 +77,7 @@ describe('sduck plan approve', () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('missing valid Step headers');
+    expect(result.stderr).toContain('invalid or missing Step headers');
   });
 
   it('supports explicit target approval', async () => {
@@ -109,26 +109,17 @@ describe('sduck plan approve', () => {
     expect(result.stderr).toContain('No matching tasks awaiting plan approval');
   });
 
-  it('returns partial success when one selected task fails step parsing', async () => {
+  it('fails for a task with invalid step headers via explicit target', async () => {
     tempWorkspace = await prepareProjectWorkspace(cliRoot, workspaceName);
     await initRepo();
-    const successTask = await createApprovedTask('success-plan', '# Plan\n\n## Step 1. Works\n');
-    const failedTask = await createApprovedTask('failed-plan', '# Plan\n\n## Step 1.\n');
+    await createApprovedTask('failed-plan', '# Plan\n\n## Introduction\nNo step headers here.\n');
 
-    const result = await runCli(['plan', 'approve'], { cliRoot, cwd: tempWorkspace });
-    const successMeta = await readFile(
-      join(tempWorkspace, '.sduck', 'sduck-workspace', successTask, 'meta.yml'),
-      'utf8',
-    );
-    const failedMeta = await readFile(
-      join(tempWorkspace, '.sduck', 'sduck-workspace', failedTask, 'meta.yml'),
-      'utf8',
-    );
+    const result = await runCli(['plan', 'approve', 'failed-plan'], {
+      cliRoot,
+      cwd: tempWorkspace,
+    });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain('| success');
-    expect(result.stdout).toContain('| failed');
-    expect(successMeta).toContain('status: IN_PROGRESS');
-    expect(failedMeta).toContain('status: SPEC_APPROVED');
+    expect(result.stderr).toContain('invalid or missing Step headers');
   });
 });

@@ -2,14 +2,20 @@
 
 import { Command } from 'commander';
 
+import { runAbandonCommand } from './commands/abandon.js';
 import { runArchiveCommand } from './commands/archive.js';
+import { runCleanCommand } from './commands/clean.js';
 import { runDoneCommand } from './commands/done.js';
 import { runFastTrackCommand } from './commands/fast-track.js';
+import { runImplementCommand } from './commands/implement.js';
 import { runInitCommand } from './commands/init.js';
 import { runPlanApproveCommand } from './commands/plan-approve.js';
 import { runReopenCommand } from './commands/reopen.js';
+import { runReviewReadyCommand } from './commands/review.js';
 import { runSpecApproveCommand } from './commands/spec-approve.js';
 import { runStartCommand } from './commands/start.js';
+import { runStepCommand } from './commands/step.js';
+import { runUseCommand } from './commands/use.js';
 import {
   CLI_DESCRIPTION,
   CLI_NAME,
@@ -17,6 +23,7 @@ import {
   PLACEHOLDER_MESSAGE,
   normalizeCommandName,
 } from './core/command-metadata.js';
+import { resolveRealProjectRoot } from './core/project-paths.js';
 
 const program = new Command();
 
@@ -35,7 +42,7 @@ program
       options.agents === undefined
         ? { force: options.force ?? false }
         : { agents: options.agents, force: options.force ?? false };
-    const result = await runInitCommand(initOptions, process.cwd());
+    const result = await runInitCommand(initOptions, await resolveRealProjectRoot(process.cwd()));
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -60,8 +67,15 @@ program
 program
   .command('start <type> <slug>')
   .description('Create a new task workspace from a type template')
-  .action(async (type: string, slug: string) => {
-    const result = await runStartCommand(type, slug, process.cwd());
+  .option('--no-git', 'Skip git worktree creation')
+  .action(async (type: string, slug: string, options: { git: boolean }) => {
+    const startOptions = options.git ? undefined : { noGit: true };
+    const result = await runStartCommand(
+      type,
+      slug,
+      await resolveRealProjectRoot(process.cwd()),
+      startOptions,
+    );
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -79,8 +93,14 @@ program
 program
   .command('fast-track <type> <slug>')
   .description('Create a minimal spec/plan task with optional bundled approval')
-  .action(async (type: string, slug: string) => {
-    const result = await runFastTrackCommand({ slug, type }, process.cwd());
+  .option('--no-git', 'Skip git worktree creation')
+  .action(async (type: string, slug: string, options: { git: boolean }) => {
+    const startOptions = options.git ? undefined : { noGit: true };
+    const result = await runFastTrackCommand(
+      { slug, type },
+      await resolveRealProjectRoot(process.cwd()),
+      startOptions,
+    );
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -102,7 +122,7 @@ program
   .description('Approve a task spec and move it to plan writing')
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
-    const result = await runSpecApproveCommand(input, process.cwd());
+    const result = await runSpecApproveCommand(input, await resolveRealProjectRoot(process.cwd()));
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -124,7 +144,7 @@ program
   .description('Approve a task plan and move it to implementation')
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
-    const result = await runPlanApproveCommand(input, process.cwd());
+    const result = await runPlanApproveCommand(input, await resolveRealProjectRoot(process.cwd()));
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -144,7 +164,7 @@ program
   .description('Complete an in-progress task after validation')
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
-    const result = await runDoneCommand(input, process.cwd());
+    const result = await runDoneCommand(input, await resolveRealProjectRoot(process.cwd()));
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -164,7 +184,7 @@ program
   .description('Reopen a completed task for a new cycle')
   .action(async (target?: string) => {
     const input = target === undefined ? {} : { target };
-    const result = await runReopenCommand(input, process.cwd());
+    const result = await runReopenCommand(input, await resolveRealProjectRoot(process.cwd()));
 
     if (result.stdout !== '') {
       console.log(result.stdout);
@@ -185,7 +205,142 @@ program
   .option('--keep <n>', 'Keep the N most recently completed tasks in workspace', '0')
   .action(async (options: { keep: string }) => {
     const keep = Number(options.keep);
-    const result = await runArchiveCommand({ keep }, process.cwd());
+    const result = await runArchiveCommand({ keep }, await resolveRealProjectRoot(process.cwd()));
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('use <target>')
+  .description('Switch the current active work')
+  .action(async (target: string) => {
+    const result = await runUseCommand(target, await resolveRealProjectRoot(process.cwd()));
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('implement [target]')
+  .description('Show implementation context for the current work')
+  .action(async (target?: string) => {
+    const result = await runImplementCommand(await resolveRealProjectRoot(process.cwd()), target);
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('abandon <target>')
+  .description('Abandon an active work')
+  .action(async (target: string) => {
+    const result = await runAbandonCommand(target, await resolveRealProjectRoot(process.cwd()));
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+const reviewCmd = program.command('review').description('Manage review workflow state');
+
+reviewCmd
+  .command('ready [target]')
+  .description('Mark a work as review ready')
+  .action(async (target?: string) => {
+    const result = await runReviewReadyCommand(target, await resolveRealProjectRoot(process.cwd()));
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('clean [target]')
+  .description('Clean up completed or abandoned works')
+  .option('--force', 'Force delete unmerged branches')
+  .action(async (target: string | undefined, options: { force?: boolean }) => {
+    const result = await runCleanCommand(
+      { force: options.force, target },
+      await resolveRealProjectRoot(process.cwd()),
+    );
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+const stepCmd = program.command('step').description('Manage plan step progress');
+
+stepCmd
+  .command('done <number> [target]')
+  .description('Mark a plan step as completed')
+  .action(async (number: string, target?: string) => {
+    const stepNumber = Number.parseInt(number, 10);
+
+    if (Number.isNaN(stepNumber)) {
+      console.error(`Invalid step number: ${number}`);
+      process.exitCode = 1;
+
+      return;
+    }
+
+    const result = await runStepCommand(
+      stepNumber,
+      await resolveRealProjectRoot(process.cwd()),
+      target,
+    );
 
     if (result.stdout !== '') {
       console.log(result.stdout);

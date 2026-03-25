@@ -20,14 +20,27 @@ if [[ -z "$CWD" ]]; then
   exit 0
 fi
 
-# Find sduck workspace
-WORKSPACE_DIR="$CWD/.sduck/sduck-workspace"
+# Resolve project root (handles worktree via .git file)
+if [[ -f "$CWD/.git" ]]; then
+  GITDIR_LINE=$(grep '^gitdir:' "$CWD/.git" 2>/dev/null | head -1 || true)
+  GITDIR=$(echo "$GITDIR_LINE" | sed 's/^gitdir: //' || true)
+  if [[ -n "$GITDIR" ]]; then
+    [[ "$GITDIR" != /* ]] && GITDIR="$CWD/$GITDIR"
+    PROJECT_ROOT=$(echo "$GITDIR" | sed 's|/.git/worktrees/.*||')
+  else
+    PROJECT_ROOT="$CWD"
+  fi
+else
+  PROJECT_ROOT="$CWD"
+fi
+
+WORKSPACE_DIR="$PROJECT_ROOT/.sduck/sduck-workspace"
 if [[ ! -d "$WORKSPACE_DIR" ]]; then
   exit 0
 fi
 
 # Always-allowed paths (relative check)
-REL_PATH="${FILE_PATH#"$CWD"/}"
+REL_PATH="${FILE_PATH#"$PROJECT_ROOT"/}"
 
 # Always allow: meta.yml, sduck assets, agent rule files, editor configs
 case "$REL_PATH" in
@@ -50,7 +63,7 @@ for dir in "$WORKSPACE_DIR"/*/; do
   TASK_STATUS=$(grep -m1 '^status:' "$META" | sed 's/^status:[[:space:]]*//')
 
   case "$TASK_STATUS" in
-    PENDING_SPEC_APPROVAL|SPEC_APPROVED|PENDING_PLAN_APPROVAL|IN_PROGRESS)
+    PENDING_SPEC_APPROVAL|SPEC_APPROVED|PENDING_PLAN_APPROVAL|IN_PROGRESS|REVIEW_READY)
       STATUS="$TASK_STATUS"
       TASK_DIR="$dir"
       ;;
@@ -111,13 +124,13 @@ case "$STATUS" in
     fi
     exit 0
     ;;
-  DONE)
+  REVIEW_READY|DONE)
     # everything blocked except always-allowed paths (already handled above)
     if $IS_SPEC || $IS_PLAN; then
-      echo "⛔ [sduck] 현재 상태: DONE — 완료된 태스크의 문서는 수정할 수 없습니다. \`sduck start\`로 새 태스크를 시작하세요." >&2
+      echo "⛔ [sduck] 현재 상태: $STATUS — 완료된 태스크의 문서는 수정할 수 없습니다. \`sduck start\`로 새 태스크를 시작하세요." >&2
       exit 2
     fi
-    echo "⛔ [sduck] 현재 상태: DONE — 새 코드를 작성하려면 \`sduck start\`로 새 태스크를 시작하세요." >&2
+    echo "⛔ [sduck] 현재 상태: $STATUS — 새 코드를 작성하려면 \`sduck start\`로 새 태스크를 시작하세요." >&2
     exit 2
     ;;
 esac

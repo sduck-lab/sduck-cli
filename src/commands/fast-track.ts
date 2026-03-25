@@ -7,6 +7,7 @@ import {
   type FastTrackCommandInput,
   type FastTrackFailureRow,
 } from '../core/fast-track.js';
+import { type StartTaskOptions } from '../core/start.js';
 
 export interface FastTrackCommandResult {
   exitCode: number;
@@ -21,9 +22,10 @@ function formatFailures(rows: readonly FastTrackFailureRow[]): string[] {
 export async function runFastTrackCommand(
   input: FastTrackCommandInput,
   projectRoot: string,
+  startOptions?: StartTaskOptions,
 ): Promise<FastTrackCommandResult> {
   try {
-    const createdTask = await createFastTrackTask(input, projectRoot);
+    const createdTask = await createFastTrackTask(input, projectRoot, startOptions);
     const lines = [
       'fast-track task created',
       `경로: ${createdTask.path}/`,

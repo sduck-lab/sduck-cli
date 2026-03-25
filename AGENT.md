@@ -65,19 +65,24 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 │   │   └── refactor.md
 │   └── agent-rules/
 │
-└── .sduck/sduck-workspace/
-    └── {timestamp}-{type}-{slug}/
-        ├── meta.yml
-        ├── spec.md
-        └── plan.md
+├── .sduck/sduck-workspace/
+│   └── {timestamp}-{type}-{slug}/
+│       ├── meta.yml
+│       ├── spec.md
+│       ├── plan.md
+│       └── review.md          # review ready 시 생성
+│
+├── .sduck/sduck-archive/       # 아카이브 (월별)
+├── .sduck/sduck-state.yml      # 현재 작업 상태 (current_work_id)
+└── .sduck-worktrees/           # Git worktree (자동 생성)
 ```
 
 ## 세션 시작 시 필수 확인
 
 작업을 시작하기 전에 반드시 아래를 확인한다.
 
-1. `.sduck/sduck-workspace/` 디렉토리가 있는지 확인
-2. 진행 중인 작업(`IN_PROGRESS`, `PENDING_*`)이 있는지 확인
+1. `.sduck/sduck-state.yml`에서 `current_work_id`를 확인한다
+2. `.sduck/sduck-workspace/` 디렉토리에서 진행 중인 작업(`IN_PROGRESS`, `REVIEW_READY`, `PENDING_*`)이 있는지 확인
 3. 있다면 해당 작업의 `meta.yml`을 읽고 현재 상태를 파악한 뒤 이어서 진행
 
 ## 사용자 메모 규칙
@@ -92,10 +97,11 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 
 ## 워크플로우 규칙
 
-- Use the shipped CLI commands for workflow operations: `sduck init`, `sduck start <type> <slug>`, `sduck fast-track <type> <slug>`, `sduck spec approve [target]`, and `sduck plan approve [target]`.
+- Use the shipped CLI commands for workflow operations: `sduck init`, `sduck start <type> <slug>`, `sduck fast-track <type> <slug>`, `sduck spec approve [target]`, `sduck plan approve [target]`, `sduck review ready [target]`, `sduck done [target]`, `sduck use <target>`, `sduck implement`, `sduck abandon <target>`, `sduck clean [target]`, `sduck archive`.
 - Do not write implementation code before spec approval.
 - Do not start implementation before plan approval.
-- Follow the workflow order: `spec -> approval -> plan -> approval -> implementation`.
+- Follow the workflow order: `spec -> approval -> plan -> approval -> implementation -> review ready -> done`.
+- `done`은 `REVIEW_READY` 상태에서만 가능하다. `IN_PROGRESS`에서 바로 `done`할 수 없다.
 - Respect `meta.yml` state transitions and update step completion immediately.
 - Write `plan.md` in detailed implementation units: include target files, the functions/sections or rough line ranges to inspect, the exact change intent for each file, and the tests or commands to verify the step.
 
@@ -115,6 +121,7 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 - `PENDING_SPEC_APPROVAL` 상태에서는 spec.md 작성/수정만 가능하고 코드 작성은 금지한다
 - `PENDING_PLAN_APPROVAL` 상태에서는 plan.md 작성/수정만 가능하고 코드 작성은 금지한다
 - `IN_PROGRESS` 상태에서만 구현과 step 완료 기록을 진행한다
+- 구현 완료 후 `sduck review ready`로 `REVIEW_READY` 상태로 전환해야 `done` 처리가 가능하다
 - `sduck reopen [target]`으로 다시 열린 task는 `IN_PROGRESS` 기준으로 이어서 작업한다
 - reopen은 작은 후속 수정에 사용하고, 요구사항 변경이나 범위 확장은 새 task로 분리한다
 - Do not mark a task `DONE` until all completion criteria are satisfied.

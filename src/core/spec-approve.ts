@@ -1,7 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
+import { readCurrentWorkId } from './state.js';
 import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
 
@@ -83,6 +85,12 @@ export async function approveSpecs(
 
     const updatedContent = updateSpecApprovalBlock(await readFile(metaPath, 'utf8'), approvedAt);
     await writeFile(metaPath, updatedContent, 'utf8');
+
+    try {
+      await writeAgentContext(projectRoot, task.id);
+    } catch {
+      // non-fatal
+    }
   }
 
   return {
@@ -97,7 +105,20 @@ export async function loadSpecApprovalCandidates(
   input: SpecApproveCommandInput,
 ): Promise<SpecApproveTarget[]> {
   const tasks = await listWorkspaceTasks(projectRoot);
-  return resolveTargetCandidates(tasks, input.target);
+
+  if (input.target !== undefined) {
+    return resolveTargetCandidates(tasks, input.target);
+  }
+
+  // current work fallback
+  const currentWorkId = await readCurrentWorkId(projectRoot);
+
+  if (currentWorkId !== null) {
+    return resolveTargetCandidates(tasks, currentWorkId);
+  }
+
+  // No current work: return all candidates (original behavior)
+  return resolveTargetCandidates(tasks, undefined);
 }
 
 export function createSpecApprovedAt(date = new Date()): string {

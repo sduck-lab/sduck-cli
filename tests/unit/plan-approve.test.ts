@@ -88,7 +88,37 @@ describe('countPlanSteps', () => {
     expect(countPlanSteps(content)).toBe(2);
   });
 
-  it('ignores untitled step headers', () => {
+  it('rejects step with colon separator', () => {
+    const content = ['# Plan', '', '## Step 1: First', '## Step 2: Second'].join('\n');
+    expect(countPlanSteps(content)).toBe(0);
+  });
+
+  it('rejects step without space between Step and number', () => {
+    const content = ['# Plan', '', '## Step1. First'].join('\n');
+    expect(countPlanSteps(content)).toBe(0);
+  });
+
+  it('rejects step with dash separator', () => {
+    const content = ['# Plan', '', '## Step 1 - First'].join('\n');
+    expect(countPlanSteps(content)).toBe(0);
+  });
+
+  it('rejects step with only space separator', () => {
+    const content = ['# Plan', '', '## Step 1 First'].join('\n');
+    expect(countPlanSteps(content)).toBe(0);
+  });
+
+  it('deduplicates same step number', () => {
+    const content = ['# Plan', '', '## Step 1. First', '## Step 1. Duplicate'].join('\n');
+    expect(countPlanSteps(content)).toBe(1);
+  });
+
+  it('rejects lowercase step', () => {
+    const content = ['# Plan', '', '## step 1. First'].join('\n');
+    expect(countPlanSteps(content)).toBe(0);
+  });
+
+  it('rejects untitled step headers', () => {
     const content = ['# Plan', '', '## Step 1.', '## Step 2. Second'].join('\n');
     expect(countPlanSteps(content)).toBe(1);
   });
@@ -107,10 +137,34 @@ describe('validatePlanHasSteps', () => {
     }).not.toThrow();
   });
 
-  it('rejects plans without valid titled steps', () => {
+  it('rejects untitled step headers', () => {
     expect(() => {
       validatePlanHasSteps('## Step 1.');
+    }).toThrow();
+  });
+
+  it('rejects plans without any step headers', () => {
+    expect(() => {
+      validatePlanHasSteps('## Introduction\nSome text');
     }).toThrow('Plan does not contain any valid');
+  });
+
+  it('rejects non-consecutive step numbers', () => {
+    expect(() => {
+      validatePlanHasSteps('## Step 1. First\n## Step 3. Third');
+    }).toThrow('연속적이지 않습니다');
+  });
+
+  it('rejects step numbers not starting from 1', () => {
+    expect(() => {
+      validatePlanHasSteps('## Step 2. Second\n## Step 3. Third');
+    }).toThrow('1부터 순서대로');
+  });
+
+  it('rejects duplicate step numbers', () => {
+    expect(() => {
+      validatePlanHasSteps('## Step 1. First\n## Step 1. Duplicate');
+    }).toThrow('중복');
   });
 });
 

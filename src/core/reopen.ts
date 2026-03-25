@@ -1,6 +1,7 @@
 import { copyFile, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { writeAgentContext } from './agent-context.js';
 import { ensureDirectory, getFsEntryKind } from './fs.js';
 import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
 
@@ -16,7 +17,7 @@ export interface ReopenResult {
 }
 
 export function getCurrentCycle(metaContent: string): number {
-  const match = /^cycle:\s+(\d+)$/m.exec(metaContent);
+  const match = /^cycle:[ \t]+(\d+)$/m.exec(metaContent);
 
   if (match?.[1] === undefined) {
     return 1;
@@ -224,6 +225,12 @@ export async function runReopenWorkflow(
     }
 
     throw error;
+  }
+
+  try {
+    await writeAgentContext(projectRoot, task.id);
+  } catch {
+    // non-fatal
   }
 
   return {

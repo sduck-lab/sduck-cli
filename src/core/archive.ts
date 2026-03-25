@@ -33,7 +33,7 @@ export interface ArchiveResult {
 }
 
 export function extractCompletedAt(metaContent: string): string | null {
-  const match = /^completed_at:\s+(.+)$/m.exec(metaContent);
+  const match = /^completed_at:[ \t]+(.+)$/m.exec(metaContent);
   const value = match?.[1]?.trim();
 
   if (value === undefined || value === 'null') {
