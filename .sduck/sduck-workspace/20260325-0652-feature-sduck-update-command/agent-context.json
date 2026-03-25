@@ -9,7 +9,7 @@
   "slug": "sduck-update-command",
   "specApproved": true,
   "specPath": ".sduck/sduck-workspace/20260325-0652-feature-sduck-update-command/spec.md",
-  "status": "REVIEW_READY",
+  "status": "DONE",
   "steps": {
     "completed": [1, 2, 3, 4, 5, 6],
     "total": 6
