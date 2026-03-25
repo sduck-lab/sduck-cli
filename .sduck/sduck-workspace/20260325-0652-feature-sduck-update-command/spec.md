@@ -32,12 +32,12 @@
 
 ## 완료 조건
 
-- [ ] `sduck update`가 정상 실행되고 에셋/룰/훅을 갱신한다
-- [ ] `sduck update --dry-run`이 변경 계획만 출력하고 파일을 수정하지 않는다
-- [ ] 버전이 같으면 "already up to date" 메시지를 출력하고 아무 작업도 수행하지 않는다
-- [ ] `.sduck/`가 없으면 에러 메시지와 함께 `sduck init`을 안내한다
-- [ ] `sduck init` 실행 후 `.sduck/sduck-assets/.sduck-version`이 CLI 버전으로 생성된다
-- [ ] 에이전트 룰 파일의 managed block 외부 사용자 커스텀 내용이 보존된다
-- [ ] 단위 테스트가 통과한다
-- [ ] E2E 테스트가 통과한다
-- [ ] `npm run lint`, `npm run typecheck`, `npm run build`가 통과한다
+- [x] `sduck update`가 정상 실행되고 에셋/룰/훅을 갱신한다
+- [x] `sduck update --dry-run`이 변경 계획만 출력하고 파일을 수정하지 않는다
+- [x] 버전이 같으면 "already up to date" 메시지를 출력하고 아무 작업도 수행하지 않는다
+- [x] `.sduck/`가 없으면 에러 메시지와 함께 `sduck init`을 안내한다
+- [x] `sduck init` 실행 후 `.sduck/sduck-assets/.sduck-version`이 CLI 버전으로 생성된다
+- [x] 에이전트 룰 파일의 managed block 외부 사용자 커스텀 내용이 보존된다
+- [x] 단위 테스트가 통과한다
+- [x] E2E 테스트가 통과한다
+- [x] `npm run lint`, `npm run typecheck`, `npm run build`가 통과한다
