@@ -15,6 +15,7 @@ import { runReviewReadyCommand } from './commands/review.js';
 import { runSpecApproveCommand } from './commands/spec-approve.js';
 import { runStartCommand } from './commands/start.js';
 import { runStepCommand } from './commands/step.js';
+import { runUpdateCommand } from './commands/update.js';
 import { runUseCommand } from './commands/use.js';
 import {
   CLI_DESCRIPTION,
@@ -43,6 +44,29 @@ program
         ? { force: options.force ?? false }
         : { agents: options.agents, force: options.force ?? false };
     const result = await runInitCommand(initOptions, await resolveRealProjectRoot(process.cwd()));
+
+    if (result.stdout !== '') {
+      console.log(result.stdout);
+    }
+
+    if (result.stderr !== '') {
+      console.error(result.stderr);
+    }
+
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
+program
+  .command('update')
+  .description('Update sduck assets and agent rules to the current CLI version')
+  .option('--dry-run', 'Show what would be updated without making changes')
+  .action(async (options: { dryRun?: boolean }) => {
+    const result = await runUpdateCommand(
+      { dryRun: options.dryRun ?? false },
+      await resolveRealProjectRoot(process.cwd()),
+    );
 
     if (result.stdout !== '') {
       console.log(result.stdout);

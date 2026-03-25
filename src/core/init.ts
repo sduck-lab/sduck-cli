@@ -33,6 +33,7 @@ import {
   PROJECT_SDUCK_WORKSPACE_RELATIVE_PATH,
   toBundledAssetRelativePath,
 } from './project-paths.js';
+import { writeProjectVersion } from './version-file.js';
 
 import type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-types.js';
 
@@ -372,6 +373,8 @@ export async function initProject(
   if (needsClaudeCodeHook(resolvedOptions.agents)) {
     await installClaudeCodeHook(projectRoot, summary);
   }
+
+  await writeProjectVersion(projectRoot);
 
   return {
     mode,
