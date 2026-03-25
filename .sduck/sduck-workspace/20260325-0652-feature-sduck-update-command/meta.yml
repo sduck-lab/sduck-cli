@@ -1,0 +1,25 @@
+id: 20260325-0652-feature-sduck-update-command
+type: feature
+slug: sduck-update-command
+created_at: 2026-03-25T06:52:01Z
+updated_at: 2026-03-25T07:20:38Z
+
+branch: work/feature/sduck-update-command
+base_branch: dev
+worktree_path: .sduck-worktrees/20260325-0652-feature-sduck-update-command
+
+status: REVIEW_READY
+
+spec:
+  approved: true
+  approved_at: 2026-03-25T07:11:09Z
+
+plan:
+  approved: true
+  approved_at: 2026-03-25T07:11:09Z
+
+steps:
+  total: 6
+  completed: [1, 2, 3, 4, 5, 6]
+
+completed_at: null
