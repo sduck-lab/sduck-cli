@@ -1,7 +1,14 @@
 import * as fs from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
 
 import { dbPath, decisionRoot } from './paths.js';
+
+import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
+
+const require = createRequire(import.meta.url);
+const { DatabaseSync } = require('node:sqlite') as {
+  DatabaseSync: new (location: string) => DatabaseSyncType;
+};
 
 export function encodeJson(value: unknown): string {
   return JSON.stringify(value ?? null);
@@ -18,14 +25,14 @@ export function decodeJson<T>(value: string | null | undefined, fallback: T): T 
   }
 }
 
-export function openDatabase(projectRoot: string): DatabaseSync {
+export function openDatabase(projectRoot: string): DatabaseSyncType {
   fs.mkdirSync(decisionRoot(projectRoot), { recursive: true });
   const db = new DatabaseSync(dbPath(projectRoot));
   ensureSchema(db);
   return db;
 }
 
-export function ensureSchema(db: DatabaseSync): void {
+export function ensureSchema(db: DatabaseSyncType): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
