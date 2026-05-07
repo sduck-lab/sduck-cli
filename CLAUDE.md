@@ -1,5 +1,9 @@
 <!-- sduck:begin -->
 
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # sduck managed rules
 
 Selected agents: Claude Code
@@ -8,6 +12,63 @@ Selected agents: Claude Code
 task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 Claude는 `spec.md`, `plan.md` 본문 작성/수정과 구현을 담당한다.
 워크플로우 구조와 규칙은 `sduck` CLI와 생성된 rule 문서를 기준으로 따른다.
+
+## Development Commands
+
+- `npm run dev` — Run CLI locally for development (uses tsx)
+- `npm run build` — Build production bundle with tsup
+- `npm run test` — Run all tests (unit + e2e)
+- `npm run test:unit` — Run unit tests only
+- `npm run test:e2e` — Run e2e tests only
+- `npm run lint` — Lint code with ESLint
+- `npm run format` — Format code with Prettier
+- `npm run typecheck` — Type check with TypeScript compiler
+- `npm run prepare` — Setup git hooks with husky
+
+Run single test: `npx vitest run tests/unit/<test-file>.test.ts`
+
+## Code Architecture
+
+### Project Structure
+
+- `src/cli.ts` — CLI entry point using Commander.js, defines all command routes
+- `src/commands/` — Thin command wrappers that handle CLI argument parsing and output
+- `src/core/` — Core business logic layer containing the actual implementation
+- `tests/unit/` — Unit tests for core functions
+- `tests/e2e/` — End-to-end tests for complete CLI workflows
+
+### Key Architectural Patterns
+
+**Commands vs Core Separation**: Each CLI command in `src/commands/` is a thin wrapper that:
+
+1. Parses command-line arguments
+2. Resolves the project root path
+3. Calls the corresponding function in `src/core/`
+4. Handles stdout/stderr output and exit codes
+
+This separation allows core logic to be tested independently from CLI concerns.
+
+**Path Resolution**: All file paths use the centralized path utilities in `src/core/project-paths.ts`. This handles:
+
+- Project root discovery (including git worktree environments)
+- Consistent path construction for `.sduck/` directories
+- Cross-platform path handling
+
+**Result Pattern**: Core functions return `{ stdout, stderr, exitCode }` result objects for consistent error handling and output formatting.
+
+**Type Safety**: The project uses strict TypeScript configuration with:
+
+- `noUncheckedIndexedAccess` — prevents undefined access to array/object indices
+- `exactOptionalPropertyTypes` — distinguishes between undefined and missing properties
+- `noImplicitOverride` — requires explicit override declarations
+
+**State Management**:
+
+- `sduck-state.yml` stores `current_work_id` for tracking active task
+- Each task workspace contains `meta.yml` for task status and progress
+- State transitions are atomic and validated
+
+**Git Integration**: Optional git worktree support for isolated task environments. Worktrees are created in `.sduck-worktrees/` and cleaned up after task completion.
 
 ## 절대 규칙
 
@@ -23,6 +84,20 @@ Claude는 `spec.md`, `plan.md` 본문 작성/수정과 구현을 담당한다.
 - Follow the repository SDD workflow exactly.
 - Use `CLAUDE.md` as project-level instruction context.
 - Keep plans highly detailed: list exact file paths, likely functions or sections to edit, concrete change intent, and verification commands.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues for `sduck-lab/sduck-cli`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default canonical triage label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a single-context domain docs layout. See `docs/agents/domain.md`.
 
 # SDD Workflow Rules
 
@@ -107,7 +182,9 @@ Claude는 `spec.md`, `plan.md` 본문 작성/수정과 구현을 담당한다.
 - `PENDING_PLAN_APPROVAL` 상태에서는 plan.md 작성/수정만 가능하고 코드 작성은 금지한다
 - `IN_PROGRESS` 상태에서만 구현과 step 완료 기록을 진행한다
 - 구현 완료 후 `sduck review ready`로 `REVIEW_READY` 상태로 전환해야 `done` 처리가 가능하다
-- `sduck reopen [target]`으로 다시 열린 task는 `IN_PROGRESS` 기준으로 이어서 작업한다
+- `sduck reopen [target]`으로 `DONE` 또는 `REVIEW_READY` task를 다시 열 수 있다
+  - `REVIEW_READY`에서 reopen하면 `IN_PROGRESS`로 복원되며 spec/plan 승인과 step 진행 상태가 유지된다
+  - `DONE`에서 reopen하면 전체 리셋되고 cycle이 증가한다
 - reopen은 작은 후속 수정에 사용하고, 요구사항 변경이나 범위 확장은 새 task로 분리한다
 - Do not mark a task `DONE` until all completion criteria are satisfied.
 

@@ -1,0 +1,23 @@
+{
+  "baseBranch": null,
+  "branch": null,
+  "createdAt": "2026-04-30T09:05:04Z",
+  "id": "20260430-0905-feature-decision-briefing-v2",
+  "planApproved": true,
+  "planPath": ".sduck/sduck-workspace/20260430-0905-feature-decision-briefing-v2/plan.md",
+  "reviewPath": ".sduck/sduck-workspace/20260430-0905-feature-decision-briefing-v2/review.md",
+  "slug": "decision-briefing-v2",
+  "specApproved": true,
+  "specPath": ".sduck/sduck-workspace/20260430-0905-feature-decision-briefing-v2/spec.md",
+  "status": "REVIEW_READY",
+  "steps": {
+    "completed": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    "total": 13
+  },
+  "type": "feature",
+  "updatedAt": "2026-04-30T12:35:24Z",
+  "worktreeAbsolutePath": null,
+  "worktreePath": null,
+  "workspaceAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck/sduck-workspace/20260430-0905-feature-decision-briefing-v2",
+  "workspacePath": ".sduck/sduck-workspace/20260430-0905-feature-decision-briefing-v2"
+}

@@ -1,0 +1,25 @@
+id: 20260421-0205-feature-guided-spec-intake
+type: feature
+slug: guided-spec-intake
+created_at: 2026-04-21T02:05:44Z
+updated_at: 2026-04-21T02:05:44Z
+
+branch: null
+base_branch: null
+worktree_path: null
+
+status: PENDING_SPEC_APPROVAL
+
+spec:
+  approved: false
+  approved_at: null
+
+plan:
+  approved: false
+  approved_at: null
+
+steps:
+  total: null
+  completed: []
+
+completed_at: null

@@ -4,7 +4,7 @@ export const CLI_NAME = 'sduck';
 
 export const CLI_VERSION = packageMetadata.version;
 
-export const CLI_DESCRIPTION = 'Spec-Driven Development workflow bootstrap CLI';
+export const CLI_DESCRIPTION = 'Terminal-first decision briefing harness for coding agents';
 
 export const PLACEHOLDER_MESSAGE =
   'Core workflow commands are planned but not implemented in this bootstrap yet.';

@@ -29,6 +29,8 @@ export function getCurrentCycle(metaContent: string): number {
 export function buildReopenedMeta(metaContent: string, newCycle: number): string {
   let result = metaContent;
 
+  const isReviewReady = /^status:\s+REVIEW_READY$/m.test(result);
+
   // Update or insert cycle field
   if (/^cycle:\s+/m.test(result)) {
     result = result.replace(/^cycle:\s+.+$/m, `cycle: ${String(newCycle)}`);
@@ -36,29 +38,30 @@ export function buildReopenedMeta(metaContent: string, newCycle: number): string
     result = result.replace(/^(status:\s+.+)$/m, `cycle: ${String(newCycle)}\n\n$1`);
   }
 
-  // Reset status
-  result = result.replace(/^status:\s+.+$/m, 'status: PENDING_SPEC_APPROVAL');
+  if (isReviewReady) {
+    // REVIEW_READY → IN_PROGRESS: preserve spec/plan approval and steps
+    result = result.replace(/^status:\s+.+$/m, 'status: IN_PROGRESS');
+  } else {
+    // DONE → full reset
+    result = result.replace(/^status:\s+.+$/m, 'status: PENDING_SPEC_APPROVAL');
 
-  // Reset spec approval
-  result = result.replace(
-    /spec:\n {2}approved:\s+.+\n {2}approved_at:\s+.+/m,
-    'spec:\n  approved: false\n  approved_at: null',
-  );
+    result = result.replace(
+      /spec:\n {2}approved:\s+.+\n {2}approved_at:\s+.+/m,
+      'spec:\n  approved: false\n  approved_at: null',
+    );
 
-  // Reset plan approval
-  result = result.replace(
-    /plan:\n {2}approved:\s+.+\n {2}approved_at:\s+.+/m,
-    'plan:\n  approved: false\n  approved_at: null',
-  );
+    result = result.replace(
+      /plan:\n {2}approved:\s+.+\n {2}approved_at:\s+.+/m,
+      'plan:\n  approved: false\n  approved_at: null',
+    );
 
-  // Reset steps
-  result = result.replace(
-    /steps:\n {2}total:\s+.+\n {2}completed:\s+.+/m,
-    'steps:\n  total: null\n  completed: []',
-  );
+    result = result.replace(
+      /steps:\n {2}total:\s+.+\n {2}completed:\s+.+/m,
+      'steps:\n  total: null\n  completed: []',
+    );
 
-  // Reset completed_at
-  result = result.replace(/^completed_at:\s+.+$/m, 'completed_at: null');
+    result = result.replace(/^completed_at:\s+.+$/m, 'completed_at: null');
+  }
 
   return result;
 }
@@ -66,7 +69,7 @@ export function buildReopenedMeta(metaContent: string, newCycle: number): string
 export function filterReopenCandidates(
   tasks: readonly WorkspaceTaskSummary[],
 ): WorkspaceTaskSummary[] {
-  return tasks.filter((task) => task.status === 'DONE');
+  return tasks.filter((task) => task.status === 'DONE' || task.status === 'REVIEW_READY');
 }
 
 function formatCandidateList(candidates: readonly WorkspaceTaskSummary[]): string {
@@ -82,7 +85,7 @@ export function resolveReopenTarget(
   const candidates = filterReopenCandidates(tasks);
 
   if (candidates.length === 0) {
-    throw new Error('No DONE tasks found to reopen.');
+    throw new Error('No DONE or REVIEW_READY tasks found to reopen.');
   }
 
   if (target === undefined || target.trim() === '') {
@@ -97,7 +100,7 @@ export function resolveReopenTarget(
     }
 
     throw new Error(
-      `Multiple DONE tasks found. Specify a target:\n${formatCandidateList(candidates)}`,
+      `Multiple reopenable tasks found. Specify a target:\n${formatCandidateList(candidates)}`,
     );
   }
 
@@ -206,8 +209,10 @@ export async function runReopenWorkflow(
   const currentCycle = getCurrentCycle(metaContent);
   const newCycle = currentCycle + 1;
 
-  // Snapshot history files (handles its own rollback on failure)
-  const snapshots = await snapshotHistoryFiles(taskDir, currentCycle);
+  const isReviewReady = task.status === 'REVIEW_READY';
+
+  // Snapshot history files only for DONE tasks (REVIEW_READY preserves spec/plan)
+  const snapshots = isReviewReady ? [] : await snapshotHistoryFiles(taskDir, currentCycle);
 
   // Update meta (rollback snapshots if meta write fails)
   const updatedMeta = buildReopenedMeta(metaContent, newCycle);

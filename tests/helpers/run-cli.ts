@@ -30,7 +30,7 @@ export async function runCli(args: string[], options: RunCliOptions): Promise<Ru
   const { cliEntrypoint, tsxBinaryPath } = await resolveRepoLocalCliEntrypoint(options.cliRoot);
 
   return await new Promise((resolve, reject) => {
-    const child = spawn(tsxBinaryPath, [cliEntrypoint, ...args], {
+    const child = spawn(process.execPath, [tsxBinaryPath, cliEntrypoint, ...args], {
       cwd: options.cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],

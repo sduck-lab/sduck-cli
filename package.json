@@ -1,17 +1,16 @@
 {
   "name": "@sduck/sduck-cli",
-  "version": "0.2.2",
-  "description": "Spec-Driven Development CLI bootstrap",
+  "version": "0.2.3",
+  "description": "Terminal-first decision briefing harness for coding agents",
   "type": "module",
   "bin": {
     "sduck": "dist/cli.js"
   },
   "files": [
-    "dist",
-    ".sduck/sduck-assets"
+    "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "scripts": {
     "dev": "tsx src/cli.ts",

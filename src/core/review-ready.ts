@@ -2,10 +2,55 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { writeAgentContext } from './agent-context.js';
+import { extractUncheckedChecklistItems, parseCompletedStepNumbers } from './done.js';
 import { getFsEntryKind } from './fs.js';
 import { readCurrentWorkId, throwNoCurrentWorkError } from './state.js';
 import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
+
+function validateStepsComplete(workId: string, metaContent: string): void {
+  const totalMatch = /^ {2}total:[ \t]+(.+)$/m.exec(metaContent);
+  const completedMatch = /^ {2}completed:[ \t]+\[(.*)\]$/m.exec(metaContent);
+
+  if (totalMatch?.[1] === undefined || completedMatch?.[1] === undefined) {
+    throw new Error(
+      `Cannot mark work ${workId} as review ready: meta.yml is missing a valid steps block. Run \`sduck step done <N>\` to complete steps.`,
+    );
+  }
+
+  if (totalMatch[1].trim() === 'null') {
+    throw new Error(
+      `Cannot mark work ${workId} as review ready: no steps defined. Ensure plan.md has valid Step headers and run \`sduck step done <N>\` to complete them.`,
+    );
+  }
+
+  const totalSteps = Number.parseInt(totalMatch[1].trim(), 10);
+  const completedSteps = parseCompletedStepNumbers(completedMatch[1]);
+
+  if (completedSteps.length < totalSteps) {
+    const missing: number[] = [];
+
+    for (let step = 1; step <= totalSteps; step += 1) {
+      if (!completedSteps.includes(step)) {
+        missing.push(step);
+      }
+    }
+
+    throw new Error(
+      `Cannot mark work ${workId} as review ready: steps are incomplete (missing: ${missing.join(', ')}). Run \`sduck step done <N>\` for each missing step.`,
+    );
+  }
+}
+
+function validateSpecChecklist(workId: string, specContent: string): void {
+  const uncheckedItems = extractUncheckedChecklistItems(specContent);
+
+  if (uncheckedItems.length > 0) {
+    throw new Error(
+      `Cannot mark work ${workId} as review ready: spec checklist has ${String(uncheckedItems.length)} unchecked item(s): ${uncheckedItems.slice(0, 5).join('; ')}${uncheckedItems.length > 5 ? '; ...' : ''}`,
+    );
+  }
+}
 
 function renderReviewTemplate(workId: string): string {
   return [
@@ -107,14 +152,6 @@ export async function runReviewReadyWorkflow(
   date = new Date(),
 ): Promise<{ workId: string }> {
   const work = await resolveReviewTarget(projectRoot, target);
-  const reviewPath = join(projectRoot, work.path, 'review.md');
-
-  // Only create review.md if it doesn't exist
-  if ((await getFsEntryKind(reviewPath)) !== 'file') {
-    await writeFile(reviewPath, renderReviewTemplate(work.id), 'utf8');
-  }
-
-  // Update status after file creation succeeds
   const metaPath = join(projectRoot, work.path, 'meta.yml');
 
   if ((await getFsEntryKind(metaPath)) !== 'file') {
@@ -122,6 +159,20 @@ export async function runReviewReadyWorkflow(
   }
 
   const metaContent = await readFile(metaPath, 'utf8');
+  validateStepsComplete(work.id, metaContent);
+
+  const specPath = join(projectRoot, work.path, 'spec.md');
+
+  if ((await getFsEntryKind(specPath)) === 'file') {
+    const specContent = await readFile(specPath, 'utf8');
+    validateSpecChecklist(work.id, specContent);
+  }
+
+  const reviewPath = join(projectRoot, work.path, 'review.md');
+
+  if ((await getFsEntryKind(reviewPath)) !== 'file') {
+    await writeFile(reviewPath, renderReviewTemplate(work.id), 'utf8');
+  }
   const updatedContent = metaContent
     .replace(/^status:\s+.+$/m, 'status: REVIEW_READY')
     .replace(/^updated_at:\s+.+$/m, `updated_at: ${formatUtcTimestamp(date)}`);

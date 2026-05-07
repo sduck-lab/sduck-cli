@@ -1,0 +1,23 @@
+{
+  "baseBranch": "dev",
+  "branch": "work/refactor/default-no-git-start",
+  "createdAt": "2026-04-07T00:52:09Z",
+  "id": "20260407-0052-refactor-default-no-git-start",
+  "planApproved": false,
+  "planPath": ".sduck/sduck-workspace/20260407-0052-refactor-default-no-git-start/plan.md",
+  "reviewPath": ".sduck/sduck-workspace/20260407-0052-refactor-default-no-git-start/review.md",
+  "slug": "default-no-git-start",
+  "specApproved": true,
+  "specPath": ".sduck/sduck-workspace/20260407-0052-refactor-default-no-git-start/spec.md",
+  "status": "SPEC_APPROVED",
+  "steps": {
+    "completed": [],
+    "total": null
+  },
+  "type": "refactor",
+  "updatedAt": "2026-04-07T00:52:09Z",
+  "worktreeAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck-worktrees/20260407-0052-refactor-default-no-git-start",
+  "worktreePath": ".sduck-worktrees/20260407-0052-refactor-default-no-git-start",
+  "workspaceAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck/sduck-workspace/20260407-0052-refactor-default-no-git-start",
+  "workspacePath": ".sduck/sduck-workspace/20260407-0052-refactor-default-no-git-start"
+}

@@ -1,0 +1,23 @@
+{
+  "baseBranch": "sduck-verison-2",
+  "branch": "work/chore/readme-project-overview",
+  "createdAt": "2026-05-07T00:59:04Z",
+  "id": "20260507-0059-chore-readme-project-overview",
+  "planApproved": true,
+  "planPath": ".sduck/sduck-workspace/20260507-0059-chore-readme-project-overview/plan.md",
+  "reviewPath": ".sduck/sduck-workspace/20260507-0059-chore-readme-project-overview/review.md",
+  "slug": "readme-project-overview",
+  "specApproved": true,
+  "specPath": ".sduck/sduck-workspace/20260507-0059-chore-readme-project-overview/spec.md",
+  "status": "REVIEW_READY",
+  "steps": {
+    "completed": [1, 2, 3, 4],
+    "total": 4
+  },
+  "type": "chore",
+  "updatedAt": "2026-05-07T01:11:53Z",
+  "worktreeAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck-worktrees/20260507-0059-chore-readme-project-overview",
+  "worktreePath": ".sduck-worktrees/20260507-0059-chore-readme-project-overview",
+  "workspaceAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck/sduck-workspace/20260507-0059-chore-readme-project-overview",
+  "workspacePath": ".sduck/sduck-workspace/20260507-0059-chore-readme-project-overview"
+}
