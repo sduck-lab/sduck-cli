@@ -1,12 +1,15 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
 import { getProjectRelativeSduckAssetPath } from './project-paths.js';
-import { readCurrentWorkId, throwNoCurrentWorkError, writeCurrentWorkId } from './state.js';
-import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
+import { readCurrentWorkId, writeCurrentWorkId } from './state.js';
+import { assertTransition, refreshAgentContextBestEffort } from './task-lifecycle.js';
+import { markDoneInMeta, parseTaskMeta, patchTaskMeta, type TaskMeta } from './task-meta.js';
+import { resolveTaskTarget } from './task-target.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
+
+import type { WorkspaceTaskSummary } from './workspace.js';
 
 export interface DoneCommandInput {
   target?: string;
@@ -52,19 +55,6 @@ export function filterDoneCandidates(tasks: readonly WorkspaceTaskSummary[]): Do
   return tasks.filter((task) => task.status === 'REVIEW_READY');
 }
 
-export function resolveDoneTargetMatches(
-  tasks: readonly WorkspaceTaskSummary[],
-  target: string | undefined,
-): DoneTarget[] {
-  if (target === undefined || target.trim() === '') {
-    return filterDoneCandidates(tasks);
-  }
-
-  const trimmedTarget = target.trim();
-
-  return tasks.filter((task) => task.id === trimmedTarget || task.slug === trimmedTarget);
-}
-
 export function extractUncheckedChecklistItems(specContent: string): string[] {
   const uncheckedMatches = specContent.matchAll(/^\s*- \[ \] (.+)$/gm);
   return [...uncheckedMatches]
@@ -100,25 +90,13 @@ export function parseCompletedStepNumbers(value: string): number[] {
   });
 }
 
-export function validateDoneMetaContent(metaContent: string): MetaValidationSummary {
-  const totalMatch = /^ {2}total:[ \t]+(.+)$/m.exec(metaContent);
-  const completedMatch = /^ {2}completed:[ \t]+\[(.*)\]$/m.exec(metaContent);
-
-  if (totalMatch?.[1] === undefined || completedMatch?.[1] === undefined) {
-    throw new Error('Task meta is missing a valid steps block.');
-  }
-
-  if (totalMatch[1].trim() === 'null') {
+function validateDoneTaskMeta(meta: TaskMeta): MetaValidationSummary {
+  if (meta.steps.total === null) {
     throw new Error('Task steps are not initialized yet (steps.total is null).');
   }
 
-  const totalSteps = Number.parseInt(totalMatch[1].trim(), 10);
-
-  if (!Number.isInteger(totalSteps) || totalSteps <= 0) {
-    throw new Error(`Task has an invalid steps.total value: ${totalMatch[1].trim()}`);
-  }
-
-  const completedSteps = parseCompletedStepNumbers(completedMatch[1]);
+  const totalSteps = meta.steps.total;
+  const completedSteps = meta.steps.completed;
   const uniqueSteps = new Set(completedSteps);
 
   if (uniqueSteps.size !== completedSteps.length) {
@@ -149,10 +127,8 @@ export function validateDoneMetaContent(metaContent: string): MetaValidationSumm
   };
 }
 
-function updateDoneBlock(metaContent: string, completedAt: string): string {
-  const withStatus = metaContent.replace(/^status:\s+.+$/m, 'status: DONE');
-
-  return withStatus.replace(/^completed_at:\s+.+$/m, `completed_at: ${completedAt}`);
+export function validateDoneMetaContent(metaContent: string): MetaValidationSummary {
+  return validateDoneTaskMeta(parseTaskMeta(metaContent));
 }
 
 function validateDoneTarget(task: DoneTarget): void {
@@ -160,7 +136,9 @@ function validateDoneTarget(task: DoneTarget): void {
     throw new Error(`Task ${task.id} is already DONE.`);
   }
 
-  if (task.status !== 'REVIEW_READY') {
+  try {
+    assertTransition(task.status, 'mark-done', task.id);
+  } catch {
     throw new Error(
       `Task ${task.id} is not in REVIEW_READY state (${task.status}). Run \`sduck review ready\` first.`,
     );
@@ -234,13 +212,9 @@ async function completeTask(
     throw new Error(`Spec checklist is incomplete: ${uncheckedItems.join('; ')}`);
   }
 
-  await writeFile(metaPath, updateDoneBlock(metaContent, completedAt), 'utf8');
+  await patchTaskMeta(metaPath, (meta) => markDoneInMeta(meta, completedAt));
 
-  try {
-    await writeAgentContext(projectRoot, task.id);
-  } catch {
-    // non-fatal
-  }
+  await refreshAgentContextBestEffort(projectRoot, task.id);
 
   // Clear current work if this task was the current one
   const currentWorkId = await readCurrentWorkId(projectRoot);
@@ -299,36 +273,13 @@ export async function loadDoneTargets(
   projectRoot: string,
   input: DoneCommandInput,
 ): Promise<DoneTarget[]> {
-  if (input.target === undefined || input.target.trim() === '') {
-    const currentWorkId = await readCurrentWorkId(projectRoot);
-
-    if (currentWorkId === null) {
-      throwNoCurrentWorkError('done');
-    }
-
-    const tasks = await listWorkspaceTasks(projectRoot);
-    const match = tasks.find((task) => task.id === currentWorkId);
-
-    if (match === undefined) {
-      throw new Error(`Current work ${currentWorkId} not found in workspace.`);
-    }
-
-    return [match];
-  }
-
-  const tasks = await listWorkspaceTasks(projectRoot);
-  const matches = resolveDoneTargetMatches(tasks, input.target);
-
-  if (matches.length === 0) {
-    throw new Error(`No task matches target '${input.target.trim()}'.`);
-  }
-
-  if (matches.length > 1) {
-    const ids = matches.map((task) => task.id).join(', ');
-    throw new Error(`Multiple tasks match '${input.target.trim()}': ${ids}. Use an exact task id.`);
-  }
-
-  return matches;
+  return [
+    await resolveTaskTarget(projectRoot, {
+      commandName: 'done',
+      fallback: 'current',
+      target: input.target,
+    }),
+  ];
 }
 
 export function createTaskCompletedAt(date = new Date()): string {

@@ -6,6 +6,7 @@ import {
   getProjectRelativeSduckWorkspacePath,
   getProjectSduckWorkspacePath,
 } from './project-paths.js';
+import { parseTaskMeta, type TaskMeta } from './task-meta.js';
 
 export interface ActiveTaskSummary {
   id: string;
@@ -45,52 +46,20 @@ export interface ParsedMeta {
   worktreePath?: string;
 }
 
-function setIfNotNull(meta: ParsedMeta, key: keyof ParsedMeta, value: string | undefined): void {
-  if (value !== undefined) {
-    const trimmed = value.trim();
-
-    if (trimmed !== 'null') {
-      meta[key] = trimmed;
-    }
-  }
-}
-
 export function parseMetaText(content: string): ParsedMeta {
-  const createdAtMatch = /^created_at:[ \t]+(.+)$/m.exec(content);
-  const idMatch = /^id:[ \t]+(.+)$/m.exec(content);
-  const slugMatch = /^slug:[ \t]+(.+)$/m.exec(content);
-  const statusMatch = /^status:[ \t]+(.+)$/m.exec(content);
-  const typeMatch = /^type:[ \t]+(.+)$/m.exec(content);
-  const branchMatch = /^branch:[ \t]+(.+)$/m.exec(content);
-  const baseBranchMatch = /^base_branch:[ \t]+(.+)$/m.exec(content);
-  const worktreePathMatch = /^worktree_path:[ \t]+(.+)$/m.exec(content);
-  const updatedAtMatch = /^updated_at:[ \t]+(.+)$/m.exec(content);
-  const parsedMeta: ParsedMeta = {};
+  const meta = parseTaskMeta(content);
+  const parsedMeta: ParsedMeta = {
+    createdAt: meta.createdAt,
+    id: meta.id,
+    slug: meta.slug,
+    status: meta.status,
+    type: meta.type,
+    updatedAt: meta.updatedAt,
+  };
 
-  if (createdAtMatch?.[1] !== undefined) {
-    parsedMeta.createdAt = createdAtMatch[1].trim();
-  }
-
-  if (idMatch?.[1] !== undefined) {
-    parsedMeta.id = idMatch[1].trim();
-  }
-
-  if (slugMatch?.[1] !== undefined) {
-    parsedMeta.slug = slugMatch[1].trim();
-  }
-
-  if (statusMatch?.[1] !== undefined) {
-    parsedMeta.status = statusMatch[1].trim();
-  }
-
-  if (typeMatch?.[1] !== undefined) {
-    parsedMeta.type = typeMatch[1].trim();
-  }
-
-  setIfNotNull(parsedMeta, 'branch', branchMatch?.[1]);
-  setIfNotNull(parsedMeta, 'baseBranch', baseBranchMatch?.[1]);
-  setIfNotNull(parsedMeta, 'worktreePath', worktreePathMatch?.[1]);
-  setIfNotNull(parsedMeta, 'updatedAt', updatedAtMatch?.[1]);
+  if (meta.branch !== null) parsedMeta.branch = meta.branch;
+  if (meta.baseBranch !== null) parsedMeta.baseBranch = meta.baseBranch;
+  if (meta.worktreePath !== null) parsedMeta.worktreePath = meta.worktreePath;
 
   return parsedMeta;
 }
@@ -205,15 +174,19 @@ export async function findActiveTask(projectRoot: string): Promise<ActiveTaskSum
       continue;
     }
 
-    const content = await readFile(metaPath, 'utf8');
-    const statusMatch = /^status:[ \t]+(.+)$/m.exec(content);
-    const status = statusMatch?.[1]?.trim();
+    let meta: TaskMeta;
 
-    if (status !== undefined && ACTIVE_STATUSES.has(status)) {
-      const idMatch = /^id:[ \t]+(.+)$/m.exec(content);
+    try {
+      meta = parseTaskMeta(await readFile(metaPath, 'utf8'));
+    } catch {
+      continue;
+    }
 
+    const status = meta.status;
+
+    if (ACTIVE_STATUSES.has(status)) {
       return {
-        id: idMatch?.[1]?.trim() ?? entry.name,
+        id: meta.id,
         path: relativePath,
         status,
       };

@@ -1,11 +1,13 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
-import { readCurrentWorkId } from './state.js';
-import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
+import { assertTransition, refreshAgentContextBestEffort } from './task-lifecycle.js';
+import { approvePlanInMeta, patchTaskMeta } from './task-meta.js';
+import { resolveTaskTargets } from './task-target.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
+
+import type { WorkspaceTaskSummary } from './workspace.js';
 
 export interface PlanApproveCommandInput {
   target?: string;
@@ -41,21 +43,6 @@ export function filterPlanApprovalCandidates(
   tasks: readonly WorkspaceTaskSummary[],
 ): PlanApproveTarget[] {
   return tasks.filter((task) => task.status === 'SPEC_APPROVED');
-}
-
-export function resolvePlanApprovalCandidates(
-  tasks: readonly WorkspaceTaskSummary[],
-  target: string | undefined,
-): PlanApproveTarget[] {
-  const candidates = filterPlanApprovalCandidates(tasks);
-
-  if (target === undefined || target.trim() === '') {
-    return candidates;
-  }
-
-  const trimmedTarget = target.trim();
-
-  return candidates.filter((task) => task.id === trimmedTarget || task.slug === trimmedTarget);
 }
 
 export function countPlanSteps(planContent: string): number {
@@ -110,23 +97,6 @@ export function validatePlanHasSteps(planContent: string): void {
   }
 }
 
-function updatePlanApprovalBlock(
-  metaContent: string,
-  approvedAt: string,
-  totalSteps: number,
-): string {
-  const withStatus = metaContent.replace(/^status:\s+.+$/m, 'status: IN_PROGRESS');
-  const withPlan = withStatus.replace(
-    /plan:\n {2}approved:\s+false\n {2}approved_at:\s+null/m,
-    `plan:\n  approved: true\n  approved_at: ${approvedAt}`,
-  );
-
-  return withPlan.replace(
-    /steps:\n {2}total:\s+null\n {2}completed:\s+\[\]/m,
-    `steps:\n  total: ${String(totalSteps)}\n  completed: []`,
-  );
-}
-
 export async function approvePlans(
   projectRoot: string,
   tasks: readonly PlanApproveTarget[],
@@ -136,7 +106,9 @@ export async function approvePlans(
   const failed: PlanApproveFailureRow[] = [];
 
   for (const task of tasks) {
-    if (task.status !== 'SPEC_APPROVED') {
+    try {
+      assertTransition(task.status, 'approve-plan', task.id);
+    } catch {
       failed.push({
         note: `task is not awaiting plan approval (${task.status})`,
         taskId: task.id,
@@ -168,18 +140,9 @@ export async function approvePlans(
       continue;
     }
 
-    const updatedMeta = updatePlanApprovalBlock(
-      await readFile(metaPath, 'utf8'),
-      approvedAt,
-      totalSteps,
-    );
-    await writeFile(metaPath, updatedMeta, 'utf8');
+    await patchTaskMeta(metaPath, (meta) => approvePlanInMeta(meta, approvedAt, totalSteps));
 
-    try {
-      await writeAgentContext(projectRoot, task.id);
-    } catch {
-      // non-fatal
-    }
+    await refreshAgentContextBestEffort(projectRoot, task.id);
 
     succeeded.push({ note: 'moved to IN_PROGRESS', steps: totalSteps, taskId: task.id });
   }
@@ -196,21 +159,13 @@ export async function loadPlanApprovalCandidates(
   projectRoot: string,
   input: PlanApproveCommandInput,
 ): Promise<PlanApproveTarget[]> {
-  const tasks = await listWorkspaceTasks(projectRoot);
-
-  if (input.target !== undefined) {
-    return resolvePlanApprovalCandidates(tasks, input.target);
-  }
-
-  // current work fallback
-  const currentWorkId = await readCurrentWorkId(projectRoot);
-
-  if (currentWorkId !== null) {
-    return resolvePlanApprovalCandidates(tasks, currentWorkId);
-  }
-
-  // No current work: return all candidates (original behavior)
-  return resolvePlanApprovalCandidates(tasks, undefined);
+  return await resolveTaskTargets(projectRoot, {
+    allowedStatuses: ['SPEC_APPROVED'],
+    cardinality: 'many',
+    commandName: 'plan approve',
+    fallback: 'current-or-all',
+    target: input.target,
+  });
 }
 
 export function createPlanApprovedAt(date = new Date()): string {

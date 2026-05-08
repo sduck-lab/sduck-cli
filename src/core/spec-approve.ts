@@ -1,11 +1,12 @@
-import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
-import { readCurrentWorkId } from './state.js';
-import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
+import { assertTransition, refreshAgentContextBestEffort } from './task-lifecycle.js';
+import { approveSpecInMeta, patchTaskMeta } from './task-meta.js';
+import { resolveTaskTargets } from './task-target.js';
 import { formatUtcTimestamp } from '../utils/utc-date.js';
+
+import type { WorkspaceTaskSummary } from './workspace.js';
 
 export interface SpecApproveCommandInput {
   target?: string;
@@ -31,42 +32,12 @@ export function filterApprovalCandidates(
   return tasks.filter((task) => task.status === 'PENDING_SPEC_APPROVAL');
 }
 
-export function resolveTargetCandidates(
-  tasks: readonly WorkspaceTaskSummary[],
-  target: string | undefined,
-): SpecApproveTarget[] {
-  const candidates = filterApprovalCandidates(tasks);
-
-  if (target === undefined || target.trim() === '') {
-    return candidates;
-  }
-
-  const trimmedTarget = target.trim();
-
-  return candidates.filter((task) => task.id === trimmedTarget || task.slug === trimmedTarget);
-}
-
 export function validateSpecApprovalTargets(tasks: readonly SpecApproveTarget[]): void {
   if (tasks.length === 0) {
     throw new Error('No approvable spec tasks found.');
   }
 
-  const invalidTask = tasks.find((task) => task.status !== 'PENDING_SPEC_APPROVAL');
-
-  if (invalidTask !== undefined) {
-    throw new Error(
-      `Task ${invalidTask.id} is not awaiting spec approval (${invalidTask.status}).`,
-    );
-  }
-}
-
-function updateSpecApprovalBlock(metaContent: string, approvedAt: string): string {
-  const withStatus = metaContent.replace(/^status:\s+.+$/m, 'status: SPEC_APPROVED');
-
-  return withStatus.replace(
-    /spec:\n {2}approved:\s+false\n {2}approved_at:\s+null/m,
-    `spec:\n  approved: true\n  approved_at: ${approvedAt}`,
-  );
+  for (const task of tasks) assertTransition(task.status, 'approve-spec', task.id);
 }
 
 export async function approveSpecs(
@@ -83,14 +54,9 @@ export async function approveSpecs(
       throw new Error(`Missing meta.yml for task ${task.id}.`);
     }
 
-    const updatedContent = updateSpecApprovalBlock(await readFile(metaPath, 'utf8'), approvedAt);
-    await writeFile(metaPath, updatedContent, 'utf8');
+    await patchTaskMeta(metaPath, (meta) => approveSpecInMeta(meta, approvedAt));
 
-    try {
-      await writeAgentContext(projectRoot, task.id);
-    } catch {
-      // non-fatal
-    }
+    await refreshAgentContextBestEffort(projectRoot, task.id);
   }
 
   return {
@@ -104,21 +70,13 @@ export async function loadSpecApprovalCandidates(
   projectRoot: string,
   input: SpecApproveCommandInput,
 ): Promise<SpecApproveTarget[]> {
-  const tasks = await listWorkspaceTasks(projectRoot);
-
-  if (input.target !== undefined) {
-    return resolveTargetCandidates(tasks, input.target);
-  }
-
-  // current work fallback
-  const currentWorkId = await readCurrentWorkId(projectRoot);
-
-  if (currentWorkId !== null) {
-    return resolveTargetCandidates(tasks, currentWorkId);
-  }
-
-  // No current work: return all candidates (original behavior)
-  return resolveTargetCandidates(tasks, undefined);
+  return await resolveTaskTargets(projectRoot, {
+    allowedStatuses: ['PENDING_SPEC_APPROVAL'],
+    cardinality: 'many',
+    commandName: 'spec approve',
+    fallback: 'current-or-all',
+    target: input.target,
+  });
 }
 
 export function createSpecApprovedAt(date = new Date()): string {

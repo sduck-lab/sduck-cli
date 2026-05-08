@@ -1,9 +1,18 @@
-import { copyFile, readFile, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { writeAgentContext } from './agent-context.js';
 import { ensureDirectory, getFsEntryKind } from './fs.js';
-import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
+import { assertTransition, refreshAgentContextBestEffort } from './task-lifecycle.js';
+import {
+  parseTaskMeta,
+  readTaskMeta,
+  renderTaskMeta,
+  reopenMeta,
+  writeTaskMeta,
+} from './task-meta.js';
+import { resolveTaskTarget } from './task-target.js';
+
+import type { WorkspaceTaskSummary } from './workspace.js';
 
 export interface ReopenCommandInput {
   target?: string;
@@ -17,128 +26,17 @@ export interface ReopenResult {
 }
 
 export function getCurrentCycle(metaContent: string): number {
-  const match = /^cycle:[ \t]+(\d+)$/m.exec(metaContent);
-
-  if (match?.[1] === undefined) {
-    return 1;
-  }
-
-  return Number(match[1]);
+  return parseTaskMeta(metaContent).cycle ?? 1;
 }
 
 export function buildReopenedMeta(metaContent: string, newCycle: number): string {
-  let result = metaContent;
-
-  const isReviewReady = /^status:\s+REVIEW_READY$/m.test(result);
-
-  // Update or insert cycle field
-  if (/^cycle:\s+/m.test(result)) {
-    result = result.replace(/^cycle:\s+.+$/m, `cycle: ${String(newCycle)}`);
-  } else {
-    result = result.replace(/^(status:\s+.+)$/m, `cycle: ${String(newCycle)}\n\n$1`);
-  }
-
-  if (isReviewReady) {
-    // REVIEW_READY → IN_PROGRESS: preserve spec/plan approval and steps
-    result = result.replace(/^status:\s+.+$/m, 'status: IN_PROGRESS');
-  } else {
-    // DONE → full reset
-    result = result.replace(/^status:\s+.+$/m, 'status: PENDING_SPEC_APPROVAL');
-
-    result = result.replace(
-      /spec:\n {2}approved:\s+.+\n {2}approved_at:\s+.+/m,
-      'spec:\n  approved: false\n  approved_at: null',
-    );
-
-    result = result.replace(
-      /plan:\n {2}approved:\s+.+\n {2}approved_at:\s+.+/m,
-      'plan:\n  approved: false\n  approved_at: null',
-    );
-
-    result = result.replace(
-      /steps:\n {2}total:\s+.+\n {2}completed:\s+.+/m,
-      'steps:\n  total: null\n  completed: []',
-    );
-
-    result = result.replace(/^completed_at:\s+.+$/m, 'completed_at: null');
-  }
-
-  return result;
+  return renderTaskMeta(reopenMeta(parseTaskMeta(metaContent), newCycle));
 }
 
 export function filterReopenCandidates(
   tasks: readonly WorkspaceTaskSummary[],
 ): WorkspaceTaskSummary[] {
   return tasks.filter((task) => task.status === 'DONE' || task.status === 'REVIEW_READY');
-}
-
-function formatCandidateList(candidates: readonly WorkspaceTaskSummary[]): string {
-  return candidates
-    .map((task) => `  - ${task.id}${task.slug !== undefined ? ` (${task.slug})` : ''}`)
-    .join('\n');
-}
-
-export function resolveReopenTarget(
-  tasks: readonly WorkspaceTaskSummary[],
-  target?: string,
-): WorkspaceTaskSummary {
-  const candidates = filterReopenCandidates(tasks);
-
-  if (candidates.length === 0) {
-    throw new Error('No DONE or REVIEW_READY tasks found to reopen.');
-  }
-
-  if (target === undefined || target.trim() === '') {
-    if (candidates.length === 1) {
-      const [candidate] = candidates;
-
-      if (candidate === undefined) {
-        throw new Error('No DONE tasks found to reopen.');
-      }
-
-      return candidate;
-    }
-
-    throw new Error(
-      `Multiple reopenable tasks found. Specify a target:\n${formatCandidateList(candidates)}`,
-    );
-  }
-
-  const trimmedTarget = target.trim();
-
-  // id exact match first
-  const idMatch = candidates.filter((task) => task.id === trimmedTarget);
-
-  if (idMatch.length === 1) {
-    const [match] = idMatch;
-
-    if (match === undefined) {
-      throw new Error(`No DONE task found matching '${trimmedTarget}'.`);
-    }
-
-    return match;
-  }
-
-  // slug exact match
-  const slugMatch = candidates.filter((task) => task.slug === trimmedTarget);
-
-  if (slugMatch.length === 1) {
-    const [match] = slugMatch;
-
-    if (match === undefined) {
-      throw new Error(`No DONE task found matching '${trimmedTarget}'.`);
-    }
-
-    return match;
-  }
-
-  if (slugMatch.length > 1) {
-    throw new Error(
-      `Multiple DONE tasks match slug '${trimmedTarget}':\n${formatCandidateList(slugMatch)}`,
-    );
-  }
-
-  throw new Error(`No DONE task found matching '${trimmedTarget}'.`);
 }
 
 export async function snapshotHistoryFiles(
@@ -202,11 +100,12 @@ export async function runReopenWorkflow(
   projectRoot: string,
   task: WorkspaceTaskSummary,
 ): Promise<ReopenResult> {
+  assertTransition(task.status, 'reopen', task.id);
   const taskDir = join(projectRoot, task.path);
   const metaPath = join(taskDir, 'meta.yml');
 
-  const metaContent = await readFile(metaPath, 'utf8');
-  const currentCycle = getCurrentCycle(metaContent);
+  const meta = await readTaskMeta(metaPath);
+  const currentCycle = meta.cycle ?? 1;
   const newCycle = currentCycle + 1;
 
   const isReviewReady = task.status === 'REVIEW_READY';
@@ -214,11 +113,8 @@ export async function runReopenWorkflow(
   // Snapshot history files only for DONE tasks (REVIEW_READY preserves spec/plan)
   const snapshots = isReviewReady ? [] : await snapshotHistoryFiles(taskDir, currentCycle);
 
-  // Update meta (rollback snapshots if meta write fails)
-  const updatedMeta = buildReopenedMeta(metaContent, newCycle);
-
   try {
-    await writeFile(metaPath, updatedMeta, 'utf8');
+    await writeTaskMeta(metaPath, reopenMeta(meta, newCycle));
   } catch (error) {
     // Rollback snapshots
     for (const path of snapshots) {
@@ -232,11 +128,7 @@ export async function runReopenWorkflow(
     throw error;
   }
 
-  try {
-    await writeAgentContext(projectRoot, task.id);
-  } catch {
-    // non-fatal
-  }
+  await refreshAgentContextBestEffort(projectRoot, task.id);
 
   return {
     newCycle,
@@ -250,6 +142,10 @@ export async function loadReopenTarget(
   projectRoot: string,
   input: ReopenCommandInput,
 ): Promise<WorkspaceTaskSummary> {
-  const tasks = await listWorkspaceTasks(projectRoot);
-  return resolveReopenTarget(tasks, input.target);
+  return await resolveTaskTarget(projectRoot, {
+    allowedStatuses: ['DONE', 'REVIEW_READY'],
+    commandName: 'reopen',
+    fallback: 'all',
+    target: input.target,
+  });
 }

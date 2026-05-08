@@ -1,39 +1,17 @@
 import { writeCurrentWorkId } from './state.js';
-import { listWorkspaceTasks, type WorkspaceTaskSummary } from './workspace.js';
+import { resolveTaskTarget } from './task-target.js';
+
+import type { WorkspaceTaskSummary } from './workspace.js';
 
 export async function resolveUseTarget(
   projectRoot: string,
   target: string,
 ): Promise<WorkspaceTaskSummary> {
-  const tasks = await listWorkspaceTasks(projectRoot);
-  const trimmed = target.trim();
-
-  // id exact match first
-  const idMatch = tasks.find((task) => task.id === trimmed);
-
-  if (idMatch !== undefined) {
-    return idMatch;
-  }
-
-  // slug exact match
-  const slugMatches = tasks.filter((task) => task.slug === trimmed);
-
-  if (slugMatches.length === 1) {
-    const match = slugMatches[0];
-
-    if (match !== undefined) {
-      return match;
-    }
-  }
-
-  if (slugMatches.length > 1) {
-    const candidates = slugMatches.map((task) => task.id).join(', ');
-    throw new Error(
-      `Multiple works match slug '${trimmed}': ${candidates}. Use \`sduck use <id>\` to specify.`,
-    );
-  }
-
-  throw new Error(`No work matches '${trimmed}'.`);
+  return await resolveTaskTarget(projectRoot, {
+    commandName: 'use',
+    fallback: 'none',
+    target,
+  });
 }
 
 export async function runUseWorkflow(

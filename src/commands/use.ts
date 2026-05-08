@@ -1,28 +1,14 @@
+import { runCommand, type CommandResult } from './runner.js';
 import { runUseWorkflow } from '../core/use.js';
 
-export interface UseCommandResult {
-  exitCode: number;
-  stderr: string;
-  stdout: string;
-}
+export type UseCommandResult = CommandResult;
 
 export async function runUseCommand(
   target: string,
   projectRoot: string,
 ): Promise<UseCommandResult> {
-  try {
+  return await runCommand(async () => {
     const { workId } = await runUseWorkflow(projectRoot, target);
-
-    return {
-      exitCode: 0,
-      stderr: '',
-      stdout: `현재 작업 전환: ${workId}`,
-    };
-  } catch (error) {
-    return {
-      exitCode: 1,
-      stderr: error instanceof Error ? error.message : 'Unknown use failure.',
-      stdout: '',
-    };
-  }
+    return `현재 작업 전환: ${workId}`;
+  }, 'Unknown use failure.');
 }

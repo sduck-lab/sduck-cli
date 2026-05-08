@@ -1,10 +1,7 @@
+import { runCommand, type CommandResult } from './runner.js';
 import { startTask, type StartTaskOptions } from '../core/start.js';
 
-export interface StartCommandResult {
-  exitCode: number;
-  stderr: string;
-  stdout: string;
-}
+export type StartCommandResult = CommandResult;
 
 export async function runStartCommand(
   type: string,
@@ -12,7 +9,7 @@ export async function runStartCommand(
   projectRoot: string,
   options?: StartTaskOptions,
 ): Promise<StartCommandResult> {
-  try {
+  return await runCommand(async () => {
     const result = await startTask(type, slug, projectRoot, new Date(), options);
     const lines = [
       '작업 디렉토리 생성됨',
@@ -24,16 +21,6 @@ export async function runStartCommand(
       lines.push('', result.gitignoreWarning);
     }
 
-    return {
-      exitCode: 0,
-      stderr: '',
-      stdout: lines.join('\n'),
-    };
-  } catch (error) {
-    return {
-      exitCode: 1,
-      stderr: error instanceof Error ? error.message : 'Unknown start failure.',
-      stdout: '',
-    };
-  }
+    return lines.join('\n');
+  }, 'Unknown start failure.');
 }

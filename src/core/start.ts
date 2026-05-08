@@ -1,7 +1,6 @@
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { writeAgentContext } from './agent-context.js';
 import {
   getBundledAssetsRoot,
   isSupportedTaskType,
@@ -9,17 +8,18 @@ import {
   type SupportedTaskType,
 } from './assets.js';
 import { getFsEntryKind } from './fs.js';
-import { addWorktree, getCurrentBranch } from './git.js';
+import { allocateGitResource } from './git-resource.js';
 import { ensureGitignoreEntries } from './gitignore.js';
 import {
   getProjectRelativeSduckWorkspacePath,
   getProjectSduckArchivePath,
   getProjectSduckHomePath,
   getProjectSduckWorkspacePath,
-  getProjectWorktreePath,
   SDUCK_WORKTREES_DIR,
 } from './project-paths.js';
 import { writeCurrentWorkId } from './state.js';
+import { refreshAgentContextBestEffort } from './task-lifecycle.js';
+import { createInitialTaskMeta, renderTaskMeta } from './task-meta.js';
 import { formatUtcDate, formatUtcTimestamp } from '../utils/utc-date.js';
 
 export interface StartCommandInput {
@@ -117,46 +117,6 @@ export async function resolveUniqueWorkspaceId(
   throw new Error(`Cannot resolve unique workspace id for ${baseId}: too many collisions.`);
 }
 
-export function renderInitialMeta(input: {
-  baseBranch: string | null;
-  branch: string | null;
-  createdAt: string;
-  id: string;
-  slug: string;
-  type: SupportedTaskType;
-  updatedAt: string;
-  worktreePath: string | null;
-}): string {
-  return [
-    `id: ${input.id}`,
-    `type: ${input.type}`,
-    `slug: ${input.slug}`,
-    `created_at: ${input.createdAt}`,
-    `updated_at: ${input.updatedAt}`,
-    '',
-    `branch: ${input.branch ?? 'null'}`,
-    `base_branch: ${input.baseBranch ?? 'null'}`,
-    `worktree_path: ${input.worktreePath ?? 'null'}`,
-    '',
-    'status: PENDING_SPEC_APPROVAL',
-    '',
-    'spec:',
-    '  approved: false',
-    '  approved_at: null',
-    '',
-    'plan:',
-    '  approved: false',
-    '  approved_at: null',
-    '',
-    'steps:',
-    '  total: null',
-    '  completed: []',
-    '',
-    'completed_at: null',
-    '',
-  ].join('\n');
-}
-
 export async function resolveSpecTemplatePath(type: SupportedTaskType): Promise<string> {
   const assetsRoot = await getBundledAssetsRoot();
   return join(assetsRoot, resolveSpecTemplateRelativePath(type));
@@ -206,22 +166,13 @@ export async function startTask(
   await mkdir(workspaceRoot, { recursive: true });
   await mkdir(absoluteWorkspacePath, { recursive: false });
 
-  let branch: string | null = null;
-  let baseBranch: string | null = null;
-  let worktreePath: string | null = null;
+  let gitResource;
 
-  if (options?.noGit !== true) {
-    try {
-      baseBranch = await getCurrentBranch(projectRoot);
-      branch = `work/${rawType}/${slug}`;
-      const absoluteWorktreePath = getProjectWorktreePath(projectRoot, workspaceId);
-      worktreePath = `${SDUCK_WORKTREES_DIR}/${workspaceId}`;
-
-      await addWorktree(absoluteWorktreePath, branch, baseBranch, projectRoot);
-    } catch (error) {
-      await rm(absoluteWorkspacePath, { recursive: true, force: true });
-      throw error;
-    }
+  try {
+    gitResource = await allocateGitResource(projectRoot, workspaceId, rawType, slug, options);
+  } catch (error) {
+    await rm(absoluteWorkspacePath, { recursive: true, force: true });
+    throw error;
   }
 
   const templatePath = await resolveSpecTemplatePath(rawType);
@@ -232,16 +183,18 @@ export async function startTask(
   const specTemplate = await readFile(templatePath, 'utf8');
   const specContent = applyTemplateDefaults(specTemplate, rawType, slug, currentDate);
   const timestamp = formatUtcTimestamp(currentDate);
-  const metaContent = renderInitialMeta({
-    baseBranch,
-    branch,
-    createdAt: timestamp,
-    id: workspaceId,
-    slug,
-    type: rawType,
-    updatedAt: timestamp,
-    worktreePath,
-  });
+  const metaContent = renderTaskMeta(
+    createInitialTaskMeta({
+      baseBranch: gitResource.baseBranch,
+      branch: gitResource.branch,
+      createdAt: timestamp,
+      id: workspaceId,
+      slug,
+      type: rawType,
+      updatedAt: timestamp,
+      worktreePath: gitResource.worktreePath,
+    }),
+  );
 
   await writeFile(join(absoluteWorkspacePath, 'meta.yml'), metaContent, 'utf8');
   await writeFile(join(absoluteWorkspacePath, 'spec.md'), specContent, 'utf8');
@@ -252,11 +205,7 @@ export async function startTask(
   await mkdir(sduckHome, { recursive: true });
   await writeCurrentWorkId(projectRoot, workspaceId, currentDate);
 
-  try {
-    await writeAgentContext(projectRoot, workspaceId);
-  } catch {
-    // non-fatal
-  }
+  await refreshAgentContextBestEffort(projectRoot, workspaceId);
 
   // Update .gitignore (non-fatal)
   const gitignoreResult = await ensureGitignoreEntries(projectRoot, [

@@ -1,3 +1,4 @@
+import { runCommand, type CommandResult } from './runner.js';
 import {
   loadReopenTarget,
   runReopenWorkflow,
@@ -5,11 +6,7 @@ import {
   type ReopenResult,
 } from '../core/reopen.js';
 
-export interface ReopenCommandResult {
-  exitCode: number;
-  stderr: string;
-  stdout: string;
-}
+export type ReopenCommandResult = CommandResult;
 
 function formatSuccess(result: ReopenResult): string {
   const lines = [
@@ -32,20 +29,9 @@ export async function runReopenCommand(
   input: ReopenCommandInput,
   projectRoot: string,
 ): Promise<ReopenCommandResult> {
-  try {
+  return await runCommand(async () => {
     const task = await loadReopenTarget(projectRoot, input);
     const result = await runReopenWorkflow(projectRoot, task);
-
-    return {
-      exitCode: 0,
-      stderr: '',
-      stdout: formatSuccess(result),
-    };
-  } catch (error) {
-    return {
-      exitCode: 1,
-      stderr: error instanceof Error ? error.message : 'Unknown reopen failure.',
-      stdout: '',
-    };
-  }
+    return formatSuccess(result);
+  }, 'Unknown reopen failure.');
 }

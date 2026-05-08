@@ -1,12 +1,11 @@
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { writeAgentContext } from './agent-context.js';
 import { getFsEntryKind } from './fs.js';
+import { describeGitResource } from './git-resource.js';
 import { getProjectRelativeSduckWorkspacePath } from './project-paths.js';
-import { readCurrentWorkId, throwNoCurrentWorkError } from './state.js';
-import { resolveUseTarget } from './use.js';
-import { parseMetaText } from './workspace.js';
+import { readTaskMeta } from './task-meta.js';
+import { resolveTaskTarget } from './task-target.js';
 
 export interface ImplementContext {
   baseBranch: string | null;
@@ -23,20 +22,12 @@ export async function resolveImplementContext(
   projectRoot: string,
   target?: string,
 ): Promise<ImplementContext> {
-  let workId: string;
-
-  if (target !== undefined) {
-    const work = await resolveUseTarget(projectRoot, target);
-    workId = work.id;
-  } else {
-    const currentWorkId = await readCurrentWorkId(projectRoot);
-
-    if (currentWorkId === null) {
-      throwNoCurrentWorkError('implement');
-    }
-
-    workId = currentWorkId;
-  }
+  const work = await resolveTaskTarget(projectRoot, {
+    commandName: 'implement',
+    fallback: 'current',
+    target,
+  });
+  const workId = work.id;
 
   const workspacePath = getProjectRelativeSduckWorkspacePath(workId);
   const absolutePath = join(projectRoot, workspacePath);
@@ -53,8 +44,8 @@ export async function resolveImplementContext(
     throw new Error(`Missing meta.yml for work ${workId}.`);
   }
 
-  const metaContent = await readFile(metaPath, 'utf8');
-  const meta = parseMetaText(metaContent);
+  const meta = await readTaskMeta(metaPath);
+  const gitResource = describeGitResource(projectRoot, meta);
 
   const contextPath = join(absolutePath, 'agent-context.json');
   if ((await getFsEntryKind(contextPath)) !== 'file') {
@@ -62,13 +53,13 @@ export async function resolveImplementContext(
   }
 
   return {
-    baseBranch: meta.baseBranch ?? null,
-    branch: meta.branch ?? null,
+    baseBranch: meta.baseBranch,
+    branch: meta.branch,
     id: workId,
     planPath: join(workspacePath, 'plan.md'),
     specPath: join(workspacePath, 'spec.md'),
-    status: meta.status ?? 'UNKNOWN',
-    worktreePath: meta.worktreePath ?? null,
+    status: meta.status,
+    worktreePath: gitResource.worktreePath,
     workspacePath,
   };
 }
