@@ -59,27 +59,38 @@ export function insertDecision(db: DatabaseSync, taskId: string, draft: DraftDec
   if (decision.confidence < 0 || decision.confidence > 1) {
     throw new Error(`Decision confidence must be between 0 and 1: ${decision.title}`);
   }
-  db.prepare(
-    `INSERT OR REPLACE INTO decisions
+  try {
+    db.prepare(
+      `INSERT INTO decisions
       (id, task_id, title, kind, status, confidence, summary, rationale_json, applies_to_json, avoids_json, source_refs_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    decision.id,
-    decision.taskId,
-    decision.title,
-    decision.kind,
-    decision.status,
-    decision.confidence,
-    decision.summary,
-    encodeJson(decision.rationale),
-    encodeJson(decision.appliesTo),
-    encodeJson(decision.avoids),
-    encodeJson(decision.sourceRefs),
-    decision.createdAt,
-    decision.updatedAt,
-  );
+    ).run(
+      decision.id,
+      decision.taskId,
+      decision.title,
+      decision.kind,
+      decision.status,
+      decision.confidence,
+      decision.summary,
+      encodeJson(decision.rationale),
+      encodeJson(decision.appliesTo),
+      encodeJson(decision.avoids),
+      encodeJson(decision.sourceRefs),
+      decision.createdAt,
+      decision.updatedAt,
+    );
+  } catch (error) {
+    throwDuplicateIdError(error, 'Decision', decision.id);
+  }
   appendEvent(db, { taskId, type: 'DECISION_CREATED', payload: { decisionId: decision.id } });
   return decision;
+}
+
+function throwDuplicateIdError(error: unknown, entityName: string, id: string): never {
+  if (error instanceof Error && /constraint|unique|primary/i.test(error.message)) {
+    throw new Error(`${entityName} id already exists: ${id}`);
+  }
+  throw error;
 }
 
 export function updateDecisionFromAnswer(
@@ -115,6 +126,13 @@ export function listDecisionsByTask(db: DatabaseSync, taskId: string): Decision[
   const rows = db
     .prepare(`SELECT * FROM decisions WHERE task_id = ? ORDER BY created_at ASC`)
     .all(taskId) as unknown as DecisionRow[];
+  return rows.map(mapDecision);
+}
+
+export function listAllDecisions(db: DatabaseSync): Decision[] {
+  const rows = db
+    .prepare(`SELECT * FROM decisions ORDER BY created_at ASC`)
+    .all() as unknown as DecisionRow[];
   return rows.map(mapDecision);
 }
 

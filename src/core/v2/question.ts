@@ -2,7 +2,9 @@ import { insertDecision, updateDecisionFromAnswer } from './decision.js';
 import { appendEvent } from './events.js';
 import { insertEvidence } from './evidence.js';
 import { nextEntityId, nowIso } from './ids.js';
+import { maybeMarkBriefReadyInDb } from './status.js';
 import { decodeJson, encodeJson, openDatabase } from './store.js';
+import { requireMutableCurrentTask } from './task.js';
 
 import type { DraftQuestion, Question } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -48,23 +50,34 @@ export function insertQuestion(db: DatabaseSync, taskId: string, draft: DraftQue
     answer: null,
     createdAt: nowIso(),
   };
-  db.prepare(
-    `INSERT OR REPLACE INTO questions
+  try {
+    db.prepare(
+      `INSERT INTO questions
       (id, task_id, decision_id, text, recommended_answer, rationale_json, options_json, answered, answer, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    question.id,
-    question.taskId,
-    question.decisionId,
-    question.text,
-    question.recommendedAnswer,
-    encodeJson(question.rationale),
-    encodeJson(question.options),
-    0,
-    null,
-    question.createdAt,
-  );
+    ).run(
+      question.id,
+      question.taskId,
+      question.decisionId,
+      question.text,
+      question.recommendedAnswer,
+      encodeJson(question.rationale),
+      encodeJson(question.options),
+      0,
+      null,
+      question.createdAt,
+    );
+  } catch (error) {
+    throwDuplicateIdError(error, 'Question', question.id);
+  }
   return question;
+}
+
+function throwDuplicateIdError(error: unknown, entityName: string, id: string): never {
+  if (error instanceof Error && /constraint|unique|primary/i.test(error.message)) {
+    throw new Error(`${entityName} id already exists: ${id}`);
+  }
+  throw error;
 }
 
 export function listQuestionsByTask(db: DatabaseSync, taskId: string): Question[] {
@@ -97,12 +110,16 @@ export function answerQuestion(
 ): { question: Question; answer: string } {
   const db = openDatabase(projectRoot);
   try {
+    const currentTask = requireMutableCurrentTask(projectRoot, db);
     const question = getQuestion(db, questionId);
     if (question === null) {
       throw new Error(`Question not found: ${questionId}`);
     }
     if (question.answered) {
       throw new Error(`Question is already answered: ${questionId}`);
+    }
+    if (question.taskId !== currentTask.id) {
+      throw new Error(`Question ${questionId} does not belong to current task ${currentTask.id}.`);
     }
     const answer = resolveAnswer(question, input);
     db.prepare(`UPDATE questions SET answered = 1, answer = ? WHERE id = ?`).run(
@@ -144,6 +161,7 @@ export function answerQuestion(
     if (updated === null) {
       throw new Error(`Question not found after answer: ${question.id}`);
     }
+    maybeMarkBriefReadyInDb(db, question.taskId);
     return { question: updated, answer };
   } finally {
     db.close();

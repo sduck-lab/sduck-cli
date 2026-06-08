@@ -66,6 +66,12 @@
 - 에이전트는 프로젝트 루트의 `.sduck/`에서 상태를 읽고, `worktreeAbsolutePath`에 지정된 경로에서 코드를 작성한다
 - 별도의 파일 복사나 동기화 작업이 필요 없다
 
+## File-aware provenance recall
+
+- 수정 예정 파일이 명확하면 구현 전에 `sduck impact <file...> --json`을 실행한다.
+- impact 결과는 prior decision 자동 승인 근거가 아니라 `CARRIED`/`CONFLICT` proposal과 evidence/source ref의 근거로만 사용한다.
+- `matchSource`, `confidence`, `explanation`을 확인해 explicit provenance와 fallback search를 구분한다.
+
 ## 사용자 메모 규칙
 
 사용자가 `spec.md`, `plan.md` 같은 문서의 특정 라인 끝에 `<-` 형식으로 메모를 추가할 수 있다.

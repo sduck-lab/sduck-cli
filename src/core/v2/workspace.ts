@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 
+import { installAgentRails, type AgentRailsInstallResult } from './agent-rails.js';
 import {
   decisionRoot,
   graphifyExportDir,
@@ -11,11 +12,19 @@ import { writeState } from './state.js';
 import { openDatabase } from './store.js';
 
 export interface InitWorkspaceResult {
+  agentRails: AgentRailsInstallResult | null;
   created: string[];
   existing: string[];
 }
 
-export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult {
+export interface InitWorkspaceOptions {
+  agentRails?: boolean;
+}
+
+export function initDecisionWorkspace(
+  projectRoot: string,
+  options: InitWorkspaceOptions = {},
+): InitWorkspaceResult {
   const dirs = [
     decisionRoot(projectRoot),
     markdownTasksDir(projectRoot),
@@ -39,5 +48,6 @@ export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult 
   if (!fs.existsSync(stateFilePath)) {
     writeState(projectRoot, { currentTaskId: null, updatedAt: new Date().toISOString() });
   }
-  return { created, existing };
+  const agentRails = options.agentRails === false ? null : installAgentRails(projectRoot);
+  return { agentRails, created, existing };
 }

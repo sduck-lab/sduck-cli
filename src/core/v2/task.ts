@@ -95,14 +95,39 @@ export function updateTaskScopes(
   ).run(encodeJson(expectedScope), encodeJson(avoidScope), nowIso(), taskId);
 }
 
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return status === 'CLOSED' || status === 'ABANDONED';
+}
+
+export function requireCurrentTaskId(projectRoot: string): string {
+  const taskId = getCurrentTaskId(projectRoot);
+  if (taskId === null) {
+    throw new Error('No current task. Run `sduck work "..."` first.');
+  }
+  return taskId;
+}
+
+export function requireCurrentTask(projectRoot: string, db: DatabaseSync): Task {
+  const taskId = requireCurrentTaskId(projectRoot);
+  const task = getTaskById(db, taskId);
+  if (task === null) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+  return task;
+}
+
+export function requireMutableCurrentTask(projectRoot: string, db: DatabaseSync): Task {
+  const task = requireCurrentTask(projectRoot, db);
+  if (isTerminalTaskStatus(task.status)) {
+    throw new Error(`Cannot mutate a ${task.status} task: ${task.id}`);
+  }
+  return task;
+}
+
 export function setTerminalStatus(projectRoot: string, status: 'CLOSED' | 'ABANDONED'): Task {
   const db = openDatabase(projectRoot);
   try {
-    const taskId = requireCurrentTaskId(projectRoot);
-    const task = getTaskById(db, taskId);
-    if (task === null) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
+    const task = requireMutableCurrentTask(projectRoot, db);
     updateTaskStatus(db, task.id, status);
     appendEvent(db, {
       taskId: task.id,
@@ -113,16 +138,9 @@ export function setTerminalStatus(projectRoot: string, status: 'CLOSED' | 'ABAND
     if (updated === null) {
       throw new Error(`Task not found after update: ${task.id}`);
     }
+    setCurrentTaskId(projectRoot, null);
     return updated;
   } finally {
     db.close();
   }
-}
-
-function requireCurrentTaskId(projectRoot: string): string {
-  const taskId = getCurrentTaskId(projectRoot);
-  if (taskId === null) {
-    throw new Error('No current task. Run `sduck work "..."` first.');
-  }
-  return taskId;
 }

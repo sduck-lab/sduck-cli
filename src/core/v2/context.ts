@@ -11,9 +11,8 @@ import {
   resolveInsideProject,
   toRelativePath,
 } from './paths.js';
-import { getCurrentTaskId } from './state.js';
 import { decodeJson, encodeJson, openDatabase } from './store.js';
-import { getTaskById } from './task.js';
+import { getTaskById, requireCurrentTaskId, requireMutableCurrentTask } from './task.js';
 import { mapTraceRow } from './trace.js';
 
 import type {
@@ -40,6 +39,7 @@ export const GRILL_ME_PROTOCOL = [
   'Do not ask what can be inferred from context.',
   'Provide a recommended answer with rationale.',
   'Separate EXPLICIT, INFERRED, CARRIED, CONFLICT, and OPEN decisions.',
+  'If target files are known, run `sduck impact <file...> --json` before proposing changes.',
   'Submit structured draft with `sduck submit --stdin`.',
 ] as const;
 
@@ -50,6 +50,8 @@ export const GRILL_ME_PROMPT = [
   'For each question, provide a recommended answer and rationale.',
   'If a question can be answered by exploring the codebase, explore the codebase instead and cite evidence/source refs.',
   'Do not ask what can already be inferred from context.',
+  'When target files are known, run `sduck impact <file...> --json` first and cite impact results as evidence.',
+  'Use impact results only as grounds for CARRIED or CONFLICT proposals; never auto-confirm prior decisions.',
   'Classify outcomes as EXPLICIT, INFERRED, CARRIED, CONFLICT, or OPEN decisions.',
   'When the decision tree is sufficiently resolved, submit a structured draft with `sduck submit --stdin`.',
 ].join('\n');
@@ -245,7 +247,7 @@ function listPriorTraces(db: DatabaseSync, taskId: string) {
 export function addContextPath(projectRoot: string, pathOrGlob: string): ContextItem[] {
   const db = openDatabase(projectRoot);
   try {
-    const taskId = requireCurrentTaskId(projectRoot);
+    const taskId = requireMutableCurrentTask(projectRoot, db).id;
     const matches = expandPathOrGlob(projectRoot, pathOrGlob);
     if (matches.length === 0) {
       throw new Error(`No matching files: ${pathOrGlob}`);
@@ -292,12 +294,6 @@ function buildGrillMePrompt(): string {
 
 function buildGrillMeChecklist(): string[] {
   return [...GRILL_ME_CHECKLIST];
-}
-
-function requireCurrentTaskId(projectRoot: string): string {
-  const taskId = getCurrentTaskId(projectRoot);
-  if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
-  return taskId;
 }
 
 function findRelevantFiles(projectRoot: string, description: string): string[] {

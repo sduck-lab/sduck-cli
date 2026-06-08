@@ -2,8 +2,9 @@ import { listDecisionsByTask } from './decision.js';
 import { appendEvent } from './events.js';
 import { listChangedFiles } from './git-diff.js';
 import { nextEntityId, nowIso } from './ids.js';
-import { getCurrentTaskId } from './state.js';
+import { matchPathTarget, normalizePathTargets } from './path-matcher.js';
 import { encodeJson, openDatabase } from './store.js';
+import { requireMutableCurrentTask } from './task.js';
 
 export interface TraceRow {
   id: string;
@@ -16,6 +17,7 @@ export interface TraceRow {
 }
 
 import type { ImplementationTrace, TraceView } from '../../types/index.js';
+import type { DatabaseSync } from 'node:sqlite';
 
 export function createImplementationTrace(
   projectRoot: string,
@@ -23,15 +25,19 @@ export function createImplementationTrace(
 ): TraceView {
   const db = openDatabase(projectRoot);
   try {
-    const taskId = getCurrentTaskId(projectRoot);
-    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    const taskId = requireMutableCurrentTask(projectRoot, db).id;
     const filesChanged = listChangedFiles(projectRoot, options.base);
     const decisions = listDecisionsByTask(db, taskId).filter(
       (decision) => decision.status === 'CONFIRMED',
     );
     const decisionToCodeMap = decisions.map((decision) => {
+      const targets = normalizePathTargets(
+        projectRoot,
+        decision.appliesTo,
+        `Decision ${decision.id} appliesTo`,
+      );
       const matches = filesChanged.filter((file) =>
-        decision.appliesTo.some((target) => file.includes(target)),
+        targets.some((target) => matchPathTarget(file, target) !== null),
       );
       const files = matches.length > 0 ? matches : filesChanged;
       return {
@@ -81,13 +87,27 @@ export function listImplementationTraces(
 ): ImplementationTrace[] {
   const db = openDatabase(projectRoot);
   try {
-    const rows = db
-      .prepare(`SELECT * FROM implementation_traces WHERE task_id = ? ORDER BY created_at ASC`)
-      .all(taskId) as unknown as TraceRow[];
-    return rows.map(mapTraceRow);
+    return listImplementationTracesByTask(db, taskId);
   } finally {
     db.close();
   }
+}
+
+export function listImplementationTracesByTask(
+  db: DatabaseSync,
+  taskId: string,
+): ImplementationTrace[] {
+  const rows = db
+    .prepare(`SELECT * FROM implementation_traces WHERE task_id = ? ORDER BY created_at ASC`)
+    .all(taskId) as unknown as TraceRow[];
+  return rows.map(mapTraceRow);
+}
+
+export function listAllImplementationTraces(db: DatabaseSync): ImplementationTrace[] {
+  const rows = db
+    .prepare(`SELECT * FROM implementation_traces ORDER BY created_at ASC`)
+    .all() as unknown as TraceRow[];
+  return rows.map(mapTraceRow);
 }
 
 export function mapTraceRow(row: TraceRow): ImplementationTrace {

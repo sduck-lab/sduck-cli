@@ -6,9 +6,29 @@ import { dbPath, decisionRoot } from './paths.js';
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 
 const require = createRequire(import.meta.url);
-const { DatabaseSync } = require('node:sqlite') as {
-  DatabaseSync: new (location: string) => DatabaseSyncType;
-};
+let databaseSyncConstructor: (new (location: string) => DatabaseSyncType) | null = null;
+
+function getDatabaseSyncConstructor(): new (location: string) => DatabaseSyncType {
+  if (databaseSyncConstructor !== null) {
+    return databaseSyncConstructor;
+  }
+  try {
+    const sqlite = require('node:sqlite') as {
+      DatabaseSync: new (location: string) => DatabaseSyncType;
+    };
+    databaseSyncConstructor = sqlite.DatabaseSync;
+    return databaseSyncConstructor;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(
+        `sduck v2 requires Node >=22.13 because it uses node:sqlite. Current Node: ${process.version}. ${error.message}`,
+      );
+    }
+    throw new Error(
+      `sduck v2 requires Node >=22.13 because it uses node:sqlite. Current Node: ${process.version}.`,
+    );
+  }
+}
 
 export function encodeJson(value: unknown): string {
   return JSON.stringify(value ?? null);
@@ -27,6 +47,7 @@ export function decodeJson<T>(value: string | null | undefined, fallback: T): T 
 
 export function openDatabase(projectRoot: string): DatabaseSyncType {
   fs.mkdirSync(decisionRoot(projectRoot), { recursive: true });
+  const DatabaseSync = getDatabaseSyncConstructor();
   const db = new DatabaseSync(dbPath(projectRoot));
   ensureSchema(db);
   return db;
@@ -121,4 +142,11 @@ export function ensureSchema(db: DatabaseSyncType): void {
       created_at TEXT NOT NULL
     );
   `);
+}
+
+export function tableExists(db: DatabaseSyncType, tableName: string): boolean {
+  const row = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
+    .get(tableName) as { 1: number } | undefined;
+  return row !== undefined;
 }

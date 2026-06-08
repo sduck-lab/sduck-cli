@@ -22,5 +22,14 @@ export function createTaskId(description: string, date = new Date()): string {
 
 export function nextEntityId(db: DatabaseSync, table: string, prefix: string): string {
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
-  return `${prefix}-${String(row.count + 1).padStart(4, '0')}`;
+  for (let index = row.count + 1; index <= row.count + 10_000; index += 1) {
+    const id = `${prefix}-${String(index).padStart(4, '0')}`;
+    const existing = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id) as
+      | { id: string }
+      | undefined;
+    if (existing === undefined) {
+      return id;
+    }
+  }
+  throw new Error(`Cannot allocate ${prefix} id for ${table}.`);
 }

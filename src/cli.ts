@@ -12,6 +12,7 @@ import {
   runConfirmCommand,
   runContextAddCommand,
   runContextCommand,
+  runImpactCommand,
   runInitCommand,
   runRecallCommand,
   runRememberCommand,
@@ -21,6 +22,7 @@ import {
   runWorkCommand,
 } from './commands/v2/index.js';
 import { CLI_DESCRIPTION, CLI_NAME, CLI_VERSION } from './core/command-metadata.js';
+import { resolveV2ProjectRoot } from './core/v2/project-root.js';
 
 const program = new Command();
 
@@ -32,48 +34,57 @@ function printResult(result: { stdout: string; stderr: string; exitCode: number 
   if (result.exitCode !== 0) process.exitCode = result.exitCode;
 }
 
+async function resolveProjectRoot(): Promise<string> {
+  return await resolveV2ProjectRoot(process.cwd());
+}
+
 program
   .command('init')
   .description('Initialize .decision workspace')
-  .action(() => {
-    printResult(runInitCommand(process.cwd()));
+  .option('--no-agent', 'Do not install or update AGENTS.md agent rails')
+  .action((options: { agent?: boolean }) => {
+    printResult(runInitCommand(process.cwd(), { agentRails: options.agent !== false }));
   });
 
 program
   .command('work <description...>')
   .description('Start a decision briefing task and index context')
-  .action((descriptionParts: string[]) => {
-    printResult(runWorkCommand(process.cwd(), descriptionParts.join(' ')));
+  .action(async (descriptionParts: string[]) => {
+    printResult(runWorkCommand(await resolveProjectRoot(), descriptionParts.join(' ')));
   });
 
 program
   .command('status')
   .description('Show current decision briefing status')
   .option('--json', 'Print machine-readable JSON')
-  .action((options: { json?: boolean }) => {
-    printResult(runStatusCommand(process.cwd(), options.json === true));
+  .action(async (options: { json?: boolean }) => {
+    printResult(runStatusCommand(await resolveProjectRoot(), options.json === true));
   });
 
 const context = program.command('context').description('Show or extend current context pack');
 
-context.option('--json', 'Print machine-readable JSON').action((options: { json?: boolean }) => {
-  printResult(runContextCommand(process.cwd(), options.json === true));
-});
+context
+  .option('--json', 'Print machine-readable JSON')
+  .action(async (options: { json?: boolean }) => {
+    printResult(runContextCommand(await resolveProjectRoot(), options.json === true));
+  });
 
 context
   .command('add <pathOrGlob>')
   .description('Add file/path context to current task')
-  .action((pathOrGlob: string) => {
-    printResult(runContextAddCommand(process.cwd(), pathOrGlob));
+  .action(async (pathOrGlob: string) => {
+    printResult(runContextAddCommand(await resolveProjectRoot(), pathOrGlob));
   });
 
 program
   .command('submit')
   .description('Submit agent-generated JSON or Markdown draft from stdin')
   .option('--stdin', 'Read draft from stdin')
-  .action((options: { stdin?: boolean }) => {
+  .action(async (options: { stdin?: boolean }) => {
     try {
-      printResult(runSubmitCommand(process.cwd(), readStdinIfRequested(options.stdin)));
+      printResult(
+        runSubmitCommand(await resolveProjectRoot(), readStdinIfRequested(options.stdin)),
+      );
     } catch (error) {
       printResult({
         stdout: '',
@@ -87,7 +98,7 @@ program
   .command('ask')
   .description('Ask the next open question')
   .action(async () => {
-    printResult(await runAskCommand(process.cwd()));
+    printResult(await runAskCommand(await resolveProjectRoot()));
   });
 
 program
@@ -95,23 +106,23 @@ program
   .description('Answer a question non-interactively')
   .option('--option <n>', 'Answer with a 1-based option number')
   .option('--text <answer>', 'Answer with free text')
-  .action((questionId: string, options: { option?: string; text?: string }) => {
-    printResult(runAnswerCommand(process.cwd(), questionId, options));
+  .action(async (questionId: string, options: { option?: string; text?: string }) => {
+    printResult(runAnswerCommand(await resolveProjectRoot(), questionId, options));
   });
 
 program
   .command('brief')
   .description('Render the current implementation brief')
   .option('--json', 'Print machine-readable JSON')
-  .action((options: { json?: boolean }) => {
-    printResult(runBriefCommand(process.cwd(), options.json === true));
+  .action(async (options: { json?: boolean }) => {
+    printResult(runBriefCommand(await resolveProjectRoot(), options.json === true));
   });
 
 program
   .command('confirm')
   .description('Confirm the current implementation brief')
-  .action(() => {
-    printResult(runConfirmCommand(process.cwd()));
+  .action(async () => {
+    printResult(runConfirmCommand(await resolveProjectRoot()));
   });
 
 program
@@ -119,36 +130,44 @@ program
   .description('Create implementation trace from git changes')
   .option('--base <ref>', 'Diff base ref')
   .option('--json', 'Print machine-readable JSON')
-  .action((options: { base?: string; json?: boolean }) => {
-    printResult(runTraceCommand(process.cwd(), options));
+  .action(async (options: { base?: string; json?: boolean }) => {
+    printResult(runTraceCommand(await resolveProjectRoot(), options));
+  });
+
+program
+  .command('impact <files...>')
+  .description('Show file-aware decision provenance')
+  .option('--json', 'Print machine-readable JSON')
+  .action(async (files: string[], options: { json?: boolean }) => {
+    printResult(runImpactCommand(await resolveProjectRoot(), files, options.json === true));
   });
 
 program
   .command('remember')
   .description('Export markdown and decision graph artifacts')
-  .action(() => {
-    printResult(runRememberCommand(process.cwd()));
+  .action(async () => {
+    printResult(runRememberCommand(await resolveProjectRoot()));
   });
 
 program
   .command('recall <query...>')
   .description('Search prior decisions and implementation traces')
-  .action((queryParts: string[]) => {
-    printResult(runRecallCommand(process.cwd(), queryParts.join(' ')));
+  .action(async (queryParts: string[]) => {
+    printResult(runRecallCommand(await resolveProjectRoot(), queryParts.join(' ')));
   });
 
 program
   .command('close')
   .description('Close current task')
-  .action(() => {
-    printResult(runCloseCommand(process.cwd()));
+  .action(async () => {
+    printResult(runCloseCommand(await resolveProjectRoot()));
   });
 
 program
   .command('abandon')
   .description('Abandon current task')
-  .action(() => {
-    printResult(runAbandonCommand(process.cwd()));
+  .action(async () => {
+    printResult(runAbandonCommand(await resolveProjectRoot()));
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

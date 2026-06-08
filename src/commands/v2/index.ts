@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { confirmBrief, buildBriefView } from '../../core/v2/brief.js';
 import { addContextPath, buildContextIndex, getContextPack } from '../../core/v2/context.js';
 import { submitDraft } from '../../core/v2/draft.js';
+import { buildImpact } from '../../core/v2/impact.js';
 import { answerQuestion, getNextOpenQuestion } from '../../core/v2/question.js';
 import { recall } from '../../core/v2/recall.js';
 import { remember } from '../../core/v2/remember.js';
@@ -17,6 +18,7 @@ import { promptForQuestionAnswer } from '../../ui/v2/prompts.js';
 import {
   renderBrief,
   renderContextPack,
+  renderImpact,
   renderRecall,
   renderStatus,
   renderTrace,
@@ -24,16 +26,23 @@ import {
 
 import type { CommandResult } from '../../core/v2/result.js';
 
-export function runInitCommand(projectRoot: string): CommandResult {
+export function runInitCommand(
+  projectRoot: string,
+  options: { agentRails?: boolean } = {},
+): CommandResult {
   try {
-    const result = initDecisionWorkspace(projectRoot);
+    const result = initDecisionWorkspace(projectRoot, options);
     return ok(
       [
         'Decision workspace initialized.',
         'Created:',
         ...result.created.map((item) => `  ${item}`),
+        'Agent instructions:',
+        result.agentRails === null
+          ? '  skipped (--no-agent)'
+          : `  ${result.agentRails.action}: ${result.agentRails.path}`,
         'Next:',
-        '  sduck work "작업 설명"',
+        '  Ask your coding agent for work, or run: sduck work "작업 설명"',
       ].join('\n'),
     );
   } catch (error) {
@@ -43,7 +52,7 @@ export function runInitCommand(projectRoot: string): CommandResult {
 
 export function runWorkCommand(projectRoot: string, description: string): CommandResult {
   try {
-    initDecisionWorkspace(projectRoot);
+    initDecisionWorkspace(projectRoot, { agentRails: false });
     const task = createTask(projectRoot, description);
     const contextItems = buildContextIndex(projectRoot, task);
     return ok(
@@ -180,6 +189,20 @@ export function runTraceCommand(
     const traceOptions = options.base === undefined ? {} : { base: options.base };
     const view = createImplementationTrace(projectRoot, traceOptions);
     return ok(options.json === true ? JSON.stringify(view, null, 2) : renderTrace(view));
+  } catch (error) {
+    return fail(formatError(error));
+  }
+}
+
+export function runImpactCommand(
+  projectRoot: string,
+  files: string[],
+  asJson: boolean,
+): CommandResult {
+  try {
+    if (files.length === 0) return fail('Provide at least one file for impact analysis.');
+    const result = buildImpact(projectRoot, files);
+    return ok(asJson ? JSON.stringify(result, null, 2) : renderImpact(result));
   } catch (error) {
     return fail(formatError(error));
   }

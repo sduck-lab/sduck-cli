@@ -12,7 +12,7 @@ The current public CLI is the v2 `.decision` workflow. The source of truth is `.
 - npm
 - A git work tree for `sduck trace`
 
-Node `>=22.13` is required because the v2 store uses Node's built-in SQLite support.
+Node `>=22.13` is required because the v2 store uses Node's built-in SQLite support (`node:sqlite`). Database-backed commands fail fast with a Node version error on unsupported runtimes; release validation runs on Node 22.13+.
 
 ## Installation and local usage
 
@@ -35,48 +35,55 @@ sduck --help
 ## Quick start
 
 ```bash
-# 1) Create the decision workspace in the current project
+# 1) Create the decision workspace and install agent rails
 sduck init
 
-# 2) Start a decision briefing task
+# 2) Ask your coding agent naturally
+# "add payment retry support"
+
+# The installed AGENTS.md rails tell the agent to use the workflow below.
+
+# 3) Start a decision briefing task, if the agent did not start one yet
 sduck work "add payment retry support"
 
-# 3) Show the context pack for the coding agent
+# 4) Show the context pack for the coding agent
 sduck context
 
-# 4) Let the agent submit decisions, questions, evidence, and scope
+# 5) Let the agent submit decisions, questions, evidence, and scope
 sduck submit --stdin < draft.json
 
-# 5) Resolve open questions, if any
+# 6) Resolve open questions, if any
 sduck ask
 sduck answer QUESTION-1 --option 1
 # or
 sduck answer QUESTION-1 --text "Use exponential backoff with jitter"
 
-# 6) Review and confirm the implementation brief
+# 7) Review and confirm the implementation brief
 sduck brief
 sduck confirm
 
-# 7) Implement with your coding agent, then record what changed
+# 8) Implement with your coding agent, then record what changed
 sduck trace
 sduck remember
 
-# 8) Reuse prior decisions later
+# 9) Reuse prior decisions later
 sduck recall "payment retry"
 
-# 9) Finish or abandon the current task
+# 10) Finish or abandon the current task
 sduck close
 # sduck abandon
 ```
 
+`sduck init` also installs a sduck-managed block in repo-local `AGENTS.md` by default. Coding agents that read `AGENTS.md` can then discover the expected rails automatically: check status/context, run `impact` before editing known files, submit drafts, resolve questions, confirm briefs, trace/remember, and close work. If you only want the `.decision` store, run `sduck init --no-agent`.
+
 ## How the workflow works
 
-1. **Initialize**: `sduck init` creates `.decision/`, the SQLite database, export directories, and `state.json`.
+1. **Initialize**: `sduck init` creates `.decision/`, the SQLite database, export directories, and `state.json` in the current directory.
 2. **Start work**: `sduck work "..."` creates the current task and builds a lightweight context pack from the project.
 3. **Give context to the agent**: `sduck context` prints relevant files, prior decisions, prior implementation traces, the grill-me protocol, and the draft schema.
 4. **Clarify decisions**: the agent explores the codebase first, asks the user only when needed, and submits a structured draft with `sduck submit --stdin`.
 5. **Answer questions**: `sduck ask` shows the next unresolved question; `sduck answer` records the user's answer and promotes it to explicit decision evidence.
-6. **Confirm the brief**: `sduck brief` renders the implementation brief; `sduck confirm` snapshots it and marks the task as confirmed.
+6. **Confirm the brief**: `sduck brief` renders the implementation brief; `sduck confirm` snapshots it and marks the task as confirmed. Open questions must be answered before confirmation.
 7. **Trace implementation**: after code changes, `sduck trace` reads git changes and maps confirmed decisions to changed files where possible.
 8. **Remember**: `sduck remember` exports task, decision, and implementation memory for future `sduck recall` searches.
 
@@ -99,14 +106,17 @@ This keeps the conversation terminal-first while still producing durable decisio
 ### Workspace and task
 
 ```bash
-sduck init
+sduck init [--no-agent]
 sduck work "<task description>"
 sduck status [--json]
 ```
 
-- `init` initializes `.decision/` in the current project.
+- `init` initializes `.decision/` in the current project and installs/updates a sduck-managed `AGENTS.md` rails block by default.
+- `init --no-agent` initializes `.decision/` without creating or updating `AGENTS.md`.
 - `work` starts a new decision briefing task and indexes lightweight context.
 - `status` shows the active task and counts for context items, questions, decisions, brief snapshots, traces, and exports.
+
+Except for `init`, v2 commands resolve the project root before reading or writing `.decision`. Running `status`, `context`, `submit`, `trace`, `remember`, `impact`, or lifecycle commands from a nested directory uses the root `.decision` store instead of creating a second workspace. Git worktree checkouts are normalized to the real project root where possible.
 
 ### Context
 
@@ -139,7 +149,7 @@ sduck confirm
 ```
 
 - `brief` renders grouped decisions, open questions, evidence, expected scope, and avoid scope.
-- `confirm` snapshots the brief and marks the task `CONFIRMED`.
+- `confirm` snapshots the brief and marks the task `CONFIRMED`. It fails while unresolved questions remain.
 
 ### Implementation memory
 
@@ -162,6 +172,7 @@ sduck abandon
 
 - `close` marks the current task `CLOSED`.
 - `abandon` marks it `ABANDONED`.
+- Both commands clear `.decision/state.json`'s current task pointer. `CLOSED` and `ABANDONED` tasks are terminal and immutable; mutation commands such as `submit`, `context add`, `answer`, `trace`, `remember`, and `confirm` require a mutable current task.
 
 ## Draft input
 
@@ -173,6 +184,7 @@ sduck abandon
   "taskId": "TASK-20260507-payment-retry",
   "decisions": [
     {
+      "id": "DEC-payment-retry-policy",
       "title": "Retry policy",
       "kind": "INFERRED",
       "confidence": 0.8,
@@ -203,6 +215,41 @@ sduck abandon
   "avoidScope": ["Changing payment provider contracts"]
 }
 ```
+
+User-supplied `decisions[].id`, `questions[].id`, and `evidence[].id` values are stable global ids. Reusing an id is a conflict and never overwrites an existing row, even from another task. Omit ids if you want `sduck` to allocate them.
+
+Path target fields such as `decisions[].appliesTo`, `decisions[].avoids`, implementation plan target files, and trace mappings use shared matching semantics:
+
+- exact path: `src/payments/client.ts`
+- directory prefix: `src/payments`
+- glob subtree: `src/payments/**`
+
+Overly broad targets such as `**` or `src/**` and path traversal outside the project are ignored or rejected to avoid false provenance matches.
+
+## Agent rails installed by init
+
+By default, `sduck init` creates or updates `AGENTS.md` with a managed block:
+
+```markdown
+<!-- sduck:v2-agent-rails:begin -->
+
+...
+
+<!-- sduck:v2-agent-rails:end -->
+```
+
+Only the content inside that marker pair is managed by sduck. Existing content outside the block is preserved, and repeated `sduck init` calls update the same block instead of duplicating it.
+
+The rails tell coding agents to:
+
+- check `sduck status` and start work if needed;
+- read `sduck context --json` before planning edits;
+- run `sduck impact <file...> --json` before editing known target files;
+- submit decision/question/evidence drafts with `sduck submit --stdin`;
+- resolve open questions before `sduck confirm` and before implementation;
+- run `sduck trace`, `sduck remember`, and `sduck close` after implementation.
+
+This makes the intended user experience: initialize once, then ask your coding agent for work in natural language. The agent should operate the CLI rails and summarize the important checkpoints.
 
 It also accepts Markdown containing a canonical draft block:
 
@@ -243,6 +290,8 @@ The schema is intentionally small:
       decision-graph.json
 ```
 
+`AGENTS.md` is not part of `.decision/`; it is repo-local agent instruction. sduck only manages the marked block described above.
+
 - `.decision/db.sqlite` stores tasks, decisions, questions, evidence, context items, brief snapshots, implementation traces, and events.
 - `.decision/state.json` tracks the active task.
 - `.decision/exports/markdown/*` contains generated Markdown memory.
@@ -252,7 +301,7 @@ Graphify is not required at runtime. `sduck` can read existing `graphify-out/GRA
 
 ## Concepts
 
-- **Task**: the current unit of work. Status values are `OPEN`, `BRIEF_READY`, `CONFIRMED`, `CLOSED`, and `ABANDONED`.
+- **Task**: the current unit of work. Status values are `OPEN`, `BRIEF_READY`, `CONFIRMED`, `CLOSED`, and `ABANDONED`. `CLOSED` and `ABANDONED` are terminal.
 - **Decision**: an implementation choice. Decision kinds are `EXPLICIT`, `INFERRED`, `CARRIED`, `CONFLICT`, and `OPEN`.
 - **Question**: an unresolved point for the user. Questions can include options and a recommended answer.
 - **Evidence**: a cited reason for a decision or question, such as source code, prior decisions, implementation traces, user answers, discovery notes, or Graphify artifacts.
@@ -271,6 +320,8 @@ npm run test:unit
 npm run test:e2e
 npm run test
 npm run build
+node dist/cli.js --help
+node dist/cli.js --version
 ```
 
 Run a single test file with Vitest:
@@ -298,6 +349,7 @@ The CLI layer is intentionally thin: it parses arguments, delegates to core func
 ## Limitations and notes
 
 - `sduck trace` requires a git work tree and depends on git status/diff output.
+- The fully automatic agent UX depends on your coding agent reading repo-local `AGENTS.md` instructions.
 - Context discovery is lightweight filename/path keyword matching, not AST indexing or vector search.
 - `context add` resolves paths inside the project and rejects paths outside the project root.
 - Graphify is optional; `sduck` only reads existing Graphify output when it is already present.

@@ -2,11 +2,12 @@ import { insertDecision } from './decision.js';
 import { appendEvent } from './events.js';
 import { insertEvidence } from './evidence.js';
 import { insertQuestion } from './question.js';
-import { getCurrentTaskId } from './state.js';
+import { maybeMarkBriefReadyInDb } from './status.js';
 import { openDatabase } from './store.js';
-import { updateTaskScopes } from './task.js';
+import { requireMutableCurrentTask, updateTaskScopes } from './task.js';
 
 import type { SduckDraft } from '../../types/index.js';
+import type { DatabaseSync } from 'node:sqlite';
 
 export interface SubmitDraftResult {
   taskId: string;
@@ -30,8 +31,8 @@ export function parseDraftInput(content: string): unknown {
 export function submitDraft(projectRoot: string, content: string): SubmitDraftResult {
   const db = openDatabase(projectRoot);
   try {
-    const currentTaskId = getCurrentTaskId(projectRoot);
-    if (currentTaskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    const currentTask = requireMutableCurrentTask(projectRoot, db);
+    const currentTaskId = currentTask.id;
     const draft = validateDraft(parseDraftInput(content));
     const taskId = draft.taskId ?? currentTaskId;
     if (taskId !== currentTaskId) {
@@ -40,6 +41,12 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
     const decisions = draft.decisions ?? [];
     const questions = draft.questions ?? [];
     const evidence = draft.evidence ?? [];
+    assertUniqueDraftIds(decisions, 'decision');
+    assertUniqueDraftIds(questions, 'question');
+    assertUniqueDraftIds(evidence, 'evidence');
+    assertIdsDoNotExist(db, 'decisions', idsFrom(decisions), 'Decision');
+    assertIdsDoNotExist(db, 'questions', idsFrom(questions), 'Question');
+    assertIdsDoNotExist(db, 'evidence', idsFrom(evidence), 'Evidence');
     for (const decision of decisions) insertDecision(db, taskId, decision);
     for (const question of questions) insertQuestion(db, taskId, question);
     for (const item of evidence) insertEvidence(db, taskId, item);
@@ -55,6 +62,7 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
         avoidScope: draft.avoidScope ?? [],
       },
     });
+    maybeMarkBriefReadyInDb(db, taskId);
     return {
       taskId,
       decisions: decisions.length,
@@ -63,6 +71,36 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
     };
   } finally {
     db.close();
+  }
+}
+
+function idsFrom(items: readonly { id?: string }[]): string[] {
+  return items.flatMap((item) => (item.id === undefined ? [] : [item.id]));
+}
+
+function assertUniqueDraftIds(items: readonly { id?: string }[], entityName: string): void {
+  const seen = new Set<string>();
+  for (const id of idsFrom(items)) {
+    if (seen.has(id)) {
+      throw new Error(`Duplicate ${entityName} id in draft: ${id}`);
+    }
+    seen.add(id);
+  }
+}
+
+function assertIdsDoNotExist(
+  db: DatabaseSync,
+  table: 'decisions' | 'questions' | 'evidence',
+  ids: readonly string[],
+  entityName: string,
+): void {
+  for (const id of ids) {
+    const existing = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id) as
+      | { id: string }
+      | undefined;
+    if (existing !== undefined) {
+      throw new Error(`${entityName} id already exists: ${id}`);
+    }
   }
 }
 

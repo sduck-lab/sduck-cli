@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 export interface RunCliResult {
   exitCode: number;
@@ -11,16 +11,34 @@ export interface RunCliResult {
 export interface RunCliOptions {
   cliRoot: string;
   cwd: string;
+  input?: string;
 }
 
-async function resolveRepoLocalCliEntrypoint(
+async function resolveRepoLocalTsxBinary(cliRoot: string): Promise<string> {
+  const tsxBinaryName = process.platform === 'win32' ? 'tsx.cmd' : 'tsx';
+  let currentDir = cliRoot;
+
+  for (;;) {
+    const candidate = join(currentDir, 'node_modules', '.bin', tsxBinaryName);
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      const parentDir = dirname(currentDir);
+      if (parentDir === currentDir) {
+        throw new Error(`Could not find ${tsxBinaryName} from ${cliRoot}`);
+      }
+      currentDir = parentDir;
+    }
+  }
+}
+
+export async function resolveRepoLocalCliEntrypoint(
   cliRoot: string,
 ): Promise<{ cliEntrypoint: string; tsxBinaryPath: string }> {
-  const tsxBinaryName = process.platform === 'win32' ? 'tsx.cmd' : 'tsx';
-  const tsxBinaryPath = join(cliRoot, 'node_modules', '.bin', tsxBinaryName);
   const cliEntrypoint = join(cliRoot, 'src', 'cli.ts');
+  const tsxBinaryPath = await resolveRepoLocalTsxBinary(cliRoot);
 
-  await access(tsxBinaryPath);
   await access(cliEntrypoint);
 
   return { cliEntrypoint, tsxBinaryPath };
@@ -33,8 +51,14 @@ export async function runCli(args: string[], options: RunCliOptions): Promise<Ru
     const child = spawn(process.execPath, [tsxBinaryPath, cliEntrypoint, ...args], {
       cwd: options.cwd,
       env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
+
+    if (options.input !== undefined) {
+      child.stdin.end(options.input);
+    } else {
+      child.stdin.end();
+    }
 
     let stdout = '';
     let stderr = '';

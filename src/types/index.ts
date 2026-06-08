@@ -213,3 +213,62 @@ export interface RecallResult {
   decisions: Decision[];
   traces: ImplementationTrace[];
 }
+
+export type ImpactMatchSource =
+  | 'decision.appliesTo'
+  | 'decision.avoids'
+  | 'implementation_plan.targetFiles'
+  | 'implementation_plan.step.targetFiles'
+  | 'implementation_trace.filesChanged'
+  | 'implementation_trace.decisionToCodeMap'
+  | 'fts_fallback';
+
+export type ImpactEntityType =
+  | 'decision'
+  | 'avoid_warning'
+  | 'implementation_plan'
+  | 'implementation_trace'
+  | 'provenance'
+  | 'fallback';
+
+export interface ImplementationPlanStep {
+  title?: string;
+  summary?: string;
+  targetFiles?: string[];
+}
+
+export interface ImplementationPlan {
+  id: string;
+  taskId: string;
+  title: string;
+  summary: string;
+  targetFiles: string[];
+  steps: ImplementationPlanStep[];
+  createdAt: string;
+}
+
+export interface ImpactItem {
+  file: string;
+  entityType: ImpactEntityType;
+  entityId: string;
+  taskId: string;
+  decisionId?: string;
+  traceId?: string;
+  planId?: string;
+  stepId?: string;
+  title: string;
+  summary: string;
+  matchSource: ImpactMatchSource;
+  confidence: number;
+  explanation: string;
+}
+
+export interface ImpactResult {
+  files: string[];
+  directDecisions: ImpactItem[];
+  avoidWarnings: ImpactItem[];
+  plans: ImpactItem[];
+  traces: ImpactItem[];
+  provenance: ImpactItem[];
+  fallbackSearch: ImpactItem[];
+}

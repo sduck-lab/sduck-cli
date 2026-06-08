@@ -3,6 +3,8 @@ import { renderBriefMarkdown } from '../../core/v2/brief.js';
 import type {
   BriefView,
   ContextPack,
+  ImpactItem,
+  ImpactResult,
   RecallResult,
   StatusView,
   TraceView,
@@ -78,6 +80,43 @@ export function renderTrace(view: TraceView): string {
     lines.push(`  - ${map.decisionId}: ${map.files.join(', ') || 'none'}`);
   }
   return lines.join('\n');
+}
+
+export function renderImpact(result: ImpactResult): string {
+  const lines: string[] = [];
+  for (const file of result.files) {
+    if (lines.length > 0) lines.push('');
+    lines.push(`Impact for ${file}`, '');
+    appendImpactSection(lines, 'Direct decisions', result.directDecisions, file);
+    appendImpactSection(lines, 'Avoid warnings', result.avoidWarnings, file);
+    appendImpactSection(lines, 'Related plans', result.plans, file);
+    appendImpactSection(lines, 'Historical traces', result.traces, file);
+    appendImpactSection(lines, 'Provenance', result.provenance, file);
+    appendImpactSection(lines, 'Fallback search', result.fallbackSearch, file);
+  }
+  return lines.join('\n');
+}
+
+function appendImpactSection(
+  lines: string[],
+  title: string,
+  items: ImpactItem[],
+  file: string,
+): void {
+  lines.push(`${title}:`);
+  const matchingItems = items.filter((item) => item.file === file);
+  if (matchingItems.length === 0) {
+    lines.push('  - none', '');
+    return;
+  }
+  for (const item of matchingItems) {
+    lines.push(
+      `  - ${item.entityId} [${item.matchSource}, ${item.confidence.toFixed(2)}] ${item.title}`,
+    );
+    if (item.summary.trim() !== '') lines.push(`    ${item.summary}`);
+    lines.push(`    ${item.explanation}`);
+  }
+  lines.push('');
 }
 
 export function renderRecall(result: RecallResult): string {

@@ -5,7 +5,7 @@ import { nextEntityId, nowIso } from './ids.js';
 import { listQuestionsByTask } from './question.js';
 import { getCurrentTaskId } from './state.js';
 import { encodeJson, openDatabase } from './store.js';
-import { getTaskById, updateTaskStatus } from './task.js';
+import { getTaskById, requireMutableCurrentTask, updateTaskStatus } from './task.js';
 
 import type { BriefSnapshot, BriefView, DecisionKind } from '../../types/index.js';
 
@@ -75,9 +75,16 @@ export function renderBriefMarkdown(view: BriefView): string {
 export function confirmBrief(projectRoot: string): BriefSnapshot {
   const db = openDatabase(projectRoot);
   try {
+    requireMutableCurrentTask(projectRoot, db);
     const view = buildBriefView(projectRoot);
-    if (view.task.status === 'CLOSED' || view.task.status === 'ABANDONED') {
-      throw new Error(`Cannot confirm a ${view.task.status} task.`);
+    if (view.openQuestionCount > 0) {
+      throw new Error(
+        'Cannot confirm brief while questions remain open. Run `sduck ask` and `sduck answer` first.',
+      );
+    }
+    const hasDecision = Object.values(view.decisions).some((decisions) => decisions.length > 0);
+    if (!hasDecision) {
+      throw new Error('Cannot confirm brief without decisions. Submit a draft first.');
     }
     const snapshot: BriefSnapshot = {
       id: nextEntityId(db, 'brief_snapshots', 'BRF'),

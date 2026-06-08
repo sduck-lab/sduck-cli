@@ -64,28 +64,32 @@ export function buildStatusView(projectRoot: string): StatusView {
   }
 }
 
-export function maybeMarkBriefReady(projectRoot: string): void {
+export function maybeMarkBriefReady(projectRoot: string, taskIdOverride?: string): void {
   const db = openDatabase(projectRoot);
   try {
-    const taskId = getCurrentTaskId(projectRoot);
+    const taskId = taskIdOverride ?? getCurrentTaskId(projectRoot);
     if (taskId === null) return;
-    const task = getTaskById(db, taskId);
-    if (task?.status !== 'OPEN') return;
-    const openQuestions = scalarCount(
-      db,
-      `SELECT COUNT(*) AS count FROM questions WHERE task_id = ? AND answered = 0`,
-      taskId,
-    );
-    const decisions = scalarCount(
-      db,
-      `SELECT COUNT(*) AS count FROM decisions WHERE task_id = ?`,
-      taskId,
-    );
-    if (openQuestions === 0 && decisions > 0) {
-      updateTaskStatus(db, taskId, 'BRIEF_READY');
-    }
+    maybeMarkBriefReadyInDb(db, taskId);
   } finally {
     db.close();
+  }
+}
+
+export function maybeMarkBriefReadyInDb(db: DatabaseSync, taskId: string): void {
+  const task = getTaskById(db, taskId);
+  if (task?.status !== 'OPEN') return;
+  const openQuestions = scalarCount(
+    db,
+    `SELECT COUNT(*) AS count FROM questions WHERE task_id = ? AND answered = 0`,
+    taskId,
+  );
+  const decisions = scalarCount(
+    db,
+    `SELECT COUNT(*) AS count FROM decisions WHERE task_id = ?`,
+    taskId,
+  );
+  if (openQuestions === 0 && decisions > 0) {
+    updateTaskStatus(db, taskId, 'BRIEF_READY');
   }
 }
 

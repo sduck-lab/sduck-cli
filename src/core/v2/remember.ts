@@ -11,9 +11,8 @@ import {
   markdownImplementationsDir,
   markdownTasksDir,
 } from './paths.js';
-import { getCurrentTaskId } from './state.js';
 import { openDatabase } from './store.js';
-import { getTaskById } from './task.js';
+import { requireMutableCurrentTask } from './task.js';
 import { listImplementationTraces } from './trace.js';
 
 import type { Decision, Evidence, ImplementationTrace, Task } from '../../types/index.js';
@@ -25,10 +24,7 @@ export interface RememberResult {
 export function remember(projectRoot: string): RememberResult {
   const db = openDatabase(projectRoot);
   try {
-    const taskId = getCurrentTaskId(projectRoot);
-    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
-    const task = getTaskById(db, taskId);
-    if (task === null) throw new Error(`Task not found: ${taskId}`);
+    const task = requireMutableCurrentTask(projectRoot, db);
     const decisions = listDecisionsByTask(db, task.id);
     const evidence = listEvidenceByTask(db, task.id);
     const traces = listImplementationTraces(projectRoot, task.id);

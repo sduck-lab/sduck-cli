@@ -41,20 +41,31 @@ export function insertEvidence(db: DatabaseSync, taskId: string, draft: DraftEvi
   if (evidence.confidence < 0 || evidence.confidence > 1) {
     throw new Error(`Evidence confidence must be between 0 and 1: ${evidence.sourceRef}`);
   }
-  db.prepare(
-    `INSERT OR REPLACE INTO evidence (id, task_id, decision_id, source_type, source_ref, summary, confidence, created_at)
+  try {
+    db.prepare(
+      `INSERT INTO evidence (id, task_id, decision_id, source_type, source_ref, summary, confidence, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    evidence.id,
-    evidence.taskId,
-    evidence.decisionId,
-    evidence.sourceType,
-    evidence.sourceRef,
-    evidence.summary,
-    evidence.confidence,
-    evidence.createdAt,
-  );
+    ).run(
+      evidence.id,
+      evidence.taskId,
+      evidence.decisionId,
+      evidence.sourceType,
+      evidence.sourceRef,
+      evidence.summary,
+      evidence.confidence,
+      evidence.createdAt,
+    );
+  } catch (error) {
+    throwDuplicateIdError(error, 'Evidence', evidence.id);
+  }
   return evidence;
+}
+
+function throwDuplicateIdError(error: unknown, entityName: string, id: string): never {
+  if (error instanceof Error && /constraint|unique|primary/i.test(error.message)) {
+    throw new Error(`${entityName} id already exists: ${id}`);
+  }
+  throw error;
 }
 
 export function listEvidenceByTask(db: DatabaseSync, taskId: string): Evidence[] {
