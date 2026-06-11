@@ -1,0 +1,23 @@
+{
+  "baseBranch": "sduck-verison-2",
+  "branch": "work/feature/decision-driven-sdd-gates",
+  "createdAt": "2026-06-04T05:59:58Z",
+  "id": "20260604-0559-feature-decision-driven-sdd-gates",
+  "planApproved": true,
+  "planPath": ".sduck/sduck-workspace/20260604-0559-feature-decision-driven-sdd-gates/plan.md",
+  "reviewPath": ".sduck/sduck-workspace/20260604-0559-feature-decision-driven-sdd-gates/review.md",
+  "slug": "decision-driven-sdd-gates",
+  "specApproved": true,
+  "specPath": ".sduck/sduck-workspace/20260604-0559-feature-decision-driven-sdd-gates/spec.md",
+  "status": "REVIEW_READY",
+  "steps": {
+    "completed": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "total": 9
+  },
+  "type": "feature",
+  "updatedAt": "2026-06-05T04:03:23Z",
+  "worktreeAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck-worktrees/20260604-0559-feature-decision-driven-sdd-gates",
+  "worktreePath": ".sduck-worktrees/20260604-0559-feature-decision-driven-sdd-gates",
+  "workspaceAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck/sduck-workspace/20260604-0559-feature-decision-driven-sdd-gates",
+  "workspacePath": ".sduck/sduck-workspace/20260604-0559-feature-decision-driven-sdd-gates"
+}
