@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
+import { getBundledAssetsRoot } from './assets.js';
 import { getFsEntryKind, type FsEntryKind } from './fs.js';
 
 export const CLAUDE_CODE_HOOK_SETTINGS_PATH = join('.claude', 'settings.json');
@@ -140,19 +140,14 @@ function renderManagedBlock(lines: string[]): string {
 }
 
 async function getAgentRulesAssetRoot(): Promise<string> {
-  const currentDirectoryPath = dirname(fileURLToPath(import.meta.url));
-  const candidatePaths = [
-    join(currentDirectoryPath, '..', '..', '.sduck', 'sduck-assets', 'agent-rules'),
-    join(currentDirectoryPath, '..', '.sduck', 'sduck-assets', 'agent-rules'),
-  ];
+  const assetRoot = await getBundledAssetsRoot();
+  const agentRulesRoot = join(assetRoot, 'agent-rules');
 
-  for (const candidatePath of candidatePaths) {
-    if ((await getFsEntryKind(candidatePath)) === 'directory') {
-      return candidatePath;
-    }
+  if ((await getFsEntryKind(agentRulesRoot)) !== 'directory') {
+    throw new Error('Unable to locate bundled sduck agent rule assets.');
   }
 
-  throw new Error('Unable to locate bundled sduck agent rule assets.');
+  return agentRulesRoot;
 }
 
 async function readAssetFile(assetRoot: string, fileName: string): Promise<string> {

@@ -38,6 +38,9 @@ export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult 
   const stateFilePath = `${decisionRoot(projectRoot)}/state.json`;
   if (!fs.existsSync(stateFilePath)) {
     writeState(projectRoot, { currentTaskId: null, updatedAt: new Date().toISOString() });
+    created.push(stateFilePath);
+  } else {
+    existing.push(stateFilePath);
   }
   return { created, existing };
 }

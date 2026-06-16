@@ -35,8 +35,10 @@ sduck --help
 ## Quick start
 
 ```bash
-# 1) Create the decision workspace in the current project
+# 1) Create the decision workspace, SDD assets, and agent rules in the current project
 sduck init
+# or install a specific rule set only
+sduck init --agents claude-code
 
 # 2) Start a decision briefing task
 sduck work "add payment retry support"
@@ -71,7 +73,7 @@ sduck close
 
 ## How the workflow works
 
-1. **Initialize**: `sduck init` creates `.decision/`, the SQLite database, export directories, and `state.json`.
+1. **Initialize**: `sduck init` creates `.decision/`, `.sduck/` SDD assets, and managed agent instruction files such as `CLAUDE.md`.
 2. **Start work**: `sduck work "..."` creates the current task and builds a lightweight context pack from the project.
 3. **Give context to the agent**: `sduck context` prints relevant files, prior decisions, prior implementation traces, the grill-me protocol, and the draft schema.
 4. **Clarify decisions**: the agent explores the codebase first, asks the user only when needed, and submits a structured draft with `sduck submit --stdin`.
@@ -99,14 +101,31 @@ This keeps the conversation terminal-first while still producing durable decisio
 ### Workspace and task
 
 ```bash
-sduck init
+sduck init [--agents <list>] [--force] [--no-agent-rules]
 sduck work "<task description>"
 sduck status [--json]
 ```
 
-- `init` initializes `.decision/` in the current project.
+- `init` initializes `.decision/`, copies bundled `.sduck/sduck-assets`, and installs managed rule files for selected agents.
+- In non-interactive shells, `sduck init` defaults to all supported agents unless `--agents` or `--no-agent-rules` is provided.
+- `--agents` accepts `claude-code,codex,opencode,gemini-cli,cursor,antigravity`.
+- `--force` refreshes bundled assets and managed rule blocks.
+- `--no-agent-rules` skips managed instruction file installation.
 - `work` starts a new decision briefing task and indexes lightweight context.
 - `status` shows the active task and counts for context items, questions, decisions, brief snapshots, traces, and exports.
+
+After init, selected agents receive managed instruction files and hooks where applicable, for example `CLAUDE.md` and `.claude/hooks/sdd-guard.sh` for Claude Code.
+
+### Legacy SDD workflow
+
+```bash
+sduck start <type> <slug>
+sduck spec approve [target]
+sduck plan approve [target]
+sduck step done <number> [target]
+sduck review ready [target]
+sduck done [target]
+```
 
 ### Context
 
@@ -305,6 +324,6 @@ The CLI layer is intentionally thin: it parses arguments, delegates to core func
 
 ## Legacy `.sduck` workflow in this repository
 
-This repository also contains older `.sduck` Spec-Driven Development assets and legacy core files. They are useful as project history and internal workflow context, but they are not the current public v2 command surface registered by `src/cli.ts`.
+This repository also ships the `.sduck` Spec-Driven Development workflow for agents that need explicit spec and plan approval gates. `sduck init` installs the managed rule files that point agents at this workflow, and the legacy SDD commands are exposed alongside the `.decision` workflow.
 
-For current end-user usage, prefer the `.decision` workflow documented above.
+For decision briefing, use the `.decision` workflow documented above. For gated agent implementation, use the legacy SDD commands documented in the workflow section.

@@ -27,19 +27,36 @@ export const SPEC_TEMPLATE_RELATIVE_PATHS: Record<SupportedTaskType, string> = {
   chore: join('types', 'chore.md'),
 };
 
+export const AGENT_RULE_ASSET_RELATIVE_PATHS = [
+  join('agent-rules', 'core.md'),
+  join('agent-rules', 'claude-code.md'),
+  join('agent-rules', 'codex.md'),
+  join('agent-rules', 'opencode.md'),
+  join('agent-rules', 'gemini-cli.md'),
+  join('agent-rules', 'cursor.mdc'),
+  join('agent-rules', 'antigravity.md'),
+  join('agent-rules', 'hooks', 'sdd-guard.sh'),
+] as const;
+
 export const INIT_ASSET_RELATIVE_PATHS = [
   EVAL_ASSET_RELATIVE_PATHS.spec,
   EVAL_ASSET_RELATIVE_PATHS.plan,
   EVAL_ASSET_RELATIVE_PATHS.task,
   ...Object.values(SPEC_TEMPLATE_RELATIVE_PATHS),
+  ...AGENT_RULE_ASSET_RELATIVE_PATHS,
 ] as const;
+
+export function listBundledAssetsRootCandidates(currentDirectoryPath: string): string[] {
+  return [
+    join(currentDirectoryPath, '..', '..', '.sduck', 'sduck-assets'),
+    join(currentDirectoryPath, '..', '.sduck', 'sduck-assets'),
+    join(currentDirectoryPath, '.sduck', 'sduck-assets'),
+  ];
+}
 
 export async function getBundledAssetsRoot(): Promise<string> {
   const currentDirectoryPath = dirname(fileURLToPath(import.meta.url));
-  const candidatePaths = [
-    join(currentDirectoryPath, '..', '..', '.sduck', 'sduck-assets'),
-    join(currentDirectoryPath, '..', '.sduck', 'sduck-assets'),
-  ];
+  const candidatePaths = listBundledAssetsRootCandidates(currentDirectoryPath);
 
   for (const candidatePath of candidatePaths) {
     if ((await getFsEntryKind(candidatePath)) === 'directory') {

@@ -48,7 +48,15 @@ export type AssetTemplateKey =
   | 'type-feature'
   | 'type-fix'
   | 'type-refactor'
-  | 'type-chore';
+  | 'type-chore'
+  | 'agent-rules-core'
+  | 'agent-rules-claude-code'
+  | 'agent-rules-codex'
+  | 'agent-rules-opencode'
+  | 'agent-rules-gemini-cli'
+  | 'agent-rules-cursor'
+  | 'agent-rules-antigravity'
+  | 'agent-rules-hook';
 
 export interface AssetTemplateDefinition {
   key: AssetTemplateKey;
@@ -136,6 +144,38 @@ const ASSET_TEMPLATE_DEFINITIONS = [
   {
     key: 'type-chore',
     relativePath: getProjectRelativeSduckAssetPath('types', 'chore.md'),
+  },
+  {
+    key: 'agent-rules-core',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'core.md'),
+  },
+  {
+    key: 'agent-rules-claude-code',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'claude-code.md'),
+  },
+  {
+    key: 'agent-rules-codex',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'codex.md'),
+  },
+  {
+    key: 'agent-rules-opencode',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'opencode.md'),
+  },
+  {
+    key: 'agent-rules-gemini-cli',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'gemini-cli.md'),
+  },
+  {
+    key: 'agent-rules-cursor',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'cursor.mdc'),
+  },
+  {
+    key: 'agent-rules-antigravity',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'antigravity.md'),
+  },
+  {
+    key: 'agent-rules-hook',
+    relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'hooks', 'sdd-guard.sh'),
   },
 ] as const satisfies readonly AssetTemplateDefinition[];
 
@@ -371,7 +411,7 @@ export async function initProject(
   );
 
   if (needsClaudeCodeHook(resolvedOptions.agents)) {
-    await installClaudeCodeHook(projectRoot, summary);
+    await installClaudeCodeHook(projectRoot, summary, mode);
   }
 
   await writeProjectVersion(projectRoot);
@@ -385,58 +425,179 @@ export async function initProject(
   };
 }
 
+const CLAUDE_CODE_HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/sdd-guard.sh';
+
+function createClaudeCodeHookEntry(): Record<string, unknown> {
+  return {
+    matcher: 'Edit|Write',
+    hooks: [
+      {
+        type: 'command',
+        command: CLAUDE_CODE_HOOK_COMMAND,
+      },
+    ],
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function containsClaudeCodeSddHook(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const hooks = value['hooks'];
+
+  if (!Array.isArray(hooks)) {
+    return false;
+  }
+
+  return hooks.some(
+    (hook) =>
+      isRecord(hook) && hook['type'] === 'command' && hook['command'] === CLAUDE_CODE_HOOK_COMMAND,
+  );
+}
+
+function toUnknownArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value.map((entry): unknown => entry) : [];
+}
+
+function mergeClaudeCodeHookSettings(
+  existing: Record<string, unknown>,
+  mode: InitMode,
+): { didChange: boolean; settings: Record<string, unknown> } {
+  const hooksValue = existing['hooks'];
+  const hooks = isRecord(hooksValue) ? hooksValue : {};
+  const preToolUseValue = hooks['PreToolUse'];
+  const preToolUse = toUnknownArray(preToolUseValue);
+  const hasExistingSddHook = preToolUse.some(containsClaudeCodeSddHook);
+
+  if (mode === 'safe' && hasExistingSddHook) {
+    return { didChange: false, settings: existing };
+  }
+
+  const preservedPreToolUse =
+    mode === 'force' ? preToolUse.filter((entry) => !containsClaudeCodeSddHook(entry)) : preToolUse;
+
+  return {
+    didChange: true,
+    settings: {
+      ...existing,
+      hooks: {
+        ...hooks,
+        PreToolUse: [...preservedPreToolUse, createClaudeCodeHookEntry()],
+      },
+    },
+  };
+}
+
 async function installClaudeCodeHook(
   projectRoot: string,
   summary: InitExecutionSummary,
+  mode: InitMode,
 ): Promise<void> {
   const assetRoot = await getBundledAssetsRoot();
   const hookSourcePath = join(assetRoot, 'agent-rules', CLAUDE_CODE_HOOK_SOURCE_PATH);
   const hookTargetPath = join(projectRoot, CLAUDE_CODE_HOOK_SCRIPT_PATH);
   const settingsPath = join(projectRoot, CLAUDE_CODE_HOOK_SETTINGS_PATH);
 
-  // Copy hook script
-  await mkdir(dirname(hookTargetPath), { recursive: true });
-  await copyFileIntoPlace(hookSourcePath, hookTargetPath);
-  await chmod(hookTargetPath, 0o755);
-  summary.created.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
-  summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'created' });
+  const hookTargetKind = await getFsEntryKind(hookTargetPath);
 
-  // Create or merge settings.json
-  const hookConfig = {
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: 'Edit|Write',
-          hooks: [
-            {
-              type: 'command',
-              command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/sdd-guard.sh',
-            },
-          ],
-        },
-      ],
-    },
-  };
+  if (hookTargetKind === 'missing' || (hookTargetKind === 'file' && mode === 'force')) {
+    await mkdir(dirname(hookTargetPath), { recursive: true });
+    await copyFileIntoPlace(hookSourcePath, hookTargetPath);
+    await chmod(hookTargetPath, 0o755);
 
-  if ((await getFsEntryKind(settingsPath)) === 'file') {
+    if (hookTargetKind === 'missing') {
+      summary.created.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
+      summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'created' });
+    } else {
+      summary.overwritten.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
+      summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'overwritten' });
+    }
+  } else if (hookTargetKind === 'file') {
+    summary.kept.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
+    summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'kept' });
+  } else {
+    summary.kept.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
+    summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'kept' });
+    summary.warnings.push(
+      `Kept existing non-file Claude Code hook path: ${CLAUDE_CODE_HOOK_SCRIPT_PATH}`,
+    );
+  }
+
+  const settingsKind = await getFsEntryKind(settingsPath);
+
+  if (settingsKind === 'file') {
     const existingContent = await readFile(settingsPath, 'utf8');
 
     try {
       const existing = JSON.parse(existingContent) as Record<string, unknown>;
-      existing['hooks'] = hookConfig.hooks;
-      await writeFile(settingsPath, JSON.stringify(existing, null, 2) + '\n', 'utf8');
-      summary.overwritten.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
-      summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'overwritten' });
+      const hooksValue = existing['hooks'];
+      const preToolUseValue = isRecord(hooksValue) ? hooksValue['PreToolUse'] : undefined;
+
+      if (mode === 'safe' && hooksValue !== undefined && !isRecord(hooksValue)) {
+        summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+        summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+        summary.warnings.push(
+          `Kept Claude Code settings with non-object hooks: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}. Run \`sduck init --force\` to replace it.`,
+        );
+        return;
+      }
+
+      if (mode === 'safe' && preToolUseValue !== undefined && !Array.isArray(preToolUseValue)) {
+        summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+        summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+        summary.warnings.push(
+          `Kept Claude Code settings with non-array PreToolUse hooks: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}. Run \`sduck init --force\` to replace it.`,
+        );
+        return;
+      }
+
+      const { didChange, settings } = mergeClaudeCodeHookSettings(existing, mode);
+
+      if (didChange) {
+        await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+        summary.overwritten.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+        summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'overwritten' });
+      } else {
+        summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+        summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+      }
     } catch {
-      await writeFile(settingsPath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf8');
-      summary.overwritten.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
-      summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'overwritten' });
+      if (mode === 'force') {
+        await writeFile(
+          settingsPath,
+          JSON.stringify({ hooks: { PreToolUse: [createClaudeCodeHookEntry()] } }, null, 2) + '\n',
+          'utf8',
+        );
+        summary.overwritten.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+        summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'overwritten' });
+      } else {
+        summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+        summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+        summary.warnings.push(
+          `Kept invalid Claude Code settings file: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}. Run \`sduck init --force\` to replace it.`,
+        );
+      }
     }
-  } else {
+  } else if (settingsKind === 'missing') {
     await mkdir(dirname(settingsPath), { recursive: true });
-    await writeFile(settingsPath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf8');
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ hooks: { PreToolUse: [createClaudeCodeHookEntry()] } }, null, 2) + '\n',
+      'utf8',
+    );
     summary.created.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
     summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'created' });
+  } else {
+    summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
+    summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+    summary.warnings.push(
+      `Kept existing non-file Claude Code settings path: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}`,
+    );
   }
 }
 

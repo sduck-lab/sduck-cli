@@ -1,7 +1,9 @@
 import { checkbox } from '@inquirer/prompts';
+import { relative } from 'node:path';
 
 import { SUPPORTED_AGENTS, parseAgentsOption, type SupportedAgentId } from '../core/agent-rules.js';
 import { type InitCommandOptions, type InitSummaryRow, initProject } from '../core/init.js';
+import { initDecisionWorkspace, type InitWorkspaceResult } from '../core/v2/workspace.js';
 
 const AGENT_PROMPT_MESSAGE = 'Select AI agents to generate repository rule files for';
 const AGENT_PROMPT_INSTRUCTIONS =
@@ -17,11 +19,13 @@ export interface CommandResult {
 
 export interface InitCliOptions {
   agents?: string;
+  agentRules?: boolean;
   force: boolean;
 }
 
 interface FormattableInitResult {
   didChange: boolean;
+  decisionWorkspace: InitWorkspaceResult;
   agents: readonly SupportedAgentId[];
   summary: {
     rows: InitSummaryRow[];
@@ -46,16 +50,43 @@ function buildSummaryTable(rows: InitSummaryRow[]): string {
   return [border, header, border, ...body, border].join('\n');
 }
 
-function formatResult(result: FormattableInitResult): string {
+function formatDecisionWorkspaceSummary(
+  projectRoot: string,
+  decisionWorkspace: InitWorkspaceResult,
+): string[] {
+  const toRelativePath = (path: string) => {
+    const relativePath = relative(projectRoot, path);
+    return relativePath === '' ? '.' : relativePath;
+  };
+  const created = decisionWorkspace.created.map(toRelativePath);
+  const existing = decisionWorkspace.existing.map(toRelativePath);
+  const lines = ['Decision workspace initialized.'];
+
+  if (created.length > 0) {
+    lines.push(`Decision created: ${created.join(', ')}`);
+  }
+
+  if (existing.length > 0) {
+    lines.push(`Decision existing: ${existing.join(', ')}`);
+  }
+
+  return lines;
+}
+
+function formatResult(projectRoot: string, result: FormattableInitResult): string {
   const lines = [
     result.didChange ? 'sduck init completed.' : 'sduck init completed with no file changes.',
   ];
 
   if (result.agents.length > 0) {
     lines.push(`Selected agents: ${result.agents.join(', ')}`);
+  } else {
+    lines.push('Agent rules: skipped.');
   }
 
   lines.push('', buildSummaryTable(result.summary.rows));
+
+  lines.push('', ...formatDecisionWorkspaceSummary(projectRoot, result.decisionWorkspace));
 
   if (result.summary.warnings.length > 0) {
     lines.push('', 'Warnings:');
@@ -88,10 +119,19 @@ export function createAgentCheckboxConfig() {
 }
 
 async function resolveSelectedAgents(options: InitCliOptions): Promise<SupportedAgentId[]> {
-  const parsedAgents = parseAgentsOption(options.agents);
+  if (options.agentRules === false) {
+    return [];
+  }
 
-  if (parsedAgents.length > 0 || !process.stdin.isTTY || !process.stdout.isTTY) {
+  const parsedAgents = parseAgentsOption(options.agents);
+  const defaultAgentIds = SUPPORTED_AGENTS.map((agent) => agent.id);
+
+  if (parsedAgents.length > 0) {
     return normalizeSelectedAgents(parsedAgents);
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return normalizeSelectedAgents(defaultAgentIds);
   }
 
   return normalizeSelectedAgents(await checkbox<SupportedAgentId>(createAgentCheckboxConfig()));
@@ -102,16 +142,22 @@ export async function runInitCommand(
   projectRoot: string,
 ): Promise<CommandResult> {
   try {
+    const agents = await resolveSelectedAgents(options);
     const resolvedOptions: InitCommandOptions = {
       force: options.force,
-      agents: await resolveSelectedAgents(options),
+      agents,
     };
     const result = await initProject(resolvedOptions, projectRoot);
+    const decisionWorkspace = initDecisionWorkspace(projectRoot);
 
     return {
       exitCode: 0,
       stderr: '',
-      stdout: formatResult(result),
+      stdout: formatResult(projectRoot, {
+        ...result,
+        decisionWorkspace,
+        didChange: result.didChange || decisionWorkspace.created.length > 0,
+      }),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown init failure.';

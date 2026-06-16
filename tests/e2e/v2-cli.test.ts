@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -38,7 +38,12 @@ describeIfSqlite('v2 CLI flow', () => {
       },
     });
 
-    expect((await runCli(['init'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
+    const init = await runCli(['init'], { cliRoot, cwd: workspace });
+    expect(init.exitCode).toBe(0);
+    expect(init.stdout).toContain('Decision workspace initialized.');
+    expect(await readFile(join(workspace, 'CLAUDE.md'), 'utf8')).toContain('<!-- sduck:begin -->');
+    expect(await readFile(join(workspace, 'AGENT.md'), 'utf8')).toContain('<!-- sduck:begin -->');
+    expect(await readFile(join(workspace, 'GEMINI.md'), 'utf8')).toContain('<!-- sduck:begin -->');
     const work = await runCli(['work', 'payment retry 추가'], { cliRoot, cwd: workspace });
     expect(work.stdout).toContain('작업을 시작했어');
 

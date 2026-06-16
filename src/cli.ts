@@ -1,10 +1,25 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 
+import { runAbandonCommand as runSddAbandonCommand } from './commands/abandon.js';
+import { runArchiveCommand } from './commands/archive.js';
+import { runCleanCommand } from './commands/clean.js';
+import { runDoneCommand } from './commands/done.js';
+import { runFastTrackCommand } from './commands/fast-track.js';
+import { runImplementCommand } from './commands/implement.js';
+import { runInitCommand as runSddInitCommand } from './commands/init.js';
+import { runPlanApproveCommand } from './commands/plan-approve.js';
+import { runReopenCommand } from './commands/reopen.js';
+import { runReviewReadyCommand } from './commands/review.js';
+import { runSpecApproveCommand } from './commands/spec-approve.js';
+import { runStartCommand } from './commands/start.js';
+import { runStepCommand } from './commands/step.js';
+import { runUpdateCommand } from './commands/update.js';
+import { runUseCommand } from './commands/use.js';
 import {
   readStdinIfRequested,
-  runAbandonCommand,
+  runAbandonCommand as runV2AbandonCommand,
   runAnswerCommand,
   runAskCommand,
   runBriefCommand,
@@ -12,7 +27,6 @@ import {
   runConfirmCommand,
   runContextAddCommand,
   runContextCommand,
-  runInitCommand,
   runRecallCommand,
   runRememberCommand,
   runStatusCommand,
@@ -26,6 +40,42 @@ const program = new Command();
 
 program.name(CLI_NAME).description(CLI_DESCRIPTION).version(CLI_VERSION);
 
+function parseInteger(value: string, label: string, minimum: number): number {
+  const parsedValue = Number(value);
+
+  if (!Number.isInteger(parsedValue) || parsedValue < minimum) {
+    throw new InvalidArgumentError(
+      `${label} must be an integer greater than or equal to ${String(minimum)}.`,
+    );
+  }
+
+  return parsedValue;
+}
+
+function toStartOptions(options: { git?: boolean }): { noGit?: boolean } | undefined {
+  return options.git === false ? { noGit: true } : undefined;
+}
+
+function withOptionalTarget(target: string | undefined): { target?: string } {
+  return target === undefined ? {} : { target };
+}
+
+function withOptionalKeep(keep: number | undefined): { keep?: number } {
+  return keep === undefined ? {} : { keep };
+}
+
+function toInitOptions(options: { agentRules?: boolean; agents?: string; force?: boolean }): {
+  agentRules?: boolean;
+  agents?: string;
+  force: boolean;
+} {
+  return {
+    force: options.force === true,
+    ...(options.agentRules === undefined ? {} : { agentRules: options.agentRules }),
+    ...(options.agents === undefined ? {} : { agents: options.agents }),
+  };
+}
+
 function printResult(result: { stdout: string; stderr: string; exitCode: number }): void {
   if (result.stdout !== '') console.log(result.stdout);
   if (result.stderr !== '') console.error(result.stderr);
@@ -34,9 +84,123 @@ function printResult(result: { stdout: string; stderr: string; exitCode: number 
 
 program
   .command('init')
-  .description('Initialize .decision workspace')
-  .action(() => {
-    printResult(runInitCommand(process.cwd()));
+  .description('Initialize .decision, .sduck, and agent rule files')
+  .option(
+    '--agents <list>',
+    'Comma-separated agents: claude-code,codex,opencode,gemini-cli,cursor,antigravity',
+  )
+  .option('--force', 'Overwrite bundled assets and managed rule blocks')
+  .option('--no-agent-rules', 'Skip managed agent rule installation')
+  .action(async (options: { agentRules?: boolean; agents?: string; force?: boolean }) => {
+    printResult(await runSddInitCommand(toInitOptions(options), process.cwd()));
+  });
+
+program
+  .command('start <type> <slug>')
+  .description('Start an SDD task workspace')
+  .option('--no-git', 'Skip git worktree/branch allocation')
+  .action(async (type: string, slug: string, options: { git?: boolean }) => {
+    printResult(await runStartCommand(type, slug, process.cwd(), toStartOptions(options)));
+  });
+
+program
+  .command('fast-track <type> <slug>')
+  .description('Create a minimal SDD task, spec, and plan')
+  .option('--no-git', 'Skip git worktree/branch allocation')
+  .action(async (type: string, slug: string, options: { git?: boolean }) => {
+    printResult(await runFastTrackCommand({ slug, type }, process.cwd(), toStartOptions(options)));
+  });
+
+const spec = program.command('spec').description('Legacy SDD spec workflow commands');
+
+spec
+  .command('approve [target]')
+  .description('Approve an SDD spec')
+  .action(async (target?: string) => {
+    printResult(await runSpecApproveCommand(withOptionalTarget(target), process.cwd()));
+  });
+
+const plan = program.command('plan').description('Legacy SDD plan workflow commands');
+
+plan
+  .command('approve [target]')
+  .description('Approve an SDD plan')
+  .action(async (target?: string) => {
+    printResult(await runPlanApproveCommand(withOptionalTarget(target), process.cwd()));
+  });
+
+const step = program.command('step').description('Legacy SDD step workflow commands');
+
+step
+  .command('done <number> [target]')
+  .description('Mark an SDD plan step done')
+  .action(async (stepNumberText: string, target?: string) => {
+    printResult(
+      await runStepCommand(parseInteger(stepNumberText, 'step number', 1), process.cwd(), target),
+    );
+  });
+
+const review = program.command('review').description('Legacy SDD review workflow commands');
+
+review
+  .command('ready [target]')
+  .description('Mark an SDD task review ready')
+  .action(async (target?: string) => {
+    printResult(await runReviewReadyCommand(target, process.cwd()));
+  });
+
+program
+  .command('done [target]')
+  .description('Mark an SDD task done')
+  .action(async (target?: string) => {
+    printResult(await runDoneCommand(withOptionalTarget(target), process.cwd()));
+  });
+
+program
+  .command('use <target>')
+  .description('Switch current SDD task')
+  .action(async (target: string) => {
+    printResult(await runUseCommand(target, process.cwd()));
+  });
+
+program
+  .command('implement [target]')
+  .description('Render SDD implementation context')
+  .action(async (target?: string) => {
+    printResult(await runImplementCommand(process.cwd(), target));
+  });
+
+program
+  .command('clean [target]')
+  .description('Clean archived or abandoned SDD task resources')
+  .option('--force', 'Clean without confirmation guards')
+  .action(async (target: string | undefined, options: { force?: boolean }) => {
+    printResult(await runCleanCommand({ force: options.force, target }, process.cwd()));
+  });
+
+program
+  .command('reopen [target]')
+  .description('Reopen an SDD task')
+  .action(async (target?: string) => {
+    printResult(await runReopenCommand(withOptionalTarget(target), process.cwd()));
+  });
+
+program
+  .command('archive')
+  .description('Archive DONE SDD tasks')
+  .option('--keep <n>', 'Keep the most recent N DONE tasks in workspace', (value: string) =>
+    parseInteger(value, '--keep', 0),
+  )
+  .action(async (options: { keep?: number }) => {
+    printResult(await runArchiveCommand(withOptionalKeep(options.keep), process.cwd()));
+  });
+
+program
+  .command('update')
+  .description('Update bundled SDD assets in the current project')
+  .option('--dry-run', 'Preview changes without writing files')
+  .action(async (options: { dryRun?: boolean }) => {
+    printResult(await runUpdateCommand({ dryRun: options.dryRun === true }, process.cwd()));
   });
 
 program
@@ -146,9 +310,14 @@ program
 
 program
   .command('abandon')
-  .description('Abandon current task')
-  .action(() => {
-    printResult(runAbandonCommand(process.cwd()));
+  .description('Abandon the current v2 task or a target SDD task')
+  .argument('[target]')
+  .action(async (target?: string) => {
+    printResult(
+      target === undefined
+        ? runV2AbandonCommand(process.cwd())
+        : await runSddAbandonCommand(target, process.cwd()),
+    );
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
