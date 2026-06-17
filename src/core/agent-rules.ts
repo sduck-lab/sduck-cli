@@ -7,6 +7,7 @@ import { getFsEntryKind, type FsEntryKind } from './fs.js';
 export const CLAUDE_CODE_HOOK_SETTINGS_PATH = join('.claude', 'settings.json');
 export const CLAUDE_CODE_HOOK_SCRIPT_PATH = join('.claude', 'hooks', 'sdd-guard.sh');
 export const CLAUDE_CODE_HOOK_SOURCE_PATH = join('hooks', 'sdd-guard.sh');
+export const CLAUDE_CODE_SKILLS_PATH = join('.claude', 'skills');
 
 export function needsClaudeCodeHook(agents: readonly SupportedAgentId[]): boolean {
   return agents.includes('claude-code');

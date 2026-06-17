@@ -14,6 +14,7 @@ import {
   CLAUDE_CODE_HOOK_SETTINGS_PATH,
   CLAUDE_CODE_HOOK_SCRIPT_PATH,
   CLAUDE_CODE_HOOK_SOURCE_PATH,
+  CLAUDE_CODE_SKILLS_PATH,
 } from './agent-rules.js';
 import { EVAL_ASSET_RELATIVE_PATHS, getBundledAssetsRoot } from './assets.js';
 import {
@@ -179,7 +180,7 @@ const ASSET_TEMPLATE_DEFINITIONS = [
     relativePath: getProjectRelativeSduckAssetPath(
       'agent-rules',
       'skills',
-      'codebase-decisions',
+      'sduck-codebase-decisions',
       'SKILL.md',
     ),
   },
@@ -422,6 +423,7 @@ export async function initProject(
 
   if (needsClaudeCodeHook(resolvedOptions.agents)) {
     await installClaudeCodeHook(projectRoot, summary, mode);
+    await installClaudeCodeSkills(projectRoot, summary, mode);
   }
 
   await writeProjectVersion(projectRoot);
@@ -664,5 +666,72 @@ async function applyAgentRuleActions(
     summary.warnings.push(
       'Run `sduck init --force` to refresh managed rule content for selected agents.',
     );
+  }
+}
+
+async function installClaudeCodeSkills(
+  projectRoot: string,
+  summary: InitExecutionSummary,
+  mode: InitMode,
+): Promise<void> {
+  const assetRoot = await getBundledAssetsRoot();
+  const skillsSourceRoot = join(assetRoot, 'agent-rules', 'skills');
+  const skillsTargetRoot = join(projectRoot, CLAUDE_CODE_SKILLS_PATH);
+
+  // 스킬 디렉토리 생성
+  const skillsRootKind = await getFsEntryKind(skillsTargetRoot);
+
+  if (skillsRootKind === 'missing') {
+    await mkdir(skillsTargetRoot, { recursive: true });
+    summary.created.push(`${CLAUDE_CODE_SKILLS_PATH}/`);
+    summary.rows.push({ path: `${CLAUDE_CODE_SKILLS_PATH}/`, status: 'created' });
+  } else if (skillsRootKind === 'directory') {
+    summary.kept.push(`${CLAUDE_CODE_SKILLS_PATH}/`);
+    summary.rows.push({ path: `${CLAUDE_CODE_SKILLS_PATH}/`, status: 'kept' });
+  } else {
+    summary.warnings.push(
+      `Cannot create skills directory: ${CLAUDE_CODE_SKILLS_PATH} exists as non-directory.`,
+    );
+    return;
+  }
+
+  // sduck-codebase-decisions 스킬 복사
+  const skillSourcePath = join(skillsSourceRoot, 'sduck-codebase-decisions', 'SKILL.md');
+  const skillTargetPath = join(skillsTargetRoot, 'sduck-codebase-decisions.md');
+
+  const skillSourceKind = await getFsEntryKind(skillSourcePath);
+
+  if (skillSourceKind === 'file') {
+    const skillTargetKind = await getFsEntryKind(skillTargetPath);
+
+    if (skillTargetKind === 'missing' || (skillTargetKind === 'file' && mode === 'force')) {
+      await copyFileIntoPlace(skillSourcePath, skillTargetPath);
+
+      if (skillTargetKind === 'missing') {
+        summary.created.push(`${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`);
+        summary.rows.push({
+          path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
+          status: 'created',
+        });
+      } else {
+        summary.overwritten.push(`${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`);
+        summary.rows.push({
+          path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
+          status: 'overwritten',
+        });
+      }
+    } else if (skillTargetKind === 'file') {
+      summary.kept.push(`${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`);
+      summary.rows.push({
+        path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
+        status: 'kept',
+      });
+    } else {
+      summary.warnings.push(
+        `Cannot copy skill: ${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md exists as non-file.`,
+      );
+    }
+  } else {
+    summary.warnings.push(`Skill source not found: ${skillSourcePath}`);
   }
 }

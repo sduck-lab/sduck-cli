@@ -36,7 +36,7 @@
 │   │   └── refactor.md
 │   └── agent-rules/
 │       └── skills/
-│           └── codebase-decisions/
+│           └── sduck-codebase-decisions/
 │               └── SKILL.md
 │
 ├── .sduck/sduck-workspace/
@@ -83,7 +83,7 @@
 
 번들 agent-facing skill은 `.sduck/sduck-assets/agent-rules/skills/` 아래에 저장된다.
 
-- `codebase-decisions`: `.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md`
+- `sduck-codebase-decisions`: `.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md`
   - 사용자가 기존 코드베이스, 문서, 테스트, 설정에서 이미 존재했던 의사결정을 읽고 저장하라고 요청할 때 사용한다.
   - skill 파일을 읽고 `sduck work`, `sduck context add`, `sduck submit`, `sduck remember`, `sduck recall` 흐름으로 decision store에 기록한다.
   - 이 skill은 의사결정 기록용이며 SDD의 spec/plan 승인 규칙이나 구현 상태 제한을 우회하지 않는다.

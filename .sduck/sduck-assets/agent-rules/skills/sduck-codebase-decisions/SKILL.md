@@ -1,5 +1,5 @@
 ---
-name: codebase-decisions
+name: sduck-codebase-decisions
 description: Reads an existing codebase, docs, tests, and configuration to record explicit or inferred architectural and implementation decisions in sduck's decision store. Use when the user asks to inspect a codebase for existing decisions, preserve prior rationale, build project memory, or save discovered decisions for future agents.
 ---
 
@@ -52,7 +52,10 @@ Use conservative `confidence` for inferred decisions. Prefer questions over pret
       "kind": "INFERRED",
       "confidence": 0.82,
       "summary": "Command modules parse input and delegate behavior to src/core so logic remains testable outside the CLI.",
-      "rationale": ["Command files mostly handle IO.", "Unit tests exercise core modules directly."],
+      "rationale": [
+        "Command files mostly handle IO.",
+        "Unit tests exercise core modules directly."
+      ],
       "appliesTo": ["src/commands/", "src/core/"],
       "avoids": ["Embedding business logic directly in command action handlers"],
       "sourceRefs": ["src/commands/init.ts:1-80", "src/core/init.ts:1-120"]
@@ -70,7 +73,9 @@ Use conservative `confidence` for inferred decisions. Prefer questions over pret
     {
       "text": "Should inferred decisions remain DRAFT until user confirmation?",
       "recommendedAnswer": "Keep inferred decisions as DRAFT until confirmed by the user.",
-      "rationale": ["Agents can infer intent but cannot authoritatively approve historical rationale."],
+      "rationale": [
+        "Agents can infer intent but cannot authoritatively approve historical rationale."
+      ],
       "options": ["Keep DRAFT", "Mark CONFIRMED", "Decide by confidence threshold"]
     }
   ]

@@ -32,7 +32,7 @@ describe('SDD core regression Interface', () => {
         'sduck-assets',
         'agent-rules',
         'skills',
-        'codebase-decisions',
+        'sduck-codebase-decisions',
         'SKILL.md',
       ),
     );
@@ -164,9 +164,9 @@ describe('SDD core regression Interface', () => {
 
     expect(result.didChange).toBe(true);
     const refreshedRules = await readFile(claudeRulesPath, 'utf8');
-    expect(refreshedRules).toContain('codebase-decisions');
+    expect(refreshedRules).toContain('sduck-codebase-decisions');
     expect(refreshedRules).toContain(
-      '.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md',
+      '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
   });
 });

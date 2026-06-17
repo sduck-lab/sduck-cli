@@ -86,7 +86,7 @@ describeIfSqlite('SDD CLI reachability regression', () => {
         'sduck-assets',
         'agent-rules',
         'skills',
-        'codebase-decisions',
+        'sduck-codebase-decisions',
         'SKILL.md',
       ),
     );
@@ -111,9 +111,9 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     expect(claudeRules).toContain('<!-- sduck:begin -->');
     expect(claudeRules).toContain('spec -> approval -> plan -> approval');
     expect(claudeRules).toContain('sduck start');
-    expect(claudeRules).toContain('codebase-decisions');
+    expect(claudeRules).toContain('sduck-codebase-decisions');
     expect(claudeRules).toContain(
-      '.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md',
+      '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
   });
 });
