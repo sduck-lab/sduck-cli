@@ -35,6 +35,7 @@ export const AGENT_RULE_ASSET_RELATIVE_PATHS = [
   join('agent-rules', 'gemini-cli.md'),
   join('agent-rules', 'cursor.mdc'),
   join('agent-rules', 'antigravity.md'),
+  join('agent-rules', 'skills', 'codebase-decisions', 'SKILL.md'),
   join('agent-rules', 'hooks', 'sdd-guard.sh'),
 ] as const;
 

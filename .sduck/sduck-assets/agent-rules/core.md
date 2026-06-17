@@ -35,6 +35,9 @@
 │   │   ├── fix.md
 │   │   └── refactor.md
 │   └── agent-rules/
+│       └── skills/
+│           └── codebase-decisions/
+│               └── SKILL.md
 │
 ├── .sduck/sduck-workspace/
 │   └── {timestamp}-{type}-{slug}/
@@ -75,6 +78,15 @@
 - 사용자 메모가 기존 본문과 충돌하면, 사용자 메모를 최신 지시사항으로 우선 해석한다
 - 메모는 가능하면 해당 문장을 수정하거나 정식 섹션에 흡수해 문서 본문에 반영한다
 - 여러 줄에 메모가 흩어져 있어도 무시하지 말고 작업 전 확인한다
+
+## Agent skills
+
+번들 agent-facing skill은 `.sduck/sduck-assets/agent-rules/skills/` 아래에 저장된다.
+
+- `codebase-decisions`: `.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md`
+  - 사용자가 기존 코드베이스, 문서, 테스트, 설정에서 이미 존재했던 의사결정을 읽고 저장하라고 요청할 때 사용한다.
+  - skill 파일을 읽고 `sduck work`, `sduck context add`, `sduck submit`, `sduck remember`, `sduck recall` 흐름으로 decision store에 기록한다.
+  - 이 skill은 의사결정 기록용이며 SDD의 spec/plan 승인 규칙이나 구현 상태 제한을 우회하지 않는다.
 
 ## 워크플로우 규칙
 

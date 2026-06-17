@@ -1,3 +1,12 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import {
+  hasManagedBlock,
+  listAgentRuleTargets,
+  SUPPORTED_AGENTS,
+  type SupportedAgentId,
+} from './agent-rules.js';
 import { CLI_VERSION } from './command-metadata.js';
 import { getFsEntryKind } from './fs.js';
 import { type InitExecutionResult, initProject } from './init.js';
@@ -21,6 +30,55 @@ export interface UpdateExecutionResult {
   toVersion: string;
   didChange: boolean;
   summary: UpdateExecutionSummary;
+}
+
+async function readExistingFile(projectRoot: string, relativePath: string): Promise<string | null> {
+  const absolutePath = join(projectRoot, relativePath);
+
+  if ((await getFsEntryKind(absolutePath)) !== 'file') {
+    return null;
+  }
+
+  return await readFile(absolutePath, 'utf8');
+}
+
+function looksLikeSduckManagedFile(content: string): boolean {
+  return content.includes('# SDD Workflow Rules') || content.includes('sduck SDD workflow rules');
+}
+
+async function detectExistingAgentRuleAgents(projectRoot: string): Promise<SupportedAgentId[]> {
+  const agents: SupportedAgentId[] = [];
+
+  for (const agent of SUPPORTED_AGENTS) {
+    const [target] = listAgentRuleTargets([agent.id]);
+
+    if (target === undefined) {
+      continue;
+    }
+
+    const content = await readExistingFile(projectRoot, target.outputPath);
+
+    if (content === null) {
+      continue;
+    }
+
+    if (target.kind === 'managed-file') {
+      if (looksLikeSduckManagedFile(content)) {
+        agents.push(agent.id);
+      }
+      continue;
+    }
+
+    if (!hasManagedBlock(content)) {
+      continue;
+    }
+
+    if (content.includes(agent.label) || target.outputPath !== 'AGENT.md') {
+      agents.push(agent.id);
+    }
+  }
+
+  return agents;
 }
 
 export async function updateProject(
@@ -58,8 +116,9 @@ export async function updateProject(
     };
   }
 
+  const agentsToRefresh = await detectExistingAgentRuleAgents(projectRoot);
   const initResult: InitExecutionResult = await initProject(
-    { force: true, agents: [] },
+    { force: true, agents: agentsToRefresh },
     projectRoot,
   );
 

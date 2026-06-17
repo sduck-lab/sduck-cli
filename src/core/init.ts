@@ -56,6 +56,7 @@ export type AssetTemplateKey =
   | 'agent-rules-gemini-cli'
   | 'agent-rules-cursor'
   | 'agent-rules-antigravity'
+  | 'agent-rules-skill-codebase-decisions'
   | 'agent-rules-hook';
 
 export interface AssetTemplateDefinition {
@@ -172,6 +173,15 @@ const ASSET_TEMPLATE_DEFINITIONS = [
   {
     key: 'agent-rules-antigravity',
     relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'antigravity.md'),
+  },
+  {
+    key: 'agent-rules-skill-codebase-decisions',
+    relativePath: getProjectRelativeSduckAssetPath(
+      'agent-rules',
+      'skills',
+      'codebase-decisions',
+      'SKILL.md',
+    ),
   },
   {
     key: 'agent-rules-hook',

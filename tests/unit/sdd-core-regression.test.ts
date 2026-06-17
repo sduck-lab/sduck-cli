@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -10,6 +10,8 @@ import { approveSpecs, loadSpecApprovalCandidates } from '../../src/core/spec-ap
 import { startTask } from '../../src/core/start.js';
 import { readCurrentWorkId } from '../../src/core/state.js';
 import { markStepCompleted } from '../../src/core/step.js';
+import { updateProject } from '../../src/core/update.js';
+import { writeProjectVersion } from '../../src/core/version-file.js';
 import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
 
 describe('SDD core regression Interface', () => {
@@ -23,6 +25,17 @@ describe('SDD core regression Interface', () => {
   it('preserves the no-git lifecycle from start through done', async () => {
     workspace = await createTempWorkspace('sdd-core-');
     await initProject({ agents: [], force: false }, workspace);
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'skills',
+        'codebase-decisions',
+        'SKILL.md',
+      ),
+    );
 
     const started = await startTask(
       'refactor',
@@ -130,5 +143,30 @@ describe('SDD core regression Interface', () => {
       status: string;
     };
     expect(finalAgentContext.status).toBe('DONE');
+  });
+
+  it('refreshes existing generated agent rules during update', async () => {
+    workspace = await createTempWorkspace('sdd-update-');
+    await initProject({ agents: ['claude-code'], force: false }, workspace);
+
+    const claudeRulesPath = join(workspace, 'CLAUDE.md');
+    const staleRules = (await readFile(claudeRulesPath, 'utf8'))
+      .replaceAll('codebase-decisions', 'legacy-decisions')
+      .replaceAll(
+        '.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md',
+        '.sduck/sduck-assets/agent-rules/skills/legacy-decisions/SKILL.md',
+      );
+
+    await writeFile(claudeRulesPath, staleRules, 'utf8');
+    await writeProjectVersion(workspace, '0.0.0');
+
+    const result = await updateProject({ dryRun: false }, workspace);
+
+    expect(result.didChange).toBe(true);
+    const refreshedRules = await readFile(claudeRulesPath, 'utf8');
+    expect(refreshedRules).toContain('codebase-decisions');
+    expect(refreshedRules).toContain(
+      '.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md',
+    );
   });
 });

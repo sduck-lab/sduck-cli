@@ -79,6 +79,17 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     await access(join(workspace, '.decision', 'state.json'));
     await access(join(workspace, '.sduck', 'sduck-assets', 'eval', 'spec.yml'));
     await access(join(workspace, '.sduck', 'sduck-assets', 'agent-rules', 'core.md'));
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'skills',
+        'codebase-decisions',
+        'SKILL.md',
+      ),
+    );
     await access(join(workspace, '.claude', 'hooks', 'sdd-guard.sh'));
     await access(join(workspace, '.claude', 'settings.json'));
 
@@ -100,5 +111,9 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     expect(claudeRules).toContain('<!-- sduck:begin -->');
     expect(claudeRules).toContain('spec -> approval -> plan -> approval');
     expect(claudeRules).toContain('sduck start');
+    expect(claudeRules).toContain('codebase-decisions');
+    expect(claudeRules).toContain(
+      '.sduck/sduck-assets/agent-rules/skills/codebase-decisions/SKILL.md',
+    );
   });
 });
