@@ -28,6 +28,7 @@ import {
   runContextAddCommand,
   runContextCommand,
   runRecallCommand,
+  runRebuildCommand,
   runRememberCommand,
   runStatusCommand,
   runSubmitCommand,
@@ -292,6 +293,13 @@ program
   .description('Export markdown and decision graph artifacts')
   .action(() => {
     printResult(runRememberCommand(process.cwd()));
+  });
+
+program
+  .command('rebuild')
+  .description('Rebuild the local decision DB cache from markdown source files')
+  .action(() => {
+    printResult(runRebuildCommand(process.cwd()));
   });
 
 program

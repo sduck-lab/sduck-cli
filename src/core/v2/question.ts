@@ -1,10 +1,15 @@
-import { insertDecision, updateDecisionFromAnswer } from './decision.js';
-import { appendEvent } from './events.js';
-import { insertEvidence } from './evidence.js';
+import { ensureReadableCache } from './cache.js';
 import { nextEntityId, nowIso } from './ids.js';
-import { decodeJson, encodeJson, openDatabase } from './store.js';
+import { rebuildDecisionCache } from './rebuild.js';
+import {
+  appendSourceEvent,
+  loadSourceBundleForWrite,
+  nextSourceEntityId,
+  writeSourceBundle,
+} from './source-store.js';
+import { decodeJson, encodeJson } from './store.js';
 
-import type { DraftQuestion, Question } from '../../types/index.js';
+import type { Decision, Evidence, DraftQuestion, Question } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
 
 interface QuestionRow {
@@ -95,59 +100,84 @@ export function answerQuestion(
   questionId: string,
   input: { optionIndex?: number; text?: string },
 ): { question: Question; answer: string } {
-  const db = openDatabase(projectRoot);
-  try {
-    const question = getQuestion(db, questionId);
-    if (question === null) {
-      throw new Error(`Question not found: ${questionId}`);
-    }
-    if (question.answered) {
-      throw new Error(`Question is already answered: ${questionId}`);
-    }
-    const answer = resolveAnswer(question, input);
-    db.prepare(`UPDATE questions SET answered = 1, answer = ? WHERE id = ?`).run(
-      answer,
-      question.id,
-    );
-    const evidenceDraft = {
-      sourceType: 'USER_ANSWER',
-      sourceRef: question.id,
-      summary: answer,
-      confidence: 1,
-    } as const;
-    const evidence = insertEvidence(
-      db,
-      question.taskId,
-      question.decisionId === null
-        ? evidenceDraft
-        : { ...evidenceDraft, decisionId: question.decisionId },
-    );
-    if (question.decisionId !== null) {
-      updateDecisionFromAnswer(db, question.decisionId, answer, question.id);
-    } else {
-      insertDecision(db, question.taskId, {
-        title: question.text,
-        kind: 'EXPLICIT',
-        status: 'CONFIRMED',
-        confidence: 1,
-        summary: answer,
-        rationale: [`User answered ${question.id}.`],
-        sourceRefs: [`USER_ANSWER:${question.id}`, evidence.id],
-      });
-    }
-    appendEvent(db, {
-      taskId: question.taskId,
-      type: 'QUESTION_ANSWERED',
-      payload: { questionId: question.id, answer },
-    });
-    const updated = getQuestion(db, question.id);
-    if (updated === null) {
-      throw new Error(`Question not found after answer: ${question.id}`);
-    }
-    return { question: updated, answer };
-  } finally {
-    db.close();
+  ensureReadableCache(projectRoot);
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  const question = bundle.questions.find((item) => item.id === questionId);
+  if (question === undefined) {
+    throw new Error(`Question not found: ${questionId}`);
   }
+  if (question.answered) {
+    throw new Error(`Question is already answered: ${questionId}`);
+  }
+  const answer = resolveAnswer(question, input);
+  const updatedQuestion: Question = { ...question, answered: true, answer };
+  const evidenceId = nextSourceEntityId(
+    bundle.evidence.map((item) => item.id),
+    'EVD',
+  );
+  const evidence: Evidence = {
+    id: evidenceId,
+    taskId: question.taskId,
+    decisionId: question.decisionId,
+    sourceType: 'USER_ANSWER',
+    sourceRef: question.id,
+    summary: answer,
+    confidence: 1,
+    createdAt: nowIso(),
+  };
+  bundle.questions = bundle.questions.map((item) =>
+    item.id === question.id ? updatedQuestion : item,
+  );
+  bundle.evidence.push(evidence);
+  if (question.decisionId !== null) {
+    bundle.decisions = bundle.decisions.map((decision) =>
+      decision.id === question.decisionId
+        ? {
+            ...decision,
+            kind: 'EXPLICIT',
+            status: 'CONFIRMED',
+            confidence: 1,
+            summary: answer,
+            sourceRefs: [...decision.sourceRefs, `USER_ANSWER:${question.id}`],
+            updatedAt: nowIso(),
+          }
+        : decision,
+    );
+  } else {
+    const decisionId = nextSourceEntityId(
+      bundle.decisions.map((item) => item.id),
+      'DEC',
+    );
+    const decision: Decision = {
+      id: decisionId,
+      taskId: question.taskId,
+      title: question.text,
+      kind: 'EXPLICIT',
+      status: 'CONFIRMED',
+      confidence: 1,
+      summary: answer,
+      rationale: [`User answered ${question.id}.`],
+      appliesTo: [],
+      avoids: [],
+      sourceRefs: [`USER_ANSWER:${question.id}`, evidence.id],
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    bundle.decisions.push(decision);
+    appendSourceEvent(bundle, {
+      taskId: question.taskId,
+      type: 'DECISION_CREATED',
+      payload: { decisionId },
+    });
+  }
+  appendSourceEvent(bundle, {
+    taskId: question.taskId,
+    type: 'QUESTION_ANSWERED',
+    payload: { questionId: question.id, answer },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return { question: updatedQuestion, answer };
 }
 
 function resolveAnswer(question: Question, input: { optionIndex?: number; text?: string }): string {

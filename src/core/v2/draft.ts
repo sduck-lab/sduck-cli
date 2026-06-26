@@ -1,12 +1,15 @@
-import { insertDecision } from './decision.js';
-import { appendEvent } from './events.js';
-import { insertEvidence } from './evidence.js';
-import { insertQuestion } from './question.js';
+import { ensureReadableCache } from './cache.js';
+import { nowIso } from './ids.js';
+import { rebuildDecisionCache } from './rebuild.js';
+import {
+  appendSourceEvent,
+  loadSourceBundleForWrite,
+  nextSourceEntityId,
+  writeSourceBundle,
+} from './source-store.js';
 import { getCurrentTaskId } from './state.js';
-import { openDatabase } from './store.js';
-import { updateTaskScopes } from './task.js';
 
-import type { SduckDraft } from '../../types/index.js';
+import type { Decision, Evidence, Question, SduckDraft } from '../../types/index.js';
 
 export interface SubmitDraftResult {
   taskId: string;
@@ -28,42 +31,106 @@ export function parseDraftInput(content: string): unknown {
 }
 
 export function submitDraft(projectRoot: string, content: string): SubmitDraftResult {
-  const db = openDatabase(projectRoot);
-  try {
-    const currentTaskId = getCurrentTaskId(projectRoot);
-    if (currentTaskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
-    const draft = validateDraft(parseDraftInput(content));
-    const taskId = draft.taskId ?? currentTaskId;
-    if (taskId !== currentTaskId) {
-      throw new Error(`Draft taskId ${taskId} does not match current task ${currentTaskId}.`);
-    }
-    const decisions = draft.decisions ?? [];
-    const questions = draft.questions ?? [];
-    const evidence = draft.evidence ?? [];
-    for (const decision of decisions) insertDecision(db, taskId, decision);
-    for (const question of questions) insertQuestion(db, taskId, question);
-    for (const item of evidence) insertEvidence(db, taskId, item);
-    updateTaskScopes(db, taskId, draft.expectedScope ?? [], draft.avoidScope ?? []);
-    appendEvent(db, {
+  ensureReadableCache(projectRoot);
+  const currentTaskId = getCurrentTaskId(projectRoot);
+  if (currentTaskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+  const draft = validateDraft(parseDraftInput(content));
+  const taskId = draft.taskId ?? currentTaskId;
+  if (taskId !== currentTaskId) {
+    throw new Error(`Draft taskId ${taskId} does not match current task ${currentTaskId}.`);
+  }
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  const task = bundle.tasks.find((item) => item.id === taskId);
+  if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+  const decisions = draft.decisions ?? [];
+  const questions = draft.questions ?? [];
+  const evidence = draft.evidence ?? [];
+  const now = nowIso();
+  let decisionIds = bundle.decisions.map((item) => item.id);
+  let questionIds = bundle.questions.map((item) => item.id);
+  let evidenceIds = bundle.evidence.map((item) => item.id);
+  for (const draftDecision of decisions) {
+    const id = draftDecision.id ?? nextSourceEntityId(decisionIds, 'DEC');
+    decisionIds = [...decisionIds, id];
+    const decision: Decision = {
+      id,
       taskId,
-      type: 'DRAFT_SUBMITTED',
-      payload: {
-        decisions: decisions.length,
-        questions: questions.length,
-        evidence: evidence.length,
-        expectedScope: draft.expectedScope ?? [],
-        avoidScope: draft.avoidScope ?? [],
-      },
-    });
-    return {
+      title: draftDecision.title,
+      kind: draftDecision.kind,
+      status: draftDecision.status ?? 'DRAFT',
+      confidence: draftDecision.confidence ?? (draftDecision.kind === 'EXPLICIT' ? 1 : 0.7),
+      summary: draftDecision.summary,
+      rationale: draftDecision.rationale ?? [],
+      appliesTo: draftDecision.appliesTo ?? [],
+      avoids: draftDecision.avoids ?? [],
+      sourceRefs: draftDecision.sourceRefs ?? [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    bundle.decisions.push(decision);
+    appendSourceEvent(bundle, { taskId, type: 'DECISION_CREATED', payload: { decisionId: id } });
+  }
+  for (const draftQuestion of questions) {
+    const id = draftQuestion.id ?? nextSourceEntityId(questionIds, 'Q');
+    questionIds = [...questionIds, id];
+    const question: Question = {
+      id,
       taskId,
+      decisionId: draftQuestion.decisionId ?? null,
+      text: draftQuestion.text,
+      recommendedAnswer: draftQuestion.recommendedAnswer,
+      rationale: draftQuestion.rationale ?? [],
+      options: draftQuestion.options ?? ['추천안 사용', '직접 입력'],
+      answered: false,
+      answer: null,
+      createdAt: now,
+    };
+    bundle.questions.push(question);
+  }
+  for (const draftEvidence of evidence) {
+    const id = draftEvidence.id ?? nextSourceEntityId(evidenceIds, 'EVD');
+    evidenceIds = [...evidenceIds, id];
+    const item: Evidence = {
+      id,
+      taskId,
+      decisionId: draftEvidence.decisionId ?? null,
+      sourceType: draftEvidence.sourceType,
+      sourceRef: draftEvidence.sourceRef,
+      summary: draftEvidence.summary,
+      confidence: draftEvidence.confidence ?? 0.7,
+      createdAt: now,
+    };
+    bundle.evidence.push(item);
+  }
+  bundle.tasks = bundle.tasks.map((item) =>
+    item.id === taskId
+      ? {
+          ...item,
+          expectedScope: draft.expectedScope ?? [],
+          avoidScope: draft.avoidScope ?? [],
+          updatedAt: now,
+        }
+      : item,
+  );
+  appendSourceEvent(bundle, {
+    taskId,
+    type: 'DRAFT_SUBMITTED',
+    payload: {
       decisions: decisions.length,
       questions: questions.length,
       evidence: evidence.length,
-    };
-  } finally {
-    db.close();
-  }
+      expectedScope: draft.expectedScope ?? [],
+      avoidScope: draft.avoidScope ?? [],
+    },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return {
+    taskId,
+    decisions: decisions.length,
+    questions: questions.length,
+    evidence: evidence.length,
+  };
 }
 
 function validateDraft(draft: unknown): SduckDraft {

@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { ensureReadableCache } from './cache.js';
 import { mapDecision } from './decision.js';
-import { appendEvent } from './events.js';
 import { listEvidenceByTask } from './evidence.js';
 import { nextEntityId, nowIso } from './ids.js';
 import {
@@ -11,6 +11,13 @@ import {
   resolveInsideProject,
   toRelativePath,
 } from './paths.js';
+import { rebuildDecisionCache } from './rebuild.js';
+import {
+  appendSourceEvent,
+  loadSourceBundleForWrite,
+  nextSourceEntityId,
+  writeSourceBundle,
+} from './source-store.js';
 import { getCurrentTaskId } from './state.js';
 import { decodeJson, encodeJson, openDatabase } from './store.js';
 import { getTaskById } from './task.js';
@@ -99,67 +106,74 @@ export function insertContextItem(
 }
 
 export function buildContextIndex(projectRoot: string, task: Task): ContextItem[] {
+  ensureReadableCache(projectRoot);
   const db = openDatabase(projectRoot);
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  let contextIds = bundle.contextItems.map((item) => item.id);
+  const inserted: ContextItem[] = [];
   try {
-    const inserted: ContextItem[] = [];
     for (const file of findRelevantFiles(projectRoot, task.description).slice(0, 20)) {
-      inserted.push(
-        insertContextItem(db, {
-          taskId: task.id,
-          sourceType: 'DISCOVERY',
-          sourceRef: file,
-          summary: `Filename/path appears relevant to: ${task.description}`,
-          metadata: { reason: 'keyword-match' },
-        }),
-      );
+      const item = makeSourceContextItem(contextIds, {
+        taskId: task.id,
+        sourceType: 'DISCOVERY',
+        sourceRef: file,
+        summary: `Filename/path appears relevant to: ${task.description}`,
+        metadata: { reason: 'keyword-match' },
+      });
+      contextIds = [...contextIds, item.id];
+      inserted.push(item);
     }
     const report = graphifyReportPath(projectRoot);
     if (fs.existsSync(report)) {
-      inserted.push(
-        insertContextItem(db, {
-          taskId: task.id,
-          sourceType: 'GRAPHIFY_REPORT',
-          sourceRef: toRelativePath(projectRoot, report),
-          summary: 'Existing Graphify report is available as evidence.',
-          metadata: {},
-        }),
-      );
+      const item = makeSourceContextItem(contextIds, {
+        taskId: task.id,
+        sourceType: 'GRAPHIFY_REPORT',
+        sourceRef: toRelativePath(projectRoot, report),
+        summary: 'Existing Graphify report is available as evidence.',
+        metadata: {},
+      });
+      contextIds = [...contextIds, item.id];
+      inserted.push(item);
     }
     const graph = graphifyGraphPath(projectRoot);
     if (fs.existsSync(graph)) {
-      inserted.push(
-        insertContextItem(db, {
-          taskId: task.id,
-          sourceType: 'GRAPHIFY_GRAPH',
-          sourceRef: toRelativePath(projectRoot, graph),
-          summary: 'Existing Graphify graph JSON is available as evidence.',
-          metadata: {},
-        }),
-      );
+      const item = makeSourceContextItem(contextIds, {
+        taskId: task.id,
+        sourceType: 'GRAPHIFY_GRAPH',
+        sourceRef: toRelativePath(projectRoot, graph),
+        summary: 'Existing Graphify graph JSON is available as evidence.',
+        metadata: {},
+      });
+      contextIds = [...contextIds, item.id];
+      inserted.push(item);
     }
     for (const memory of findMemoryItems(db, task)) {
-      inserted.push(
-        insertContextItem(db, {
-          taskId: task.id,
-          sourceType: 'MEMORY',
-          sourceRef: memory.sourceRef,
-          summary: memory.summary,
-          metadata: memory.metadata,
-        }),
-      );
+      const item = makeSourceContextItem(contextIds, {
+        taskId: task.id,
+        sourceType: 'MEMORY',
+        sourceRef: memory.sourceRef,
+        summary: memory.summary,
+        metadata: memory.metadata,
+      });
+      contextIds = [...contextIds, item.id];
+      inserted.push(item);
     }
-    appendEvent(db, {
-      taskId: task.id,
-      type: 'CONTEXT_INDEXED',
-      payload: { itemCount: inserted.length },
-    });
-    return inserted;
   } finally {
     db.close();
   }
+  bundle.contextItems.push(...inserted);
+  appendSourceEvent(bundle, {
+    taskId: task.id,
+    type: 'CONTEXT_INDEXED',
+    payload: { itemCount: inserted.length },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return inserted;
 }
 
 export function getContextPack(projectRoot: string): ContextPack {
+  ensureReadableCache(projectRoot);
   const db = openDatabase(projectRoot);
   try {
     const taskId = requireCurrentTaskId(projectRoot);
@@ -243,31 +257,41 @@ function listPriorTraces(db: DatabaseSync, taskId: string) {
 }
 
 export function addContextPath(projectRoot: string, pathOrGlob: string): ContextItem[] {
-  const db = openDatabase(projectRoot);
-  try {
-    const taskId = requireCurrentTaskId(projectRoot);
-    const matches = expandPathOrGlob(projectRoot, pathOrGlob);
-    if (matches.length === 0) {
-      throw new Error(`No matching files: ${pathOrGlob}`);
-    }
-    const items = matches.map((file) =>
-      insertContextItem(db, {
-        taskId,
-        sourceType: 'FILE',
-        sourceRef: file,
-        summary: `Added by agent/user context request: ${file}`,
-        metadata: { requested: pathOrGlob },
-      }),
-    );
-    appendEvent(db, {
-      taskId,
-      type: 'CONTEXT_ITEM_ADDED',
-      payload: { pathOrGlob, count: items.length },
-    });
-    return items;
-  } finally {
-    db.close();
+  ensureReadableCache(projectRoot);
+  const taskId = requireCurrentTaskId(projectRoot);
+  const matches = expandPathOrGlob(projectRoot, pathOrGlob);
+  if (matches.length === 0) {
+    throw new Error(`No matching files: ${pathOrGlob}`);
   }
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  let contextIds = bundle.contextItems.map((item) => item.id);
+  const items = matches.map((file) => {
+    const item = makeSourceContextItem(contextIds, {
+      taskId,
+      sourceType: 'FILE',
+      sourceRef: file,
+      summary: `Added by agent/user context request: ${file}`,
+      metadata: { requested: pathOrGlob },
+    });
+    contextIds = [...contextIds, item.id];
+    return item;
+  });
+  bundle.contextItems.push(...items);
+  appendSourceEvent(bundle, {
+    taskId,
+    type: 'CONTEXT_ITEM_ADDED',
+    payload: { pathOrGlob, count: items.length },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return items;
+}
+
+function makeSourceContextItem(
+  existingIds: string[],
+  input: Omit<ContextItem, 'id' | 'createdAt'>,
+): ContextItem {
+  return { ...input, id: nextSourceEntityId(existingIds, 'CTX'), createdAt: nowIso() };
 }
 
 function buildDraftSchemaExample(taskId: string): SduckDraft {

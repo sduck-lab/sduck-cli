@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -12,6 +12,22 @@ const supportsNodeSqlite = (() => {
 })();
 
 const describeIfSqlite = supportsNodeSqlite ? describe : describe.skip;
+
+interface BriefJson {
+  openQuestionCount: number;
+}
+
+function parseBriefJson(stdout: string): BriefJson {
+  const parsed = JSON.parse(stdout) as unknown;
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('Invalid brief JSON');
+  }
+  const candidate = parsed as { openQuestionCount?: unknown };
+  if (typeof candidate.openQuestionCount !== 'number') {
+    throw new Error('Invalid brief JSON');
+  }
+  return { openQuestionCount: candidate.openQuestionCount };
+}
 
 describeIfSqlite('v2 CLI flow', () => {
   const cliRoot = process.cwd();
@@ -85,6 +101,7 @@ describeIfSqlite('v2 CLI flow', () => {
     expect((await runCli(['brief'], { cliRoot, cwd: workspace })).stdout).toContain(
       'Implementation Brief',
     );
+    const briefBeforeRebuild = await runCli(['brief', '--json'], { cliRoot, cwd: workspace });
     expect((await runCli(['confirm'], { cliRoot, cwd: workspace })).stdout).toContain('confirmed');
 
     await writeFile(join(workspace, 'tracked.ts'), 'export const tracked = 2;\n');
@@ -95,9 +112,25 @@ describeIfSqlite('v2 CLI flow', () => {
     expect((await runCli(['remember'], { cliRoot, cwd: workspace })).stdout).toContain(
       'decision-graph.json',
     );
+    await unlink(join(workspace, '.decision', 'db.sqlite'));
+    const rebuild = await runCli(['rebuild'], { cliRoot, cwd: workspace });
+    expect(rebuild.exitCode).toBe(0);
+    expect(rebuild.stdout).toContain('Decision cache rebuilt.');
+    expect(rebuild.stdout).toContain('Questions: 1');
+    const briefAfterRebuild = await runCli(['brief', '--json'], { cliRoot, cwd: workspace });
+    expect(JSON.parse(briefAfterRebuild.stdout)).toMatchObject({
+      task: { id: taskId },
+      openQuestionCount: parseBriefJson(briefBeforeRebuild.stdout).openQuestionCount,
+    });
+
+    await unlink(join(workspace, '.decision', 'db.sqlite'));
+    const autoStatus = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
+    expect(autoStatus.exitCode).toBe(0);
+    expect(JSON.parse(autoStatus.stdout)).toMatchObject({ task: { id: taskId } });
     expect((await runCli(['recall', 'retry'], { cliRoot, cwd: workspace })).stdout).toContain(
       '검색어',
     );
     expect((await runCli(['close'], { cliRoot, cwd: workspace })).stdout).toContain('closed');
+    expect(await readFile(join(cliRoot, '.gitignore'), 'utf8')).toContain('.decision/db.sqlite');
   });
 });

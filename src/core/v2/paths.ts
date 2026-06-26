@@ -10,6 +10,11 @@ export function dbPath(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'db.sqlite');
 }
 
+export function dbSidecarPaths(projectRoot: string): string[] {
+  const db = dbPath(projectRoot);
+  return [db, `${db}-shm`, `${db}-wal`, `${db}-journal`];
+}
+
 export function statePath(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'state.json');
 }
@@ -18,12 +23,26 @@ export function markdownTasksDir(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'exports', 'markdown', 'tasks');
 }
 
+export const sourceTasksDir = markdownTasksDir;
+
 export function markdownDecisionsDir(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'exports', 'markdown', 'decisions');
 }
 
+export const sourceDecisionsDir = markdownDecisionsDir;
+
 export function markdownImplementationsDir(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'exports', 'markdown', 'implementations');
+}
+
+export const sourceImplementationsDir = markdownImplementationsDir;
+
+export function sourceDirs(projectRoot: string): string[] {
+  return [
+    sourceTasksDir(projectRoot),
+    sourceDecisionsDir(projectRoot),
+    sourceImplementationsDir(projectRoot),
+  ];
 }
 
 export function graphifyExportDir(projectRoot: string): string {

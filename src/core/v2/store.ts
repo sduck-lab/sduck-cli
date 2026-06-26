@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 
-import { dbPath, decisionRoot } from './paths.js';
+import { dbPath, dbSidecarPaths, decisionRoot } from './paths.js';
 
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 
@@ -30,6 +30,48 @@ export function openDatabase(projectRoot: string): DatabaseSyncType {
   const db = new DatabaseSync(dbPath(projectRoot));
   ensureSchema(db);
   return db;
+}
+
+export function resetDatabaseCache(projectRoot: string): DatabaseSyncType {
+  fs.mkdirSync(decisionRoot(projectRoot), { recursive: true });
+  for (const filePath of dbSidecarPaths(projectRoot)) {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  return openDatabase(projectRoot);
+}
+
+export function cacheHasRows(projectRoot: string): boolean {
+  if (!fs.existsSync(dbPath(projectRoot))) return false;
+  const db = openDatabase(projectRoot);
+  try {
+    for (const table of [
+      'tasks',
+      'decisions',
+      'questions',
+      'evidence',
+      'context_items',
+      'brief_snapshots',
+      'implementation_traces',
+      'events',
+    ]) {
+      const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
+      if (row.count > 0) return true;
+    }
+    return false;
+  } finally {
+    db.close();
+  }
+}
+
+export function getCacheMetadata(db: DatabaseSyncType, key: string): string | null {
+  const row = db.prepare(`SELECT value FROM cache_metadata WHERE key = ?`).get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
+}
+
+export function setCacheMetadata(db: DatabaseSyncType, key: string, value: string): void {
+  db.prepare(`INSERT OR REPLACE INTO cache_metadata (key, value) VALUES (?, ?)`).run(key, value);
 }
 
 export function ensureSchema(db: DatabaseSyncType): void {
@@ -119,6 +161,11 @@ export function ensureSchema(db: DatabaseSyncType): void {
       type TEXT NOT NULL,
       payload_json TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS cache_metadata (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
     );
   `);
 }

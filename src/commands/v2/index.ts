@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 
 import { confirmBrief, buildBriefView } from '../../core/v2/brief.js';
+import { ensureReadableCache } from '../../core/v2/cache.js';
 import { addContextPath, buildContextIndex, getContextPack } from '../../core/v2/context.js';
 import { submitDraft } from '../../core/v2/draft.js';
 import { answerQuestion, getNextOpenQuestion } from '../../core/v2/question.js';
+import { formatRebuildResult, rebuildDecisionCache } from '../../core/v2/rebuild.js';
 import { recall } from '../../core/v2/recall.js';
 import { remember } from '../../core/v2/remember.js';
 import { fail, ok } from '../../core/v2/result.js';
@@ -104,8 +106,10 @@ export function runSubmitCommand(projectRoot: string, stdin: string): CommandRes
 }
 
 export async function runAskCommand(projectRoot: string): Promise<CommandResult> {
-  const db = openDatabase(projectRoot);
+  let db: ReturnType<typeof openDatabase> | null = null;
   try {
+    ensureReadableCache(projectRoot);
+    db = openDatabase(projectRoot);
     const taskId = getCurrentTaskId(projectRoot);
     if (taskId === null) return fail('No current task. Run `sduck work "..."` first.');
     const question = getNextOpenQuestion(db, taskId);
@@ -128,7 +132,7 @@ export async function runAskCommand(projectRoot: string): Promise<CommandResult>
   } catch (error) {
     return fail(formatError(error));
   } finally {
-    db.close();
+    db?.close();
   }
 }
 
@@ -191,6 +195,14 @@ export function runRememberCommand(projectRoot: string): CommandResult {
     return ok(
       ['문서화 완료.', '생성됨:', ...result.created.map((item) => `  - ${item}`)].join('\n'),
     );
+  } catch (error) {
+    return fail(formatError(error));
+  }
+}
+
+export function runRebuildCommand(projectRoot: string): CommandResult {
+  try {
+    return ok(formatRebuildResult(rebuildDecisionCache(projectRoot)));
   } catch (error) {
     return fail(formatError(error));
   }

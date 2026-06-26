@@ -1,7 +1,9 @@
-import { appendEvent } from './events.js';
+import { ensureReadableCache } from './cache.js';
 import { createTaskId, nowIso } from './ids.js';
+import { rebuildDecisionCache } from './rebuild.js';
+import { appendSourceEvent, loadSourceBundleForWrite, writeSourceBundle } from './source-store.js';
 import { getCurrentTaskId, setCurrentTaskId } from './state.js';
-import { decodeJson, encodeJson, openDatabase } from './store.js';
+import { decodeJson, encodeJson } from './store.js';
 
 import type { Task, TaskStatus } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -36,44 +38,30 @@ export function getTaskById(db: DatabaseSync, taskId: string): Task | null {
 }
 
 export function createTask(projectRoot: string, description: string): Task {
-  const db = openDatabase(projectRoot);
-  try {
-    let id = createTaskId(description);
-    let suffix = 2;
-    while (getTaskById(db, id) !== null) {
-      id = `${createTaskId(description)}-${String(suffix)}`;
-      suffix += 1;
-    }
-    const createdAt = nowIso();
-    const task: Task = {
-      id,
-      title: description,
-      description,
-      status: 'OPEN',
-      expectedScope: [],
-      avoidScope: [],
-      createdAt,
-      updatedAt: createdAt,
-    };
-    db.prepare(
-      `INSERT INTO tasks (id, title, description, status, expected_scope_json, avoid_scope_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      task.id,
-      task.title,
-      task.description,
-      task.status,
-      encodeJson(task.expectedScope),
-      encodeJson(task.avoidScope),
-      task.createdAt,
-      task.updatedAt,
-    );
-    appendEvent(db, { taskId: task.id, type: 'TASK_CREATED', payload: { description } });
-    setCurrentTaskId(projectRoot, task.id);
-    return task;
-  } finally {
-    db.close();
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  let id = createTaskId(description);
+  let suffix = 2;
+  while (bundle.tasks.some((task) => task.id === id)) {
+    id = `${createTaskId(description)}-${String(suffix)}`;
+    suffix += 1;
   }
+  const createdAt = nowIso();
+  const task: Task = {
+    id,
+    title: description,
+    description,
+    status: 'OPEN',
+    expectedScope: [],
+    avoidScope: [],
+    createdAt,
+    updatedAt: createdAt,
+  };
+  bundle.tasks.push(task);
+  appendSourceEvent(bundle, { taskId: task.id, type: 'TASK_CREATED', payload: { description } });
+  writeSourceBundle(projectRoot, bundle);
+  setCurrentTaskId(projectRoot, task.id);
+  rebuildDecisionCache(projectRoot);
+  return task;
 }
 
 export function updateTaskStatus(db: DatabaseSync, taskId: string, status: TaskStatus): void {
@@ -96,27 +84,23 @@ export function updateTaskScopes(
 }
 
 export function setTerminalStatus(projectRoot: string, status: 'CLOSED' | 'ABANDONED'): Task {
-  const db = openDatabase(projectRoot);
-  try {
-    const taskId = requireCurrentTaskId(projectRoot);
-    const task = getTaskById(db, taskId);
-    if (task === null) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-    updateTaskStatus(db, task.id, status);
-    appendEvent(db, {
-      taskId: task.id,
-      type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
-      payload: {},
-    });
-    const updated = getTaskById(db, task.id);
-    if (updated === null) {
-      throw new Error(`Task not found after update: ${task.id}`);
-    }
-    return updated;
-  } finally {
-    db.close();
+  ensureReadableCache(projectRoot);
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  const taskId = requireCurrentTaskId(projectRoot);
+  const task = bundle.tasks.find((item) => item.id === taskId);
+  if (task === undefined) {
+    throw new Error(`Task not found: ${taskId}`);
   }
+  const updated: Task = { ...task, status, updatedAt: nowIso() };
+  bundle.tasks = bundle.tasks.map((item) => (item.id === taskId ? updated : item));
+  appendSourceEvent(bundle, {
+    taskId: task.id,
+    type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
+    payload: {},
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return updated;
 }
 
 function requireCurrentTaskId(projectRoot: string): string {
