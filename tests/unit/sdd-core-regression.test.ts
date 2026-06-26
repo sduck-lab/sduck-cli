@@ -169,4 +169,67 @@ describe('SDD core regression Interface', () => {
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
   });
+
+  it('writes OpenCode rules to AGENTS.md instead of AGENT.md', async () => {
+    workspace = await createTempWorkspace('sdd-opencode-');
+    await initProject({ agents: ['opencode'], force: false }, workspace);
+
+    const opencodeRules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
+    expect(opencodeRules).toContain('<!-- sduck:begin -->');
+    expect(opencodeRules).toContain('Selected agents: OpenCode');
+    await expect(access(join(workspace, 'AGENT.md'))).rejects.toThrow();
+  });
+
+  it('separates Codex and OpenCode root rule files', async () => {
+    workspace = await createTempWorkspace('sdd-codex-opencode-');
+    await initProject({ agents: ['codex', 'opencode'], force: false }, workspace);
+
+    const codexRules = await readFile(join(workspace, 'AGENT.md'), 'utf8');
+    const opencodeRules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
+
+    expect(codexRules).toContain('<!-- sduck:begin -->');
+    expect(codexRules).toContain('Selected agents: Codex');
+    expect(codexRules).toContain('Codex Instructions');
+    expect(codexRules).not.toContain('OpenCode Instructions');
+
+    expect(opencodeRules).toContain('<!-- sduck:begin -->');
+    expect(opencodeRules).toContain('Selected agents: OpenCode');
+    expect(opencodeRules).toContain('OpenCode Instructions');
+    expect(opencodeRules).not.toContain('Codex Instructions');
+  });
+
+  it('preserves AGENTS.md user content when force-refreshing OpenCode rules', async () => {
+    workspace = await createTempWorkspace('sdd-opencode-preserve-');
+    const agentsPath = join(workspace, 'AGENTS.md');
+    await writeFile(
+      agentsPath,
+      [
+        '# Project Agent Notes',
+        '',
+        'Keep this user-authored OpenCode guidance.',
+        '',
+        '<!-- sduck:begin -->',
+        '# stale managed rules',
+        '',
+        'Selected agents: Legacy OpenCode',
+        '',
+        'Stale OpenCode Instructions',
+        '<!-- sduck:end -->',
+        '',
+        'Keep this footer too.',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await initProject({ agents: ['opencode'], force: true }, workspace);
+
+    const opencodeRules = await readFile(agentsPath, 'utf8');
+    expect(opencodeRules).toContain('Keep this user-authored OpenCode guidance.');
+    expect(opencodeRules).toContain('Keep this footer too.');
+    expect(opencodeRules).toContain('<!-- sduck:begin -->');
+    expect(opencodeRules).toContain('Selected agents: OpenCode');
+    expect(opencodeRules).toContain('OpenCode Instructions');
+    expect(opencodeRules).not.toContain('Selected agents: Legacy OpenCode');
+    expect(opencodeRules).not.toContain('Stale OpenCode Instructions');
+  });
 });
