@@ -51,7 +51,7 @@ export function runWorkCommand(projectRoot: string, description: string): Comman
     return ok(
       [
         '작업을 시작했어.',
-        `Task: ${task.id}`,
+        `Decision task: ${task.id}`,
         `Title: ${task.title}`,
         `Context items: ${String(contextItems.length)}`,
         '',
@@ -111,7 +111,7 @@ export async function runAskCommand(projectRoot: string): Promise<CommandResult>
     ensureReadableCache(projectRoot);
     db = openDatabase(projectRoot);
     const taskId = getCurrentTaskId(projectRoot);
-    if (taskId === null) return fail('No current task. Run `sduck work "..."` first.');
+    if (taskId === null) return fail('No current decision task. Run `sduck work "..."` first.');
     const question = getNextOpenQuestion(db, taskId);
     if (question === null) return ok('No open questions.\nNext: sduck brief');
     const header = [
@@ -219,7 +219,7 @@ export function runRecallCommand(projectRoot: string, query: string): CommandRes
 export function runCloseCommand(projectRoot: string): CommandResult {
   try {
     const task = setTerminalStatus(projectRoot, 'CLOSED');
-    return ok(`Task closed: ${task.id}`);
+    return ok(`Decision task closed: ${task.id}`);
   } catch (error) {
     return fail(formatError(error));
   }
@@ -228,7 +228,7 @@ export function runCloseCommand(projectRoot: string): CommandResult {
 export function runAbandonCommand(projectRoot: string): CommandResult {
   try {
     const task = setTerminalStatus(projectRoot, 'ABANDONED');
-    return ok(`Task abandoned: ${task.id}`);
+    return ok(`Decision task abandoned: ${task.id}`);
   } catch (error) {
     return fail(formatError(error));
   }

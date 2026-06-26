@@ -1,4 +1,13 @@
-# SDD Workflow Rules
+# sduck Decision Briefing Rules
+
+## Primary workflow: v2 `.decision` decision briefing
+
+sduck의 기본 워크플로우는 v2 `.decision` decision briefing이다. (Primary workflow: v2 `.decision` decision briefing.)
+구현을 시작하기 전에 decision context와 implementation brief를 먼저 정렬한다.
+기본 명령: `init`, `work`, `status`, `context`, `submit`, `ask`, `answer`, `brief`, `confirm`, `trace`, `remember`, `recall`, `rebuild`, `close`, `abandon`.
+저장소: `.decision/exports/markdown/**` 마크다운/엔티티 파일이 정본(source of truth)이며 `.decision/db.sqlite`는 Git-ignored 재생성 가능한 로컬 캐시다.
+
+## Legacy SDD gated implementation rules
 
 ## ⚠️ CRITICAL: 상태별 파일 접근 제한
 
@@ -87,7 +96,7 @@
 - `sduck-codebase-decisions`: `.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md`
   - 사용자가 기존 코드베이스, 문서, 테스트, 설정에서 이미 존재했던 의사결정을 읽고 저장하라고 요청할 때 사용한다.
   - skill 파일을 읽고 `sduck work`, `sduck context add`, `sduck submit`, `sduck remember`, `sduck recall` 흐름으로 decision store에 기록한다.
-  - 이 skill은 의사결정 기록용이며 SDD의 spec/plan 승인 규칙이나 구현 상태 제한을 우회하지 않는다.
+  - 이 skill은 의사결정 기록용이며, 활성 태스크에 legacy SDD 승인 게이트가 적용되는 경우 그 게이트를 우회하지 않는다.
 
 ## 워크플로우 규칙
 

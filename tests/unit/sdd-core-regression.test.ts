@@ -168,6 +168,8 @@ describe('SDD core regression Interface', () => {
     expect(refreshedRules).toContain(
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
+    expect(refreshedRules).toContain('Primary workflow: v2 `.decision` decision briefing');
+    expect(refreshedRules).toContain('Legacy SDD gated implementation rules');
   });
 
   it('writes OpenCode rules to AGENTS.md instead of AGENT.md', async () => {

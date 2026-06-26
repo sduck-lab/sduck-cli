@@ -34,6 +34,7 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     expect(help.stdout).toContain('start [options] <type> <slug>');
     expect(help.stdout).toContain('fast-track [options] <type> <slug>');
     expect(help.stdout).toContain('done [target]');
+    expect(help.stdout).toContain('Legacy SDD');
 
     const startHelp = await runCli(['start', '--help'], { cliRoot, cwd: workspace });
     expect(startHelp.exitCode).toBe(0);
@@ -115,5 +116,6 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     expect(claudeRules).toContain(
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
+    expect(claudeRules).toContain('Primary workflow: v2 `.decision` decision briefing');
   });
 });

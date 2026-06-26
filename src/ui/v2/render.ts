@@ -10,10 +10,10 @@ import type {
 
 export function renderStatus(view: StatusView): string {
   if (view.task === null) {
-    return 'No current task.\nNext: sduck work "<작업 설명>"';
+    return 'No current decision task.\nNext: sduck work "<작업 설명>"';
   }
   const lines = [
-    `Current task: ${view.task.id}`,
+    `Current decision task: ${view.task.id}`,
     `Title: ${view.task.title}`,
     `Status: ${view.task.status}`,
     '',

@@ -85,7 +85,9 @@ function printResult(result: { stdout: string; stderr: string; exitCode: number 
 
 program
   .command('init')
-  .description('Initialize .decision, .sduck, and agent rule files')
+  .description(
+    'Initialize the v2 .decision decision-briefing workspace, compatibility .sduck assets, and agent rule files',
+  )
   .option(
     '--agents <list>',
     'Comma-separated agents: claude-code,codex,opencode,gemini-cli,cursor,antigravity',
@@ -98,7 +100,7 @@ program
 
 program
   .command('start <type> <slug>')
-  .description('Start an SDD task workspace')
+  .description('Legacy SDD: start an SDD task workspace')
   .option('--no-git', 'Skip git worktree/branch allocation')
   .action(async (type: string, slug: string, options: { git?: boolean }) => {
     printResult(await runStartCommand(type, slug, process.cwd(), toStartOptions(options)));
@@ -106,7 +108,7 @@ program
 
 program
   .command('fast-track <type> <slug>')
-  .description('Create a minimal SDD task, spec, and plan')
+  .description('Legacy SDD: create a minimal SDD task, spec, and plan')
   .option('--no-git', 'Skip git worktree/branch allocation')
   .action(async (type: string, slug: string, options: { git?: boolean }) => {
     printResult(await runFastTrackCommand({ slug, type }, process.cwd(), toStartOptions(options)));
@@ -116,7 +118,7 @@ const spec = program.command('spec').description('Legacy SDD spec workflow comma
 
 spec
   .command('approve [target]')
-  .description('Approve an SDD spec')
+  .description('Legacy SDD: approve an SDD spec')
   .action(async (target?: string) => {
     printResult(await runSpecApproveCommand(withOptionalTarget(target), process.cwd()));
   });
@@ -125,7 +127,7 @@ const plan = program.command('plan').description('Legacy SDD plan workflow comma
 
 plan
   .command('approve [target]')
-  .description('Approve an SDD plan')
+  .description('Legacy SDD: approve an SDD plan')
   .action(async (target?: string) => {
     printResult(await runPlanApproveCommand(withOptionalTarget(target), process.cwd()));
   });
@@ -134,7 +136,7 @@ const step = program.command('step').description('Legacy SDD step workflow comma
 
 step
   .command('done <number> [target]')
-  .description('Mark an SDD plan step done')
+  .description('Legacy SDD: mark an SDD plan step done')
   .action(async (stepNumberText: string, target?: string) => {
     printResult(
       await runStepCommand(parseInteger(stepNumberText, 'step number', 1), process.cwd(), target),
@@ -145,35 +147,35 @@ const review = program.command('review').description('Legacy SDD review workflow
 
 review
   .command('ready [target]')
-  .description('Mark an SDD task review ready')
+  .description('Legacy SDD: mark an SDD task review ready')
   .action(async (target?: string) => {
     printResult(await runReviewReadyCommand(target, process.cwd()));
   });
 
 program
   .command('done [target]')
-  .description('Mark an SDD task done')
+  .description('Legacy SDD: mark an SDD task done')
   .action(async (target?: string) => {
     printResult(await runDoneCommand(withOptionalTarget(target), process.cwd()));
   });
 
 program
   .command('use <target>')
-  .description('Switch current SDD task')
+  .description('Legacy SDD: switch current SDD task')
   .action(async (target: string) => {
     printResult(await runUseCommand(target, process.cwd()));
   });
 
 program
   .command('implement [target]')
-  .description('Render SDD implementation context')
+  .description('Legacy SDD: render SDD implementation context')
   .action(async (target?: string) => {
     printResult(await runImplementCommand(process.cwd(), target));
   });
 
 program
   .command('clean [target]')
-  .description('Clean archived or abandoned SDD task resources')
+  .description('Legacy SDD: clean archived or abandoned SDD task resources')
   .option('--force', 'Clean without confirmation guards')
   .action(async (target: string | undefined, options: { force?: boolean }) => {
     printResult(await runCleanCommand({ force: options.force, target }, process.cwd()));
@@ -181,14 +183,14 @@ program
 
 program
   .command('reopen [target]')
-  .description('Reopen an SDD task')
+  .description('Legacy SDD: reopen an SDD task')
   .action(async (target?: string) => {
     printResult(await runReopenCommand(withOptionalTarget(target), process.cwd()));
   });
 
 program
   .command('archive')
-  .description('Archive DONE SDD tasks')
+  .description('Legacy SDD: archive DONE SDD tasks')
   .option('--keep <n>', 'Keep the most recent N DONE tasks in workspace', (value: string) =>
     parseInteger(value, '--keep', 0),
   )
@@ -198,7 +200,7 @@ program
 
 program
   .command('update')
-  .description('Update bundled SDD assets in the current project')
+  .description('Legacy SDD: update bundled SDD assets in the current project')
   .option('--dry-run', 'Preview changes without writing files')
   .action(async (options: { dryRun?: boolean }) => {
     printResult(await runUpdateCommand({ dryRun: options.dryRun === true }, process.cwd()));
@@ -227,7 +229,7 @@ context.option('--json', 'Print machine-readable JSON').action((options: { json?
 
 context
   .command('add <pathOrGlob>')
-  .description('Add file/path context to current task')
+  .description('Add file/path context to the current decision task')
   .action((pathOrGlob: string) => {
     printResult(runContextAddCommand(process.cwd(), pathOrGlob));
   });
@@ -311,14 +313,14 @@ program
 
 program
   .command('close')
-  .description('Close current task')
+  .description('Close the current decision task')
   .action(() => {
     printResult(runCloseCommand(process.cwd()));
   });
 
 program
   .command('abandon')
-  .description('Abandon the current v2 task or a target SDD task')
+  .description('Abandon the current decision task, or a legacy SDD task when a target is given')
   .argument('[target]')
   .action(async (target?: string) => {
     printResult(

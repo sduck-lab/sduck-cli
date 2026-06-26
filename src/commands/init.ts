@@ -5,7 +5,7 @@ import { SUPPORTED_AGENTS, parseAgentsOption, type SupportedAgentId } from '../c
 import { type InitCommandOptions, type InitSummaryRow, initProject } from '../core/init.js';
 import { initDecisionWorkspace, type InitWorkspaceResult } from '../core/v2/workspace.js';
 
-const AGENT_PROMPT_MESSAGE = 'Select AI agents to generate repository rule files for';
+const AGENT_PROMPT_MESSAGE = 'Select AI agents to generate v2-first repository rule files for';
 const AGENT_PROMPT_INSTRUCTIONS =
   'Use space to toggle agents, arrow keys to move, and enter to submit.';
 const AGENT_PROMPT_REQUIRED_MESSAGE =
@@ -76,6 +76,7 @@ function formatDecisionWorkspaceSummary(
 function formatResult(projectRoot: string, result: FormattableInitResult): string {
   const lines = [
     result.didChange ? 'sduck init completed.' : 'sduck init completed with no file changes.',
+    'Primary: .decision decision-briefing workspace. Compatibility: bundled .sduck SDD assets.',
   ];
 
   if (result.agents.length > 0) {

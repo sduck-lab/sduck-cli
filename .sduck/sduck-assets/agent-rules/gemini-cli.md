@@ -1,4 +1,4 @@
-이 프로젝트는 **Spec-Driven Development(SDD)** 워크플로우를 따른다.
+이 프로젝트는 **v2 `.decision` decision briefing**을 기본 워크플로우로 사용한다. legacy SDD(`start`, `spec`/`plan` 승인 게이트)는 호환용 내부 워크플로우이며 활성 SDD 태스크에서만 적용된다.
 `GEMINI.md`는 Gemini CLI가 참고하는 project-level instruction context다.
 task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 에이전트는 `spec.md`, `plan.md` 본문 작성/수정과 구현을 담당한다.
@@ -17,6 +17,6 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 
 ## Gemini CLI Instructions
 
-- Follow the repository SDD workflow exactly.
+- Follow the repository v2 `.decision` decision briefing workflow as the primary workflow; legacy SDD approval gates apply only to active SDD tasks.
 - Use `GEMINI.md` as project-level instruction context.
 - Keep plans highly detailed: list exact file paths, likely functions or sections to edit, concrete change intent, and verification commands.

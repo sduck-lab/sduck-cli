@@ -4,7 +4,7 @@ Terminal-first decision briefing harness for AI coding agents.
 
 `sduck` helps a developer and a coding agent align on implementation decisions before code changes start. It gives the agent a compact project context, lets the agent submit structured decisions/questions/evidence, renders an implementation brief, and records the implementation trace afterward.
 
-The current public CLI is the v2 `.decision` workflow. The source of truth is `.decision/db.sqlite`; Markdown and graph files are generated artifacts for review, sharing, and recall.
+The current public CLI is the v2 `.decision` decision briefing workflow. The source of truth is the durable markdown/entity text files under `.decision/exports/markdown/{tasks,decisions,implementations}/`, written by `sduck remember` and read back by `sduck rebuild`. `.decision/db.sqlite` is a Git-ignored, rebuildable local cache regenerated from that markdown source.
 
 ## Requirements
 
@@ -12,7 +12,7 @@ The current public CLI is the v2 `.decision` workflow. The source of truth is `.
 - npm
 - A git work tree for `sduck trace`
 
-Node `>=22.13` is required because the v2 store uses Node's built-in SQLite support.
+Node `>=22.13` is required because the v2 store uses Node's built-in `node:sqlite`, which may emit an experimental warning.
 
 ## Installation and local usage
 
@@ -35,7 +35,8 @@ sduck --help
 ## Quick start
 
 ```bash
-# 1) Create the decision workspace, SDD assets, and agent rules in the current project
+# 1) Create the .decision decision-briefing workspace and v2-first agent rules
+#    (also installs the bundled .sduck SDD assets as compatibility/supporting assets)
 sduck init
 # or install a specific rule set only
 sduck init --agents claude-code
@@ -73,7 +74,7 @@ sduck close
 
 ## How the workflow works
 
-1. **Initialize**: `sduck init` creates `.decision/`, `.sduck/` SDD assets, and managed agent instruction files such as `CLAUDE.md`.
+1. **Initialize**: `sduck init` creates the `.decision` decision-briefing workspace (primary), plus compatibility `.sduck` SDD assets and managed agent rule files such as `CLAUDE.md`.
 2. **Start work**: `sduck work "..."` creates the current task and builds a lightweight context pack from the project.
 3. **Give context to the agent**: `sduck context` prints relevant files, prior decisions, prior implementation traces, the grill-me protocol, and the draft schema.
 4. **Clarify decisions**: the agent explores the codebase first, asks the user only when needed, and submits a structured draft with `sduck submit --stdin`.
@@ -98,7 +99,7 @@ This keeps the conversation terminal-first while still producing durable decisio
 
 ## Commands
 
-### Workspace and task
+### Decision briefing workspace and task
 
 ```bash
 sduck init [--agents <list>] [--force] [--no-agent-rules]
@@ -117,6 +118,8 @@ sduck status [--json]
 After init, selected agents receive managed instruction files and hooks where applicable, for example `CLAUDE.md` and `.claude/hooks/sdd-guard.sh` for Claude Code.
 
 ### Legacy SDD workflow
+
+These are legacy SDD compatibility/internal gated workflow commands for spec and plan approval gates — they are not the primary `.decision` workflow, but remain reachable for teams that want explicit gates.
 
 ```bash
 sduck start <type> <slug>
@@ -250,28 +253,28 @@ The schema is intentionally small:
 
 ```text
 .decision/
-  db.sqlite
-  state.json
+  state.json                       # active task pointer
+  db.sqlite                        # Git-ignored, rebuildable local cache (+ -shm, -wal, -journal sidecars)
   exports/
-    markdown/
+    markdown/                      # SOURCE OF TRUTH — durable markdown/entity text
       tasks/
       decisions/
       implementations/
-    graphify/
+    graphify/                      # generated graph-style exports
       DECISION_REPORT.md
       decision-graph.json
 ```
 
-- `.decision/db.sqlite` stores tasks, decisions, questions, evidence, context items, brief snapshots, implementation traces, and events.
+- `.decision/exports/markdown/{tasks,decisions,implementations}/` is the source of truth: durable markdown/entity text written by `sduck remember` and read back by `sduck rebuild`.
+- `.decision/db.sqlite` (and its `-shm`, `-wal`, `-journal` sidecars) is a Git-ignored, rebuildable local cache that stores tasks, decisions, questions, evidence, context items, brief snapshots, implementation traces, and events. It is regenerated from the markdown source via `sduck rebuild` (or auto-rebuild), and can be deleted freely.
 - `.decision/state.json` tracks the active task.
-- `.decision/exports/markdown/*` contains generated Markdown memory.
-- `.decision/exports/graphify/*` contains graph-style decision exports.
+- `.decision/exports/graphify/*` contains generated graph-style decision exports.
 
 Graphify is not required at runtime. `sduck` can read existing `graphify-out/GRAPH_REPORT.md` or `graphify-out/graph.json` as context evidence when present, and it can generate Graphify-style exports itself.
 
 ## Concepts
 
-- **Task**: the current unit of work. Status values are `OPEN`, `BRIEF_READY`, `CONFIRMED`, `CLOSED`, and `ABANDONED`.
+- **Decision task**: the current unit of work in the v2 `.decision` workflow (distinct from a legacy SDD task). Status values are `OPEN`, `BRIEF_READY`, `CONFIRMED`, `CLOSED`, and `ABANDONED`.
 - **Decision**: an implementation choice. Decision kinds are `EXPLICIT`, `INFERRED`, `CARRIED`, `CONFLICT`, and `OPEN`.
 - **Question**: an unresolved point for the user. Questions can include options and a recommended answer.
 - **Evidence**: a cited reason for a decision or question, such as source code, prior decisions, implementation traces, user answers, discovery notes, or Graphify artifacts.
@@ -320,10 +323,18 @@ The CLI layer is intentionally thin: it parses arguments, delegates to core func
 - Context discovery is lightweight filename/path keyword matching, not AST indexing or vector search.
 - `context add` resolves paths inside the project and rejects paths outside the project root.
 - Graphify is optional; `sduck` only reads existing Graphify output when it is already present.
-- Markdown and graph files under `.decision/exports/` are generated artifacts. Treat `.decision/db.sqlite` as the v2 source of truth.
+- `.decision/db.sqlite` (and its `-shm`, `-wal`, `-journal` sidecars) is a rebuildable local cache, not the source of truth. It is Git-ignored and regenerated from the markdown files under `.decision/exports/markdown/**` via `sduck rebuild`.
+
+### Adoption notes
+
+- **Pre-1.0 status**: `sduck` is pre-1.0, and the `v2alpha1` draft/task schema may have breaking changes between releases. Pin a version before relying on it.
+- **Node and `node:sqlite`**: the v2 store uses Node's built-in `node:sqlite` (requires Node `>=22.13`), which currently emits an experimental warning.
+- **CI gate**: CI now runs as a repository-level verification gate, but it does not guarantee API or schema stability.
+- **Ownership**: teams should designate an owner/maintainer before adoption.
+- **Bus factor**: the project is small with a low bus factor; treat decision records as the durable artifact, not the running tool.
 
 ## Legacy `.sduck` workflow in this repository
 
-This repository also ships the `.sduck` Spec-Driven Development workflow for agents that need explicit spec and plan approval gates. `sduck init` installs the managed rule files that point agents at this workflow, and the legacy SDD commands are exposed alongside the `.decision` workflow.
+The `.decision` decision briefing workflow documented above is the primary public workflow of `sduck`. The `.sduck` Spec-Driven Development workflow is a legacy compatibility/internal gated workflow kept for agents and teams that need explicit spec and plan approval gates. `sduck init` installs the managed rule files that point agents at the `.sduck` workflow, and the legacy SDD commands remain available alongside the `.decision` workflow.
 
-For decision briefing, use the `.decision` workflow documented above. For gated agent implementation, use the legacy SDD commands documented in the workflow section.
+For decision briefing, use the `.decision` workflow. For gated agent implementation with spec/plan approval, use the legacy `.sduck` SDD commands.

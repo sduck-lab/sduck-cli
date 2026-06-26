@@ -63,7 +63,11 @@ describeIfSqlite('v2 CLI flow', () => {
     const init = await runCli(['init'], { cliRoot, cwd: workspace });
     expect(init.exitCode).toBe(0);
     expect(init.stdout).toContain('Decision workspace initialized.');
+    expect(init.stdout).toContain('Primary: .decision decision-briefing workspace.');
     expect(await readFile(join(workspace, 'CLAUDE.md'), 'utf8')).toContain('<!-- sduck:begin -->');
+    expect(await readFile(join(workspace, 'CLAUDE.md'), 'utf8')).toContain(
+      'Primary workflow: v2 `.decision` decision briefing',
+    );
     const codexRules = await readFile(join(workspace, 'AGENT.md'), 'utf8');
     const opencodeRules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
     expect(codexRules).toContain('<!-- sduck:begin -->');
