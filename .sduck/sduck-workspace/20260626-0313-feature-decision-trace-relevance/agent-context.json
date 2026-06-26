@@ -1,0 +1,23 @@
+{
+  "baseBranch": "work/feature/codebase-decision-skill",
+  "branch": "work/feature/decision-trace-relevance",
+  "createdAt": "2026-06-26T03:13:56Z",
+  "id": "20260626-0313-feature-decision-trace-relevance",
+  "planApproved": true,
+  "planPath": ".sduck/sduck-workspace/20260626-0313-feature-decision-trace-relevance/plan.md",
+  "reviewPath": ".sduck/sduck-workspace/20260626-0313-feature-decision-trace-relevance/review.md",
+  "slug": "decision-trace-relevance",
+  "specApproved": true,
+  "specPath": ".sduck/sduck-workspace/20260626-0313-feature-decision-trace-relevance/spec.md",
+  "status": "DONE",
+  "steps": {
+    "completed": [1, 2, 3, 4, 5],
+    "total": 5
+  },
+  "type": "feature",
+  "updatedAt": "2026-06-26T04:09:22Z",
+  "worktreeAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck-worktrees/20260626-0313-feature-decision-trace-relevance",
+  "worktreePath": ".sduck-worktrees/20260626-0313-feature-decision-trace-relevance",
+  "workspaceAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck/sduck-workspace/20260626-0313-feature-decision-trace-relevance",
+  "workspacePath": ".sduck/sduck-workspace/20260626-0313-feature-decision-trace-relevance"
+}

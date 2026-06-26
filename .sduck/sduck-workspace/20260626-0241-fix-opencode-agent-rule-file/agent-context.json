@@ -1,0 +1,23 @@
+{
+  "baseBranch": "work/feature/codebase-decision-skill",
+  "branch": "work/fix/opencode-agent-rule-file",
+  "createdAt": "2026-06-26T02:41:41Z",
+  "id": "20260626-0241-fix-opencode-agent-rule-file",
+  "planApproved": true,
+  "planPath": ".sduck/sduck-workspace/20260626-0241-fix-opencode-agent-rule-file/plan.md",
+  "reviewPath": ".sduck/sduck-workspace/20260626-0241-fix-opencode-agent-rule-file/review.md",
+  "slug": "opencode-agent-rule-file",
+  "specApproved": true,
+  "specPath": ".sduck/sduck-workspace/20260626-0241-fix-opencode-agent-rule-file/spec.md",
+  "status": "DONE",
+  "steps": {
+    "completed": [1, 2, 3],
+    "total": 3
+  },
+  "type": "fix",
+  "updatedAt": "2026-06-26T03:07:39Z",
+  "worktreeAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck-worktrees/20260626-0241-fix-opencode-agent-rule-file",
+  "worktreePath": ".sduck-worktrees/20260626-0241-fix-opencode-agent-rule-file",
+  "workspaceAbsolutePath": "/Users/taehee/Workspace/03_Temp/sdcuk-cli/.sduck/sduck-workspace/20260626-0241-fix-opencode-agent-rule-file",
+  "workspacePath": ".sduck/sduck-workspace/20260626-0241-fix-opencode-agent-rule-file"
+}
