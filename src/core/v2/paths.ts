@@ -30,6 +30,10 @@ export function graphifyExportDir(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'exports', 'graphify');
 }
 
+export function decisionGraphExportPath(projectRoot: string): string {
+  return path.join(graphifyExportDir(projectRoot), 'decision-graph.json');
+}
+
 export function graphifyReportPath(projectRoot: string): string {
   return path.join(projectRoot, 'graphify-out', 'GRAPH_REPORT.md');
 }

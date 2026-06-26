@@ -6,6 +6,7 @@ import { listDecisionsByTask } from './decision.js';
 import { appendEvent } from './events.js';
 import { listEvidenceByTask } from './evidence.js';
 import {
+  decisionGraphExportPath,
   graphifyExportDir,
   markdownDecisionsDir,
   markdownImplementationsDir,
@@ -68,7 +69,7 @@ export function remember(projectRoot: string): RememberResult {
     created.push(
       writeFile(
         graphifyExportDir(projectRoot),
-        'decision-graph.json',
+        path.basename(decisionGraphExportPath(projectRoot)),
         `${JSON.stringify(buildDecisionGraph(task, decisions, evidence, traces), null, 2)}\n`,
       ),
     );
@@ -101,7 +102,33 @@ function renderDecisionMarkdown(decision: Decision): string {
 }
 
 function renderTraceMarkdown(trace: ImplementationTrace): string {
-  return `---\nid: ${trace.id}\ntype: implementation_trace\ntask_id: ${trace.taskId}\nimplements:\n${trace.decisionIds.map((id) => `  - ${id}`).join('\n')}\nfiles_changed:\n${trace.filesChanged.map((file) => `  - ${file}`).join('\n')}\ncreated_at: ${trace.createdAt}\n---\n# ${trace.id}: Implementation trace\n\n## Summary\n${trace.summary}\n\n## Decision to code map\n${trace.decisionToCodeMap.map((map) => `- ${map.decisionId}: ${map.files.join(', ')}`).join('\n') || '- none'}\n`;
+  const mapped =
+    trace.decisionToCodeMap
+      .map((map) => {
+        const relevance = formatRelevance(map.reason, map.score);
+        return `- ${map.decisionId}: ${map.files.join(', ')}${relevance}`;
+      })
+      .join('\n') || '- none';
+  const unmapped =
+    (trace.unmappedDecisions ?? [])
+      .map(
+        (item) =>
+          `- ${item.decisionId}: ${item.reason} (score ${formatScore(item.score)}) — ${item.summary}`,
+      )
+      .join('\n') || '- none';
+  return `---\nid: ${trace.id}\ntype: implementation_trace\ntask_id: ${trace.taskId}\nimplements:\n${trace.decisionIds.map((id) => `  - ${id}`).join('\n')}\nfiles_changed:\n${trace.filesChanged.map((file) => `  - ${file}`).join('\n')}\ncreated_at: ${trace.createdAt}\n---\n# ${trace.id}: Implementation trace\n\n## Summary\n${trace.summary}\n\n## Decision to code map\n${mapped}\n\n## Unmapped decisions requiring review\n${unmapped}\n`;
+}
+
+function formatRelevance(reason: string | undefined, score: number | undefined): string {
+  if (reason === undefined && score === undefined) return '';
+  if (reason !== undefined && score !== undefined)
+    return ` — ${reason} (score ${formatScore(score)})`;
+  if (reason !== undefined) return ` — ${reason}`;
+  return ` — score ${formatScore(score ?? 0)}`;
+}
+
+function formatScore(score: number): string {
+  return Number.isInteger(score) ? score.toFixed(1) : String(score);
 }
 
 function renderDecisionReport(

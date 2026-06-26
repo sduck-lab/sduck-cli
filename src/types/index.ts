@@ -98,6 +98,17 @@ export interface DecisionToCodeMap {
   decisionId: string;
   files: string[];
   summary: string;
+  score?: number;
+  reason?: string;
+}
+
+export interface UnmappedDecisionReview {
+  decisionId: string;
+  summary: string;
+  reason: string;
+  score: number;
+  files?: string[];
+  appliesTo?: string[];
 }
 
 export interface ImplementationTrace {
@@ -107,6 +118,7 @@ export interface ImplementationTrace {
   filesChanged: string[];
   summary: string;
   decisionToCodeMap: DecisionToCodeMap[];
+  unmappedDecisions?: UnmappedDecisionReview[];
   createdAt: string;
 }
 

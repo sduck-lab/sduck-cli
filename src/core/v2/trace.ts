@@ -2,6 +2,12 @@ import { listDecisionsByTask } from './decision.js';
 import { appendEvent } from './events.js';
 import { listChangedFiles } from './git-diff.js';
 import { nextEntityId, nowIso } from './ids.js';
+import {
+  DEFAULT_ATTACH_THRESHOLD,
+  RELEVANCE_REASONS,
+  readGraphDecisionFileLinks,
+  scoreDecisionForFiles,
+} from './relevance.js';
 import { getCurrentTaskId } from './state.js';
 import { encodeJson, openDatabase } from './store.js';
 
@@ -15,7 +21,17 @@ export interface TraceRow {
   created_at: string;
 }
 
-import type { ImplementationTrace, TraceView } from '../../types/index.js';
+import type {
+  DecisionToCodeMap,
+  ImplementationTrace,
+  TraceView,
+  UnmappedDecisionReview,
+} from '../../types/index.js';
+
+interface TraceMapPayload {
+  decisionToCodeMap: DecisionToCodeMap[];
+  unmappedDecisions: UnmappedDecisionReview[];
+}
 
 export function createImplementationTrace(
   projectRoot: string,
@@ -29,20 +45,35 @@ export function createImplementationTrace(
     const decisions = listDecisionsByTask(db, taskId).filter(
       (decision) => decision.status === 'CONFIRMED',
     );
-    const decisionToCodeMap = decisions.map((decision) => {
-      const matches = filesChanged.filter((file) =>
-        decision.appliesTo.some((target) => file.includes(target)),
-      );
-      const files = matches.length > 0 ? matches : filesChanged;
-      return {
-        decisionId: decision.id,
-        files,
-        summary:
-          matches.length > 0
-            ? `Mapped by appliesTo path hints for ${decision.id}.`
-            : `Needs review: mapped ${decision.id} to all changed files by default.`,
-      };
-    });
+    const graphLinks = readGraphDecisionFileLinks(projectRoot);
+    const decisionToCodeMap: DecisionToCodeMap[] = [];
+    const unmappedDecisions: UnmappedDecisionReview[] = [];
+    for (const decision of decisions) {
+      const relevance = scoreDecisionForFiles(projectRoot, decision, filesChanged, graphLinks);
+      for (const match of relevance.attached) {
+        decisionToCodeMap.push({
+          decisionId: decision.id,
+          files: [match.file],
+          summary: `${match.reason} for ${decision.id}.`,
+          score: match.score,
+          reason: match.reason,
+        });
+      }
+      if (relevance.attached.length === 0) {
+        const reviewMatch = relevance.bestReviewMatch;
+        unmappedDecisions.push({
+          decisionId: decision.id,
+          summary:
+            reviewMatch === null
+              ? `Review required: no appliesTo/graph match reached attach threshold ${String(DEFAULT_ATTACH_THRESHOLD)}.`
+              : `Review required: best match did not reach attach threshold ${String(DEFAULT_ATTACH_THRESHOLD)}.`,
+          reason: reviewMatch?.reason ?? RELEVANCE_REASONS.noStrongMatch,
+          score: reviewMatch?.score ?? 0,
+          files: reviewMatch === null ? [] : [reviewMatch.file],
+          appliesTo: decision.appliesTo,
+        });
+      }
+    }
     const trace: ImplementationTrace = {
       id: nextEntityId(db, 'implementation_traces', 'IMPL'),
       taskId,
@@ -50,6 +81,7 @@ export function createImplementationTrace(
       filesChanged,
       summary: `Detected ${String(filesChanged.length)} changed file(s).`,
       decisionToCodeMap,
+      unmappedDecisions,
       createdAt: nowIso(),
     };
     db.prepare(
@@ -61,7 +93,7 @@ export function createImplementationTrace(
       encodeJson(trace.decisionIds),
       encodeJson(trace.filesChanged),
       trace.summary,
-      encodeJson(trace.decisionToCodeMap),
+      encodeJson(encodeTraceMapPayload(trace)),
       trace.createdAt,
     );
     appendEvent(db, {
@@ -91,15 +123,40 @@ export function listImplementationTraces(
 }
 
 export function mapTraceRow(row: TraceRow): ImplementationTrace {
+  const traceMapPayload = decodeTraceMapPayload(row.decision_to_code_map_json);
   return {
     id: row.id,
     taskId: row.task_id,
     decisionIds: JSON.parse(row.decision_ids_json) as string[],
     filesChanged: JSON.parse(row.files_changed_json) as string[],
     summary: row.summary,
-    decisionToCodeMap: JSON.parse(
-      row.decision_to_code_map_json,
-    ) as ImplementationTrace['decisionToCodeMap'],
+    decisionToCodeMap: traceMapPayload.decisionToCodeMap,
+    unmappedDecisions: traceMapPayload.unmappedDecisions,
     createdAt: row.created_at,
   };
+}
+
+function encodeTraceMapPayload(trace: ImplementationTrace): TraceMapPayload {
+  return {
+    decisionToCodeMap: trace.decisionToCodeMap,
+    unmappedDecisions: trace.unmappedDecisions ?? [],
+  };
+}
+
+function decodeTraceMapPayload(value: string): TraceMapPayload {
+  const parsed = JSON.parse(value) as unknown;
+  if (Array.isArray(parsed))
+    return { decisionToCodeMap: parsed as DecisionToCodeMap[], unmappedDecisions: [] };
+  if (typeof parsed === 'object' && parsed !== null) {
+    const raw = parsed as Record<string, unknown>;
+    return {
+      decisionToCodeMap: Array.isArray(raw['decisionToCodeMap'])
+        ? (raw['decisionToCodeMap'] as DecisionToCodeMap[])
+        : [],
+      unmappedDecisions: Array.isArray(raw['unmappedDecisions'])
+        ? (raw['unmappedDecisions'] as UnmappedDecisionReview[])
+        : [],
+    };
+  }
+  return { decisionToCodeMap: [], unmappedDecisions: [] };
 }

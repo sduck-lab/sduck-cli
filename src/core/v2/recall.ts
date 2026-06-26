@@ -1,7 +1,8 @@
 import { mapDecision } from './decision.js';
-import { decodeJson, openDatabase } from './store.js';
+import { openDatabase } from './store.js';
+import { mapTraceRow } from './trace.js';
 
-import type { ImplementationTrace, RecallResult } from '../../types/index.js';
+import type { RecallResult } from '../../types/index.js';
 
 interface TraceRow {
   id: string;
@@ -34,19 +35,4 @@ export function recall(projectRoot: string, query: string): RecallResult {
   } finally {
     db.close();
   }
-}
-
-function mapTraceRow(row: TraceRow): ImplementationTrace {
-  return {
-    id: row.id,
-    taskId: row.task_id,
-    decisionIds: decodeJson<string[]>(row.decision_ids_json, []),
-    filesChanged: decodeJson<string[]>(row.files_changed_json, []),
-    summary: row.summary,
-    decisionToCodeMap: decodeJson<ImplementationTrace['decisionToCodeMap']>(
-      row.decision_to_code_map_json,
-      [],
-    ),
-    createdAt: row.created_at,
-  };
 }

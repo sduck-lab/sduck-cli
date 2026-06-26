@@ -13,6 +13,21 @@ const supportsNodeSqlite = (() => {
 
 const describeIfSqlite = supportsNodeSqlite ? describe : describe.skip;
 
+function isolatedGitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_AUTHOR_NAME: 't',
+    GIT_AUTHOR_EMAIL: 't@example.com',
+    GIT_COMMITTER_NAME: 't',
+    GIT_COMMITTER_EMAIL: 't@example.com',
+  };
+  delete env['GIT_DIR'];
+  delete env['GIT_WORK_TREE'];
+  delete env['GIT_INDEX_FILE'];
+  delete env['GIT_PREFIX'];
+  return env;
+}
+
 describeIfSqlite('v2 CLI flow', () => {
   const cliRoot = process.cwd();
   let workspace: string | null = null;
@@ -24,19 +39,10 @@ describeIfSqlite('v2 CLI flow', () => {
 
   it('runs init, work, submit, answer, brief, confirm, trace, remember, recall, close', async () => {
     workspace = await createTempWorkspace('v2-cli-');
-    execFileSync('git', ['init'], { cwd: workspace });
+    execFileSync('git', ['init'], { cwd: workspace, env: isolatedGitEnv() });
     await writeFile(join(workspace, 'tracked.ts'), 'export const tracked = 1;\n');
-    execFileSync('git', ['add', 'tracked.ts'], { cwd: workspace });
-    execFileSync('git', ['commit', '-m', 'initial'], {
-      cwd: workspace,
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: 't',
-        GIT_AUTHOR_EMAIL: 't@example.com',
-        GIT_COMMITTER_NAME: 't',
-        GIT_COMMITTER_EMAIL: 't@example.com',
-      },
-    });
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: workspace, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: workspace, env: isolatedGitEnv() });
 
     const init = await runCli(['init'], { cliRoot, cwd: workspace });
     expect(init.exitCode).toBe(0);
@@ -66,7 +72,24 @@ describeIfSqlite('v2 CLI flow', () => {
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
-      decisions: [],
+      decisions: [
+        {
+          id: 'DEC-tracked',
+          title: 'Tracked file decision',
+          kind: 'EXPLICIT',
+          status: 'CONFIRMED',
+          summary: 'Changes apply to tracked.ts.',
+          appliesTo: ['tracked.ts'],
+        },
+        {
+          id: 'DEC-unmapped',
+          title: 'Unmapped decision',
+          kind: 'EXPLICIT',
+          status: 'CONFIRMED',
+          summary: 'This decision points elsewhere.',
+          appliesTo: ['src/not-present.ts'],
+        },
+      ],
       questions: [
         { id: 'Q1', text: 'retry 횟수는?', recommendedAnswer: '3회', options: ['추천안 사용'] },
       ],
@@ -91,10 +114,47 @@ describeIfSqlite('v2 CLI flow', () => {
     await writeFile(join(workspace, 'new-file.ts'), 'export const fresh = true;\n');
     const trace = await runCli(['trace', '--json'], { cliRoot, cwd: workspace });
     expect(trace.stdout).toContain('new-file.ts');
+    const parsedTrace = JSON.parse(trace.stdout) as {
+      trace: {
+        id: string;
+        decisionToCodeMap: { decisionId: string; reason?: string; score?: number }[];
+        unmappedDecisions: { decisionId: string; reason: string; score: number }[];
+      };
+    };
+    expect(parsedTrace.trace.decisionToCodeMap).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          decisionId: 'DEC-tracked',
+          reason: 'matched by appliesTo exact path',
+          score: 1,
+        }),
+      ]),
+    );
+    expect(parsedTrace.trace.unmappedDecisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          decisionId: 'DEC-unmapped',
+          reason: 'no strong relevance match',
+        }),
+      ]),
+    );
 
     expect((await runCli(['remember'], { cliRoot, cwd: workspace })).stdout).toContain(
       'decision-graph.json',
     );
+    const exportedTrace = await readFile(
+      join(
+        workspace,
+        '.decision',
+        'exports',
+        'markdown',
+        'implementations',
+        `${parsedTrace.trace.id}.md`,
+      ),
+      'utf8',
+    );
+    expect(exportedTrace).toContain('matched by appliesTo exact path');
+    expect(exportedTrace).toContain('Unmapped decisions requiring review');
     expect((await runCli(['recall', 'retry'], { cliRoot, cwd: workspace })).stdout).toContain(
       '검색어',
     );
