@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { ensureReadableCache } from './cache.js';
 import { mapDecision } from './decision.js';
-import { appendEvent } from './events.js';
 import { listEvidenceByTask } from './evidence.js';
 import { nextEntityId, nowIso } from './ids.js';
 import {
@@ -11,6 +11,7 @@ import {
   resolveInsideProject,
   toRelativePath,
 } from './paths.js';
+import { rebuildDecisionCache } from './rebuild.js';
 import {
   DEFAULT_ATTACH_THRESHOLD,
   GRAPH_RELEVANCE_SCORE,
@@ -19,6 +20,12 @@ import {
   readGraphDecisionFileLinks,
   scoreDecisionForFiles,
 } from './relevance.js';
+import {
+  appendSourceEvent,
+  loadSourceBundleForWrite,
+  nextSourceEntityId,
+  writeSourceBundle,
+} from './source-store.js';
 import { getCurrentTaskId } from './state.js';
 import { decodeJson, encodeJson, openDatabase } from './store.js';
 import { getTaskById } from './task.js';
@@ -109,11 +116,14 @@ export function insertContextItem(
 }
 
 export function buildContextIndex(projectRoot: string, task: Task): ContextItem[] {
+  ensureReadableCache(projectRoot);
   const db = openDatabase(projectRoot);
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  let contextIds = bundle.contextItems.map((item) => item.id);
+  const candidates: ContextCandidate[] = [];
   try {
     const discoveredFiles = findRelevantFiles(projectRoot, task.description).slice(0, 20);
     const scopedFiles = collectScopedFiles(projectRoot, db, task, discoveredFiles);
-    const candidates: ContextCandidate[] = [];
     candidates.push(...findGraphContextCandidates(projectRoot, task, scopedFiles));
     candidates.push(...findMemoryItems(db, task));
     candidates.push(...findAppliesToContextCandidates(projectRoot, db, task, scopedFiles));
@@ -150,21 +160,29 @@ export function buildContextIndex(projectRoot: string, task: Task): ContextItem[
         metadata: {},
       });
     }
-    const inserted = dedupeContextCandidates(candidates)
-      .slice(0, 40)
-      .map((candidate) => insertContextItem(db, candidate));
-    appendEvent(db, {
-      taskId: task.id,
-      type: 'CONTEXT_INDEXED',
-      payload: { itemCount: inserted.length },
-    });
-    return inserted;
   } finally {
     db.close();
   }
+  const inserted = dedupeContextCandidates(candidates)
+    .slice(0, 40)
+    .map((candidate) => {
+      const item = makeSourceContextItem(contextIds, candidate);
+      contextIds = [...contextIds, item.id];
+      return item;
+    });
+  bundle.contextItems.push(...inserted);
+  appendSourceEvent(bundle, {
+    taskId: task.id,
+    type: 'CONTEXT_INDEXED',
+    payload: { itemCount: inserted.length },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return inserted;
 }
 
 export function getContextPack(projectRoot: string): ContextPack {
+  ensureReadableCache(projectRoot);
   const db = openDatabase(projectRoot);
   try {
     const taskId = requireCurrentTaskId(projectRoot);
@@ -396,31 +414,41 @@ function listPriorTraces(db: DatabaseSync, taskId: string) {
 }
 
 export function addContextPath(projectRoot: string, pathOrGlob: string): ContextItem[] {
-  const db = openDatabase(projectRoot);
-  try {
-    const taskId = requireCurrentTaskId(projectRoot);
-    const matches = expandPathOrGlob(projectRoot, pathOrGlob);
-    if (matches.length === 0) {
-      throw new Error(`No matching files: ${pathOrGlob}`);
-    }
-    const items = matches.map((file) =>
-      insertContextItem(db, {
-        taskId,
-        sourceType: 'FILE',
-        sourceRef: file,
-        summary: `Added by agent/user context request: ${file}`,
-        metadata: { requested: pathOrGlob },
-      }),
-    );
-    appendEvent(db, {
-      taskId,
-      type: 'CONTEXT_ITEM_ADDED',
-      payload: { pathOrGlob, count: items.length },
-    });
-    return items;
-  } finally {
-    db.close();
+  ensureReadableCache(projectRoot);
+  const taskId = requireCurrentTaskId(projectRoot);
+  const matches = expandPathOrGlob(projectRoot, pathOrGlob);
+  if (matches.length === 0) {
+    throw new Error(`No matching files: ${pathOrGlob}`);
   }
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  let contextIds = bundle.contextItems.map((item) => item.id);
+  const items = matches.map((file) => {
+    const item = makeSourceContextItem(contextIds, {
+      taskId,
+      sourceType: 'FILE',
+      sourceRef: file,
+      summary: `Added by agent/user context request: ${file}`,
+      metadata: { requested: pathOrGlob },
+    });
+    contextIds = [...contextIds, item.id];
+    return item;
+  });
+  bundle.contextItems.push(...items);
+  appendSourceEvent(bundle, {
+    taskId,
+    type: 'CONTEXT_ITEM_ADDED',
+    payload: { pathOrGlob, count: items.length },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return items;
+}
+
+function makeSourceContextItem(
+  existingIds: string[],
+  input: Omit<ContextItem, 'id' | 'createdAt'>,
+): ContextItem {
+  return { ...input, id: nextSourceEntityId(existingIds, 'CTX'), createdAt: nowIso() };
 }
 
 function buildDraftSchemaExample(taskId: string): SduckDraft {

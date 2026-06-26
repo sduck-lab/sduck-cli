@@ -21,6 +21,19 @@ export function createTaskId(description: string, date = new Date()): string {
 }
 
 export function nextEntityId(db: DatabaseSync, table: string, prefix: string): string {
-  const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
-  return `${prefix}-${String(row.count + 1).padStart(4, '0')}`;
+  const rows = db
+    .prepare(`SELECT id FROM ${table} WHERE id LIKE ?`)
+    .all(`${prefix}-%`) as unknown as {
+    id: string;
+  }[];
+  const max = rows.reduce((highest, row) => {
+    const match = new RegExp(`^${escapeRegExp(prefix)}-(\\d+)$`).exec(row.id);
+    if (match?.[1] === undefined) return highest;
+    return Math.max(highest, Number.parseInt(match[1], 10));
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
+}
+
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

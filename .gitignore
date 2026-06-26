@@ -6,3 +6,7 @@ coverage/
 .serena
 .sduck-worktrees/
 .sduck/sduck-state.yml
+.decision/db.sqlite
+.decision/db.sqlite-*
+.decision/*.db
+.decision/*.db-*

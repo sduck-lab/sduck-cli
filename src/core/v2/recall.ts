@@ -1,3 +1,4 @@
+import { ensureReadableCache } from './cache.js';
 import { mapDecision } from './decision.js';
 import { openDatabase } from './store.js';
 import { mapTraceRow } from './trace.js';
@@ -15,6 +16,7 @@ interface TraceRow {
 }
 
 export function recall(projectRoot: string, query: string): RecallResult {
+  ensureReadableCache(projectRoot);
   const db = openDatabase(projectRoot);
   try {
     const like = `%${query}%`;

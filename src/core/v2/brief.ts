@@ -1,15 +1,23 @@
+import { ensureReadableCache } from './cache.js';
 import { listDecisionsByTask } from './decision.js';
-import { appendEvent } from './events.js';
 import { listEvidenceByTask } from './evidence.js';
-import { nextEntityId, nowIso } from './ids.js';
+import { nowIso } from './ids.js';
 import { listQuestionsByTask } from './question.js';
+import { rebuildDecisionCache } from './rebuild.js';
+import {
+  appendSourceEvent,
+  loadSourceBundleForWrite,
+  nextSourceEntityId,
+  writeSourceBundle,
+} from './source-store.js';
 import { getCurrentTaskId } from './state.js';
-import { encodeJson, openDatabase } from './store.js';
-import { getTaskById, updateTaskStatus } from './task.js';
+import { openDatabase } from './store.js';
+import { getTaskById } from './task.js';
 
 import type { BriefSnapshot, BriefView, DecisionKind } from '../../types/index.js';
 
 export function buildBriefView(projectRoot: string): BriefView {
+  ensureReadableCache(projectRoot);
   const db = openDatabase(projectRoot);
   try {
     const taskId = getCurrentTaskId(projectRoot);
@@ -73,38 +81,34 @@ export function renderBriefMarkdown(view: BriefView): string {
 }
 
 export function confirmBrief(projectRoot: string): BriefSnapshot {
-  const db = openDatabase(projectRoot);
-  try {
-    const view = buildBriefView(projectRoot);
-    if (view.task.status === 'CLOSED' || view.task.status === 'ABANDONED') {
-      throw new Error(`Cannot confirm a ${view.task.status} task.`);
-    }
-    const snapshot: BriefSnapshot = {
-      id: nextEntityId(db, 'brief_snapshots', 'BRF'),
-      taskId: view.task.id,
-      snapshot: view,
-      renderedMarkdown: renderBriefMarkdown(view),
-      createdAt: nowIso(),
-    };
-    db.prepare(
-      `INSERT INTO brief_snapshots (id, task_id, snapshot_json, rendered_markdown, created_at) VALUES (?, ?, ?, ?, ?)`,
-    ).run(
-      snapshot.id,
-      snapshot.taskId,
-      encodeJson(snapshot.snapshot),
-      snapshot.renderedMarkdown,
-      snapshot.createdAt,
-    );
-    updateTaskStatus(db, snapshot.taskId, 'CONFIRMED');
-    appendEvent(db, {
-      taskId: snapshot.taskId,
-      type: 'BRIEF_CONFIRMED',
-      payload: { snapshotId: snapshot.id },
-    });
-    return snapshot;
-  } finally {
-    db.close();
+  ensureReadableCache(projectRoot);
+  const view = buildBriefView(projectRoot);
+  if (view.task.status === 'CLOSED' || view.task.status === 'ABANDONED') {
+    throw new Error(`Cannot confirm a ${view.task.status} task.`);
   }
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  const snapshot: BriefSnapshot = {
+    id: nextSourceEntityId(
+      bundle.briefSnapshots.map((item) => item.id),
+      'BRF',
+    ),
+    taskId: view.task.id,
+    snapshot: view,
+    renderedMarkdown: renderBriefMarkdown(view),
+    createdAt: nowIso(),
+  };
+  bundle.briefSnapshots.push(snapshot);
+  bundle.tasks = bundle.tasks.map((task) =>
+    task.id === snapshot.taskId ? { ...task, status: 'CONFIRMED', updatedAt: nowIso() } : task,
+  );
+  appendSourceEvent(bundle, {
+    taskId: snapshot.taskId,
+    type: 'BRIEF_CONFIRMED',
+    payload: { snapshotId: snapshot.id },
+  });
+  writeSourceBundle(projectRoot, bundle);
+  rebuildDecisionCache(projectRoot);
+  return snapshot;
 }
 
 function renderDecisionSection(

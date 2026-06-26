@@ -1,21 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { buildBriefView, renderBriefMarkdown } from './brief.js';
-import { listDecisionsByTask } from './decision.js';
-import { appendEvent } from './events.js';
-import { listEvidenceByTask } from './evidence.js';
-import {
-  decisionGraphExportPath,
-  graphifyExportDir,
-  markdownDecisionsDir,
-  markdownImplementationsDir,
-  markdownTasksDir,
-} from './paths.js';
+import { ensureReadableCache } from './cache.js';
+import { decisionGraphExportPath, graphifyExportDir } from './paths.js';
+import { rebuildDecisionCache } from './rebuild.js';
+import { appendSourceEvent, loadSourceBundleForWrite, writeSourceBundle } from './source-store.js';
 import { getCurrentTaskId } from './state.js';
-import { openDatabase } from './store.js';
-import { getTaskById } from './task.js';
-import { listImplementationTraces } from './trace.js';
 
 import type { Decision, Evidence, ImplementationTrace, Task } from '../../types/index.js';
 
@@ -24,65 +14,34 @@ export interface RememberResult {
 }
 
 export function remember(projectRoot: string): RememberResult {
-  const db = openDatabase(projectRoot);
-  try {
-    const taskId = getCurrentTaskId(projectRoot);
-    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
-    const task = getTaskById(db, taskId);
-    if (task === null) throw new Error(`Task not found: ${taskId}`);
-    const decisions = listDecisionsByTask(db, task.id);
-    const evidence = listEvidenceByTask(db, task.id);
-    const traces = listImplementationTraces(projectRoot, task.id);
-    const created: string[] = [];
-    created.push(
-      writeFile(
-        markdownTasksDir(projectRoot),
-        `${task.id}.md`,
-        renderTaskMarkdown(projectRoot, task),
-      ),
-    );
-    for (const decision of decisions) {
-      created.push(
-        writeFile(
-          markdownDecisionsDir(projectRoot),
-          `${decision.id}.md`,
-          renderDecisionMarkdown(decision),
-        ),
-      );
-    }
-    for (const trace of traces) {
-      created.push(
-        writeFile(
-          markdownImplementationsDir(projectRoot),
-          `${trace.id}.md`,
-          renderTraceMarkdown(trace),
-        ),
-      );
-    }
-    created.push(
-      writeFile(
-        graphifyExportDir(projectRoot),
-        'DECISION_REPORT.md',
-        renderDecisionReport(task, decisions, traces),
-      ),
-    );
-    created.push(
-      writeFile(
-        graphifyExportDir(projectRoot),
-        path.basename(decisionGraphExportPath(projectRoot)),
-        `${JSON.stringify(buildDecisionGraph(task, decisions, evidence, traces), null, 2)}\n`,
-      ),
-    );
-    const eventDb = openDatabase(projectRoot);
-    try {
-      appendEvent(eventDb, { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } });
-    } finally {
-      eventDb.close();
-    }
-    return { created };
-  } finally {
-    db.close();
-  }
+  ensureReadableCache(projectRoot);
+  const bundle = loadSourceBundleForWrite(projectRoot);
+  const taskId = getCurrentTaskId(projectRoot);
+  if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+  const task = bundle.tasks.find((item) => item.id === taskId);
+  if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+  const decisions = bundle.decisions.filter((decision) => decision.taskId === task.id);
+  const evidence = bundle.evidence.filter((item) => item.taskId === task.id);
+  const traces = bundle.implementationTraces.filter((trace) => trace.taskId === task.id);
+  const created: string[] = [];
+  created.push(
+    writeFile(
+      graphifyExportDir(projectRoot),
+      'DECISION_REPORT.md',
+      renderDecisionReport(task, decisions, traces),
+    ),
+  );
+  created.push(
+    writeFile(
+      graphifyExportDir(projectRoot),
+      path.basename(decisionGraphExportPath(projectRoot)),
+      `${JSON.stringify(buildDecisionGraph(task, decisions, evidence, traces), null, 2)}\n`,
+    ),
+  );
+  appendSourceEvent(bundle, { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } });
+  created.unshift(...writeSourceBundle(projectRoot, bundle).written);
+  rebuildDecisionCache(projectRoot);
+  return { created };
 }
 
 function writeFile(dir: string, fileName: string, content: string): string {
@@ -90,45 +49,6 @@ function writeFile(dir: string, fileName: string, content: string): string {
   const filePath = path.join(dir, fileName);
   fs.writeFileSync(filePath, content);
   return filePath;
-}
-
-function renderTaskMarkdown(projectRoot: string, task: Task): string {
-  const view = buildBriefView(projectRoot);
-  return `---\nid: ${task.id}\ntype: task\nstatus: ${task.status}\ncreated_at: ${task.createdAt}\n---\n# ${task.id}: ${task.title}\n\n${renderBriefMarkdown(view)}\n`;
-}
-
-function renderDecisionMarkdown(decision: Decision): string {
-  return `---\nid: ${decision.id}\ntype: decision\ntask_id: ${decision.taskId}\nkind: ${decision.kind}\nstatus: ${decision.status}\nconfidence: ${String(decision.confidence)}\nsource_refs:\n${decision.sourceRefs.map((ref) => `  - ${ref}`).join('\n')}\napplies_to:\n${decision.appliesTo.map((ref) => `  - ${ref}`).join('\n')}\navoids:\n${decision.avoids.map((ref) => `  - ${ref}`).join('\n')}\ncreated_at: ${decision.createdAt}\n---\n# ${decision.id}: ${decision.title}\n\n## Decision\n${decision.summary}\n\n## Rationale\n${decision.rationale.map((item) => `- ${item}`).join('\n') || '- none'}\n`;
-}
-
-function renderTraceMarkdown(trace: ImplementationTrace): string {
-  const mapped =
-    trace.decisionToCodeMap
-      .map((map) => {
-        const relevance = formatRelevance(map.reason, map.score);
-        return `- ${map.decisionId}: ${map.files.join(', ')}${relevance}`;
-      })
-      .join('\n') || '- none';
-  const unmapped =
-    (trace.unmappedDecisions ?? [])
-      .map(
-        (item) =>
-          `- ${item.decisionId}: ${item.reason} (score ${formatScore(item.score)}) — ${item.summary}`,
-      )
-      .join('\n') || '- none';
-  return `---\nid: ${trace.id}\ntype: implementation_trace\ntask_id: ${trace.taskId}\nimplements:\n${trace.decisionIds.map((id) => `  - ${id}`).join('\n')}\nfiles_changed:\n${trace.filesChanged.map((file) => `  - ${file}`).join('\n')}\ncreated_at: ${trace.createdAt}\n---\n# ${trace.id}: Implementation trace\n\n## Summary\n${trace.summary}\n\n## Decision to code map\n${mapped}\n\n## Unmapped decisions requiring review\n${unmapped}\n`;
-}
-
-function formatRelevance(reason: string | undefined, score: number | undefined): string {
-  if (reason === undefined && score === undefined) return '';
-  if (reason !== undefined && score !== undefined)
-    return ` — ${reason} (score ${formatScore(score)})`;
-  if (reason !== undefined) return ` — ${reason}`;
-  return ` — score ${formatScore(score ?? 0)}`;
-}
-
-function formatScore(score: number): string {
-  return Number.isInteger(score) ? score.toFixed(1) : String(score);
 }
 
 function renderDecisionReport(
