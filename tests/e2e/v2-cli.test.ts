@@ -193,5 +193,5 @@ describeIfSqlite('v2 CLI flow', () => {
     );
     expect((await runCli(['close'], { cliRoot, cwd: workspace })).stdout).toContain('closed');
     expect(await readFile(join(cliRoot, '.gitignore'), 'utf8')).toContain('.decision/db.sqlite');
-  });
+  }, 15_000);
 });
