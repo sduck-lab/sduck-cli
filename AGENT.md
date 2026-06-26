@@ -103,6 +103,8 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 - Follow the workflow order: `spec -> approval -> plan -> approval -> implementation -> review ready -> done`.
 - `done`은 `REVIEW_READY` 상태에서만 가능하다. `IN_PROGRESS`에서 바로 `done`할 수 없다.
 - Respect `meta.yml` state transitions and update step completion immediately.
+- `sduck review ready`와 `sduck done`은 `spec.md`의 미체크 체크리스트를 거부한다. 구현/검증이 완료된 항목은 agent가 근거를 확인한 뒤 체크박스를 `[x]`로 반영할 수 있다.
+- 체크박스 반영은 충족된 완료 조건/수용 기준에 한정한다. 요구사항 문구, 범위, 신규 조건, 승인된 plan 내용은 사용자 승인 없이 바꾸지 않는다.
 - Write `plan.md` in detailed implementation units: include target files, the functions/sections or rough line ranges to inspect, the exact change intent for each file, and the tests or commands to verify the step.
 
 ## fast-track 규칙
@@ -122,6 +124,7 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 - `PENDING_PLAN_APPROVAL` 상태에서는 plan.md 작성/수정만 가능하고 코드 작성은 금지한다
 - `IN_PROGRESS` 상태에서만 구현과 step 완료 기록을 진행한다
 - 구현 완료 후 `sduck review ready`로 `REVIEW_READY` 상태로 전환해야 `done` 처리가 가능하다
+- `REVIEW_READY` 상태에서도 `done` 전 누락된 완료 조건 체크박스 반영과 review 문서 보완은 가능하다. 코드 수정이 필요하면 `sduck reopen [target]`으로 `IN_PROGRESS`로 되돌린다.
 - `sduck reopen [target]`으로 다시 열린 task는 `IN_PROGRESS` 기준으로 이어서 작업한다
 - reopen은 작은 후속 수정에 사용하고, 요구사항 변경이나 범위 확장은 새 task로 분리한다
 - Do not mark a task `DONE` until all completion criteria are satisfied.
@@ -130,6 +133,6 @@ task 생성과 상태 전이는 `sduck` CLI로 관리한다.
 
 - spec을 새로 작성하거나 수정한 직후, 반드시 `.sduck/sduck-assets/eval/spec.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
 - plan을 새로 작성하거나 수정한 직후, 반드시 `.sduck/sduck-assets/eval/plan.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
-- 모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증하고, `.sduck/sduck-assets/eval/task.yml`을 읽어 task 평가를 수행한다
+- 모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증하고, 충족된 항목을 `[x]`로 반영한 뒤 `.sduck/sduck-assets/eval/task.yml`을 읽어 task 평가를 수행한다
 - After implementation is complete, run task evaluation, show the results, and only then move to completion processing.
 <!-- sduck:end -->
