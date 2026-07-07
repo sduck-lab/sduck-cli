@@ -181,6 +181,52 @@ describeIfSqlite('v2 core workflow', () => {
     expect(() => rebuildDecisionCache(root)).toThrow(/broken\.md: task\.title/);
   });
 
+  it('normalizes unquoted YAML timestamp frontmatter to ISO strings', async () => {
+    workspace = await createTempWorkspace('v2-timestamp-');
+    const root = workspace;
+    const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
+    const { rebuildDecisionCache } = await import('../../src/core/v2/rebuild.js');
+    const { loadSourceBundle } = await import('../../src/core/v2/source-store.js');
+
+    initDecisionWorkspace(root);
+
+    // Unquoted ISO timestamps are parsed as JS Date by js-yaml; the store must
+    // normalize them instead of rejecting the whole bundle.
+    await writeFile(
+      join(root, '.decision', 'exports', 'markdown', 'tasks', 'TASK-ts.md'),
+      '---\nid: TASK-ts\ntype: task\nstatus: OPEN\ncreated_at: 2026-07-07T05:00:00.000Z\nupdated_at: 2026-07-07T06:00:00.000Z\n---\n# TASK-ts: Timestamp task\n',
+    );
+    await writeFile(
+      join(root, '.decision', 'exports', 'markdown', 'decisions', 'DEC-ts.md'),
+      '---\nid: DEC-ts\ntype: decision\ntask_id: TASK-ts\nkind: EXPLICIT\nstatus: CONFIRMED\ncreated_at: 2026-07-07\n---\n# DEC-ts: Date-only decision\n\n## Decision\nUse date-only frontmatter.\n',
+    );
+
+    const bundle = loadSourceBundle(root);
+    const task = bundle.tasks.find((item) => item.id === 'TASK-ts');
+    expect(task?.createdAt).toBe('2026-07-07T05:00:00.000Z');
+    expect(task?.updatedAt).toBe('2026-07-07T06:00:00.000Z');
+
+    const decision = bundle.decisions.find((item) => item.id === 'DEC-ts');
+    expect(decision?.createdAt).toBe('2026-07-07T00:00:00.000Z');
+
+    expect(() => rebuildDecisionCache(root)).not.toThrow();
+  });
+
+  it('still rejects frontmatter timestamps that are neither string nor date', async () => {
+    workspace = await createTempWorkspace('v2-timestamp-invalid-');
+    const root = workspace;
+    const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
+    const { rebuildDecisionCache } = await import('../../src/core/v2/rebuild.js');
+
+    initDecisionWorkspace(root);
+    await writeFile(
+      join(root, '.decision', 'exports', 'markdown', 'tasks', 'TASK-bad-ts.md'),
+      '---\nid: TASK-bad-ts\ntype: task\nstatus: OPEN\ncreated_at: 123\n---\n# TASK-bad-ts: Bad timestamp\n',
+    );
+
+    expect(() => rebuildDecisionCache(root)).toThrow(/created_at.*non-empty string/);
+  });
+
   it('auto rebuild is deletion-aware and does not resurrect deleted source on write', async () => {
     workspace = await createTempWorkspace('v2-delete-stale-');
     const root = workspace;

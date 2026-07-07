@@ -78,6 +78,7 @@ sduck의 기본 워크플로우는 v2 `.decision` decision briefing이다. (Prim
 - CLI는 실행 위치의 `.git` 파일에서 실제 프로젝트 루트를 자동으로 역추적한다
 - 에이전트는 프로젝트 루트의 `.sduck/`에서 상태를 읽고, `worktreeAbsolutePath`에 지정된 경로에서 코드를 작성한다
 - 별도의 파일 복사나 동기화 작업이 필요 없다
+- `.sduck` 상태의 canonical source는 **프로젝트 루트**다. `sduck-workspace/`, `sduck-archive/`, `sduck-state.yml`은 gitignore 대상이며 작업 branch에 커밋하지 않는다 (branch에 오래된 snapshot이 남는 것을 방지)
 
 ## 사용자 메모 규칙
 

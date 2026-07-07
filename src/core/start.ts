@@ -207,10 +207,15 @@ export async function startTask(
 
   await refreshAgentContextBestEffort(projectRoot, workspaceId);
 
-  // Update .gitignore (non-fatal)
+  // Update .gitignore (non-fatal). The project root .sduck directory is the
+  // single state owner: workspace/archive metadata must never be committed to
+  // a work branch, otherwise the branch carries a stale snapshot that diverges
+  // from the root state.
   const gitignoreResult = await ensureGitignoreEntries(projectRoot, [
     `${SDUCK_WORKTREES_DIR}/`,
     '.sduck/sduck-state.yml',
+    '.sduck/sduck-workspace/',
+    '.sduck/sduck-archive/',
   ]);
 
   return {

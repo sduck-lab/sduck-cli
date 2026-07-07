@@ -10,7 +10,7 @@ export type ReopenCommandResult = CommandResult;
 
 function formatSuccess(result: ReopenResult): string {
   const lines = [
-    `Reopened ${result.taskId} → cycle ${String(result.newCycle)} (PENDING_SPEC_APPROVAL)`,
+    `Reopened ${result.taskId} → cycle ${String(result.newCycle)} (${result.newStatus})`,
   ];
 
   if (result.snapshots.length > 0) {

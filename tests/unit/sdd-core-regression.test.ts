@@ -2,6 +2,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { runReopenCommand } from '../../src/commands/reopen.js';
 import { runDoneWorkflow, loadDoneTargets } from '../../src/core/done.js';
 import { initProject } from '../../src/core/init.js';
 import { approvePlans, loadPlanApprovalCandidates } from '../../src/core/plan-approve.js';
@@ -143,6 +144,70 @@ describe('SDD core regression Interface', () => {
       status: string;
     };
     expect(finalAgentContext.status).toBe('DONE');
+  });
+
+  it('ignores workspace state so the project root stays the only state owner', async () => {
+    workspace = await createTempWorkspace('sdd-gitignore-');
+    await initProject({ agents: [], force: false }, workspace);
+    await startTask('fix', 'state-owner', workspace, new Date('2026-07-07T11:00:00Z'), {
+      noGit: true,
+    });
+
+    const gitignore = await readFile(join(workspace, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('.sduck-worktrees/');
+    expect(gitignore).toContain('.sduck/sduck-state.yml');
+    expect(gitignore).toContain('.sduck/sduck-workspace/');
+    expect(gitignore).toContain('.sduck/sduck-archive/');
+
+    // Entries must not be duplicated on a second start.
+    await startTask('fix', 'state-owner-two', workspace, new Date('2026-07-07T11:05:00Z'), {
+      noGit: true,
+    });
+    const second = await readFile(join(workspace, '.gitignore'), 'utf8');
+    expect(second.split('\n').filter((line) => line === '.sduck/sduck-workspace/')).toHaveLength(1);
+  });
+
+  it('reports the actual transitioned status when reopening tasks', async () => {
+    workspace = await createTempWorkspace('sdd-reopen-');
+    await initProject({ agents: [], force: false }, workspace);
+
+    const started = await startTask(
+      'fix',
+      'reopen-status-output',
+      workspace,
+      new Date('2026-07-07T10:00:00Z'),
+      { noGit: true },
+    );
+
+    const taskPath = join(workspace, started.workspacePath);
+    const metaPath = join(taskPath, 'meta.yml');
+    const specPath = join(taskPath, 'spec.md');
+    const planPath = join(taskPath, 'plan.md');
+
+    await approveSpecs(workspace, await loadSpecApprovalCandidates(workspace, {}), '2026-07-07T10:01:00Z');
+    await writeFile(planPath, ['# Plan', '', '## Step 1. Fix it'].join('\n'), 'utf8');
+    await approvePlans(workspace, await loadPlanApprovalCandidates(workspace, {}), '2026-07-07T10:02:00Z');
+    await markStepCompleted(workspace, 1, undefined, new Date('2026-07-07T10:03:00Z'));
+    const checkedSpec = (await readFile(specPath, 'utf8')).replaceAll('- [ ]', '- [x]');
+    await writeFile(specPath, checkedSpec, 'utf8');
+    await runReviewReadyWorkflow(workspace, undefined, new Date('2026-07-07T10:04:00Z'));
+
+    // REVIEW_READY → reopen transitions to IN_PROGRESS; output must match the file.
+    const reopenFromReview = await runReopenCommand({}, workspace);
+    expect(reopenFromReview.exitCode).toBe(0);
+    expect(reopenFromReview.stdout).toContain('IN_PROGRESS');
+    expect(reopenFromReview.stdout).not.toContain('PENDING_SPEC_APPROVAL');
+    expect(await readFile(metaPath, 'utf8')).toContain('status: IN_PROGRESS');
+
+    // Drive the task to DONE, then reopen → PENDING_SPEC_APPROVAL.
+    await runReviewReadyWorkflow(workspace, undefined, new Date('2026-07-07T10:05:00Z'));
+    await runDoneWorkflow(workspace, await loadDoneTargets(workspace, {}), '2026-07-07T10:06:00Z');
+    expect(await readFile(metaPath, 'utf8')).toContain('status: DONE');
+
+    const reopenFromDone = await runReopenCommand({}, workspace);
+    expect(reopenFromDone.exitCode).toBe(0);
+    expect(reopenFromDone.stdout).toContain('PENDING_SPEC_APPROVAL');
+    expect(await readFile(metaPath, 'utf8')).toContain('status: PENDING_SPEC_APPROVAL');
   });
 
   it('refreshes existing generated agent rules during update', async () => {

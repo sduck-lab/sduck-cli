@@ -338,3 +338,14 @@ The CLI layer is intentionally thin: it parses arguments, delegates to core func
 The `.decision` decision briefing workflow documented above is the primary public workflow of `sduck`. The `.sduck` Spec-Driven Development workflow is a legacy compatibility/internal gated workflow kept for agents and teams that need explicit spec and plan approval gates. `sduck init` installs the managed rule files that point agents at the `.sduck` workflow, and the legacy SDD commands remain available alongside the `.decision` workflow.
 
 For decision briefing, use the `.decision` workflow. For gated agent implementation with spec/plan approval, use the legacy `.sduck` SDD commands.
+
+### `.sduck` state ownership
+
+The canonical source of `.sduck` state (`sduck-workspace/`, `sduck-archive/`, `sduck-state.yml`) is the **project root**. All `sduck` commands read and write state there, even when executed from inside a work worktree. This state is never committed to a work branch: `sduck start` adds `.sduck/sduck-workspace/`, `.sduck/sduck-archive/`, `.sduck/sduck-state.yml`, and `.sduck-worktrees/` to `.gitignore`, so work branches do not carry stale snapshots of task metadata.
+
+Repositories created with older versions of `sduck` may still track workspace state in Git. To migrate, untrack it once (the CLI never force-untracks existing history):
+
+```bash
+git rm -r --cached .sduck/sduck-workspace .sduck/sduck-archive
+git commit -m "chore: stop tracking sduck workspace state"
+```

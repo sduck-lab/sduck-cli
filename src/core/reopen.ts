@@ -20,6 +20,9 @@ export interface ReopenCommandInput {
 
 export interface ReopenResult {
   newCycle: number;
+  // Legacy SDD task status (e.g. IN_PROGRESS, PENDING_SPEC_APPROVAL) derived
+  // from the persisted meta -- not the v2 decision TaskStatus.
+  newStatus: string;
   previousCycle: number;
   snapshots: string[];
   taskId: string;
@@ -113,8 +116,10 @@ export async function runReopenWorkflow(
   // Snapshot history files only for DONE tasks (REVIEW_READY preserves spec/plan)
   const snapshots = isReviewReady ? [] : await snapshotHistoryFiles(taskDir, currentCycle);
 
+  const reopenedMeta = reopenMeta(meta, newCycle);
+
   try {
-    await writeTaskMeta(metaPath, reopenMeta(meta, newCycle));
+    await writeTaskMeta(metaPath, reopenedMeta);
   } catch (error) {
     // Rollback snapshots
     for (const path of snapshots) {
@@ -132,6 +137,7 @@ export async function runReopenWorkflow(
 
   return {
     newCycle,
+    newStatus: reopenedMeta.status,
     previousCycle: currentCycle,
     snapshots,
     taskId: task.id,

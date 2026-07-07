@@ -44,10 +44,30 @@ export async function isBranchMerged(
   baseBranch: string,
   cwd: string,
 ): Promise<boolean> {
-  const output = await execGit(['branch', '--merged', baseBranch], cwd);
-  const branches = output.split('\n').map((line) => line.replace(/^\*?\s*/, '').trim());
+  // Ancestry-based check: robust against `git branch --merged` output
+  // formatting (e.g. the '+' prefix for branches checked out in a linked
+  // worktree). Exit code 1 means "not an ancestor"; any other non-zero exit
+  // (e.g. 128 for an unknown ref) is a real failure.
+  return new Promise((resolve, reject) => {
+    execFile(
+      'git',
+      ['merge-base', '--is-ancestor', branch, baseBranch],
+      { cwd },
+      (error, _stdout, stderr) => {
+        if (error === null) {
+          resolve(true);
+          return;
+        }
 
-  return branches.includes(branch);
+        if (typeof error.code === 'number' && error.code === 1) {
+          resolve(false);
+          return;
+        }
+
+        reject(new Error(`git merge-base failed: ${stderr.trim() || error.message}`));
+      },
+    );
+  });
 }
 
 export async function deleteBranch(branch: string, force: boolean, cwd: string): Promise<void> {

@@ -676,12 +676,19 @@ function assertNonEmptyString(
   }
 }
 
+// js-yaml resolves unquoted timestamps (e.g. `created_at: 2026-07-07T05:00:00.000Z`)
+// to JS Date objects. Normalize them back to ISO strings so externally written
+// frontmatter does not break the whole source bundle.
+function normalizeFrontmatterValue(value: unknown): unknown {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 function assertFrontmatterString(
   frontmatter: Record<string, unknown>,
   filePath: string,
   field: string,
 ): string {
-  const value = frontmatter[field];
+  const value = normalizeFrontmatterValue(frontmatter[field]);
   assertNonEmptyString(value, filePath, field);
   return value;
 }
@@ -738,7 +745,8 @@ function stringArrayField(value: unknown): string[] {
 }
 
 function stringField(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback;
+  const normalized = normalizeFrontmatterValue(value);
+  return typeof normalized === 'string' ? normalized : fallback;
 }
 
 function numberField(value: unknown, fallback: number): number {
