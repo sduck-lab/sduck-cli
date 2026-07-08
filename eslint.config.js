@@ -15,6 +15,7 @@ export default tseslint.config(
       'eslint.config.js',
       'tsup.config.ts',
       'vitest.config.ts',
+      'test/workspaces/**',
     ],
   },
   js.configs.recommended,

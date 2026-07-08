@@ -5,6 +5,8 @@ coverage/
 .idea
 .serena
 .sduck-worktrees/
+.sduck/sduck-workspace/
+.sduck/sduck-archive/
 .sduck/sduck-state.yml
 .decision/db.sqlite
 .decision/db.sqlite-*
