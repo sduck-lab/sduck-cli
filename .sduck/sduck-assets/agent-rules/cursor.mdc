@@ -1,12 +1,6 @@
 ---
-description: sduck decision briefing rules (v2-first; legacy SDD gates apply to active SDD tasks)
-globs:
-  - '**/*'
+description: sduck v2 decision briefing workflow
 alwaysApply: true
 ---
 
-## Cursor Instructions
-
-- Follow the repository v2 `.decision` decision briefing workflow as the primary workflow; legacy SDD approval gates apply only to active SDD tasks.
-- Use this rule file together with the shared sduck decision briefing rules block.
-- 승인된 spec.md/plan.md를 수정하지 않는다. 요구사항이 바뀌면 새 태스크를 시작한다.
+Use v2 `.decision` briefing as the default workflow. Legacy SDD gates apply only when `current_work_id` is non-null. Use the CLI for lifecycle changes; do not hand-edit state or cache files.
