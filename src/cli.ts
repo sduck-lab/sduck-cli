@@ -27,9 +27,11 @@ import {
   runConfirmCommand,
   runContextAddCommand,
   runContextCommand,
+  runDoctorCommand,
   runRecallCommand,
   runRebuildCommand,
   runRememberCommand,
+  runResumeCommand,
   runStatusCommand,
   runSubmitCommand,
   runTraceCommand,
@@ -221,6 +223,13 @@ program
     printResult(runStatusCommand(process.cwd(), options.json === true));
   });
 
+program
+  .command('resume <taskId>')
+  .description('Resume a previous non-terminal decision briefing task')
+  .action((taskId: string) => {
+    printResult(runResumeCommand(process.cwd(), taskId));
+  });
+
 const context = program.command('context').description('Show or extend current context pack');
 
 context.option('--json', 'Print machine-readable JSON').action((options: { json?: boolean }) => {
@@ -302,6 +311,14 @@ program
   .description('Rebuild the local decision DB cache from markdown source files')
   .action(() => {
     printResult(runRebuildCommand(process.cwd()));
+  });
+
+program
+  .command('doctor')
+  .description('Diagnose malformed source, legacy cache, and cache consistency')
+  .option('--repair', 'Repair DB-only migration or rebuildable cache problems')
+  .action((options: { repair?: boolean }) => {
+    printResult(runDoctorCommand(process.cwd(), options.repair === true));
   });
 
 program

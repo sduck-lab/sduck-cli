@@ -2,6 +2,7 @@ import { checkbox } from '@inquirer/prompts';
 import { relative } from 'node:path';
 
 import { SUPPORTED_AGENTS, parseAgentsOption, type SupportedAgentId } from '../core/agent-rules.js';
+import { ensureGitignoreEntries } from '../core/gitignore.js';
 import { type InitCommandOptions, type InitSummaryRow, initProject } from '../core/init.js';
 import { initDecisionWorkspace, type InitWorkspaceResult } from '../core/v2/workspace.js';
 
@@ -10,6 +11,16 @@ const AGENT_PROMPT_INSTRUCTIONS =
   'Use space to toggle agents, arrow keys to move, and enter to submit.';
 const AGENT_PROMPT_REQUIRED_MESSAGE =
   'Select at least one agent. Use space to toggle and enter to submit.';
+
+const DECISION_LOCAL_PATHS = [
+  '.decision/db.sqlite',
+  '.decision/db.sqlite-*',
+  '.decision/state.json',
+  '.decision/workspace.lock/',
+  '.decision/.staging-*/',
+  '.decision/.rollback-*/',
+  '.decision/exports/graphify/',
+] as const;
 
 export interface CommandResult {
   exitCode: number;
@@ -150,6 +161,16 @@ export async function runInitCommand(
     };
     const result = await initProject(resolvedOptions, projectRoot);
     const decisionWorkspace = initDecisionWorkspace(projectRoot);
+    const ignoreResult = await ensureGitignoreEntries(projectRoot, DECISION_LOCAL_PATHS);
+    if (ignoreResult.added.length > 0) {
+      const existingGitignore = ignoreResult.skipped.length > 0;
+      result.summary.rows.push({
+        path: '.gitignore',
+        status: existingGitignore ? 'overwritten' : 'created',
+      });
+      result.summary[existingGitignore ? 'overwritten' : 'created'].push('.gitignore');
+    }
+    if (ignoreResult.warning !== undefined) result.summary.warnings.push(ignoreResult.warning);
 
     return {
       exitCode: 0,
@@ -157,7 +178,8 @@ export async function runInitCommand(
       stdout: formatResult(projectRoot, {
         ...result,
         decisionWorkspace,
-        didChange: result.didChange || decisionWorkspace.created.length > 0,
+        didChange:
+          result.didChange || decisionWorkspace.created.length > 0 || ignoreResult.added.length > 0,
       }),
     };
   } catch (error) {

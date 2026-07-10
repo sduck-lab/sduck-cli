@@ -137,7 +137,13 @@ export interface BriefSnapshot {
   taskId: string;
   snapshot: BriefView;
   renderedMarkdown: string;
+  gitBaseline?: GitBaseline;
   createdAt: string;
+}
+
+export interface GitBaseline {
+  head: string | null;
+  dirtyFileHashes: Record<string, string | null>;
 }
 
 export interface EventRecord {

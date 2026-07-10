@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { confirmBrief, buildBriefView } from '../../core/v2/brief.js';
 import { ensureReadableCache } from '../../core/v2/cache.js';
 import { addContextPath, buildContextIndex, getContextPack } from '../../core/v2/context.js';
+import { doctorDecisionWorkspace, formatDoctorResult } from '../../core/v2/doctor.js';
 import { submitDraft } from '../../core/v2/draft.js';
 import { answerQuestion, getNextOpenQuestion } from '../../core/v2/question.js';
 import { formatRebuildResult, rebuildDecisionCache } from '../../core/v2/rebuild.js';
@@ -12,7 +13,7 @@ import { fail, ok } from '../../core/v2/result.js';
 import { getCurrentTaskId } from '../../core/v2/state.js';
 import { buildStatusView } from '../../core/v2/status.js';
 import { openDatabase } from '../../core/v2/store.js';
-import { createTask, setTerminalStatus } from '../../core/v2/task.js';
+import { createTask, resumeTask, setTerminalStatus } from '../../core/v2/task.js';
 import { createImplementationTrace } from '../../core/v2/trace.js';
 import { initDecisionWorkspace } from '../../core/v2/workspace.js';
 import { promptForQuestionAnswer } from '../../ui/v2/prompts.js';
@@ -70,6 +71,15 @@ export function runStatusCommand(projectRoot: string, asJson: boolean): CommandR
   try {
     const view = buildStatusView(projectRoot);
     return ok(asJson ? JSON.stringify(view, null, 2) : renderStatus(view));
+  } catch (error) {
+    return fail(formatError(error));
+  }
+}
+
+export function runResumeCommand(projectRoot: string, taskId: string): CommandResult {
+  try {
+    const task = resumeTask(projectRoot, taskId);
+    return ok(`Decision task resumed: ${task.id}\nStatus: ${task.status}`);
   } catch (error) {
     return fail(formatError(error));
   }
@@ -203,6 +213,16 @@ export function runRememberCommand(projectRoot: string): CommandResult {
 export function runRebuildCommand(projectRoot: string): CommandResult {
   try {
     return ok(formatRebuildResult(rebuildDecisionCache(projectRoot)));
+  } catch (error) {
+    return fail(formatError(error));
+  }
+}
+
+export function runDoctorCommand(projectRoot: string, repair: boolean): CommandResult {
+  try {
+    const result = doctorDecisionWorkspace(projectRoot, { repair });
+    const output = formatDoctorResult(result);
+    return result.healthy ? ok(output) : fail(output);
   } catch (error) {
     return fail(formatError(error));
   }
