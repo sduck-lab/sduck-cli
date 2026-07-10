@@ -22,14 +22,21 @@ export function recall(projectRoot: string, query: string): RecallResult {
     const like = `%${query}%`;
     const decisions = db
       .prepare(
-        `SELECT * FROM decisions WHERE title LIKE ? OR summary LIKE ? ORDER BY created_at DESC LIMIT 20`,
+        `SELECT d.* FROM decisions d
+         JOIN tasks t ON t.id = d.task_id
+         WHERE d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
+           AND (d.title LIKE ? OR d.summary LIKE ?)
+         ORDER BY d.created_at DESC LIMIT 20`,
       )
       .all(like, like)
       .map((row) => mapDecision(row as unknown as Parameters<typeof mapDecision>[0]));
     const traces = (
       db
         .prepare(
-          `SELECT * FROM implementation_traces WHERE summary LIKE ? OR files_changed_json LIKE ? ORDER BY created_at DESC LIMIT 20`,
+          `SELECT i.* FROM implementation_traces i
+           JOIN tasks t ON t.id = i.task_id
+           WHERE t.status != 'ABANDONED' AND (i.summary LIKE ? OR i.files_changed_json LIKE ?)
+           ORDER BY i.created_at DESC LIMIT 20`,
         )
         .all(like, like) as unknown as TraceRow[]
     ).map(mapTraceRow);

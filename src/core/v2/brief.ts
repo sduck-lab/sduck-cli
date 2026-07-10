@@ -1,19 +1,17 @@
 import { ensureReadableCache } from './cache.js';
+import { DecisionWorkspace } from './decision-workspace.js';
 import { listDecisionsByTask } from './decision.js';
 import { listEvidenceByTask } from './evidence.js';
+import { captureGitBaseline } from './git-diff.js';
 import { nowIso } from './ids.js';
 import { listQuestionsByTask } from './question.js';
-import { rebuildDecisionCache } from './rebuild.js';
-import {
-  appendSourceEvent,
-  loadSourceBundleForWrite,
-  nextSourceEntityId,
-  writeSourceBundle,
-} from './source-store.js';
+import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { getCurrentTaskId } from './state.js';
 import { openDatabase } from './store.js';
+import { TaskLifecycle } from './task-lifecycle.js';
 import { getTaskById } from './task.js';
 
+import type { SourceBundle } from './source-types.js';
 import type { BriefSnapshot, BriefView, DecisionKind } from '../../types/index.js';
 
 export function buildBriefView(projectRoot: string): BriefView {
@@ -81,34 +79,57 @@ export function renderBriefMarkdown(view: BriefView): string {
 }
 
 export function confirmBrief(projectRoot: string): BriefSnapshot {
-  ensureReadableCache(projectRoot);
-  const view = buildBriefView(projectRoot);
-  if (view.task.status === 'CLOSED' || view.task.status === 'ABANDONED') {
-    throw new Error(`Cannot confirm a ${view.task.status} task.`);
-  }
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  const snapshot: BriefSnapshot = {
-    id: nextSourceEntityId(
-      bundle.briefSnapshots.map((item) => item.id),
-      'BRF',
-    ),
-    taskId: view.task.id,
-    snapshot: view,
-    renderedMarkdown: renderBriefMarkdown(view),
-    createdAt: nowIso(),
-  };
-  bundle.briefSnapshots.push(snapshot);
-  bundle.tasks = bundle.tasks.map((task) =>
-    task.id === snapshot.taskId ? { ...task, status: 'CONFIRMED', updatedAt: nowIso() } : task,
-  );
-  appendSourceEvent(bundle, {
-    taskId: snapshot.taskId,
-    type: 'BRIEF_CONFIRMED',
-    payload: { snapshotId: snapshot.id },
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    const confirmedAt = nowIso();
+    const taskId = state.currentTaskId;
+    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    const lifecycle = new TaskLifecycle(bundle, taskId);
+    lifecycle.confirm(confirmedAt);
+    const view = buildBriefViewFromBundle(bundle, taskId);
+    const snapshot: BriefSnapshot = {
+      id: nextSourceEntityId(
+        bundle.briefSnapshots.map((item) => item.id),
+        'BRF',
+      ),
+      taskId: view.task.id,
+      snapshot: view,
+      renderedMarkdown: renderBriefMarkdown(view),
+      gitBaseline: captureGitBaseline(projectRoot),
+      createdAt: nowIso(),
+    };
+    bundle.briefSnapshots.push(snapshot);
+    appendSourceEvent(bundle, {
+      taskId: snapshot.taskId,
+      type: 'BRIEF_CONFIRMED',
+      payload: { snapshotId: snapshot.id },
+    });
+    return snapshot;
   });
-  writeSourceBundle(projectRoot, bundle);
-  rebuildDecisionCache(projectRoot);
-  return snapshot;
+}
+
+function buildBriefViewFromBundle(bundle: SourceBundle, taskId: string): BriefView {
+  const task = bundle.tasks.find((item) => item.id === taskId);
+  if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+  const grouped: BriefView['decisions'] = {
+    EXPLICIT: [],
+    INFERRED: [],
+    CARRIED: [],
+    CONFLICT: [],
+    OPEN: [],
+  };
+  for (const decision of bundle.decisions.filter((item) => item.taskId === taskId)) {
+    grouped[decision.kind].push(decision);
+  }
+  const questions = bundle.questions.filter((item) => item.taskId === taskId);
+  return {
+    task,
+    decisions: grouped,
+    questions,
+    evidence: bundle.evidence.filter((item) => item.taskId === taskId),
+    expectedScope: task.expectedScope,
+    avoidScope: task.avoidScope,
+    openQuestionCount: questions.filter((question) => !question.answered).length,
+  };
 }
 
 function renderDecisionSection(

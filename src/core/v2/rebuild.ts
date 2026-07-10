@@ -1,12 +1,17 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+import { dbPath, dbSidecarPaths, decisionRoot } from './paths.js';
 import { loadSourceBundle, sourceFileCount, sourceFingerprint } from './source-store.js';
 import {
   cacheHasRows,
   encodeJson,
   getCacheMetadata,
   openDatabase,
-  resetDatabaseCache,
+  openDatabaseFile,
   setCacheMetadata,
 } from './store.js';
+import { withDecisionWorkspaceLock } from './workspace-lock.js';
 
 import type { SourceBundle } from './source-types.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -23,6 +28,10 @@ export interface RebuildResult {
 }
 
 export function rebuildDecisionCache(projectRoot: string): RebuildResult {
+  return withDecisionWorkspaceLock(projectRoot, () => rebuildDecisionCacheUnlocked(projectRoot));
+}
+
+function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
   const files = sourceFileCount(projectRoot);
   if (files === 0 && cacheHasRows(projectRoot) && !cacheHasSourceFingerprint(projectRoot)) {
     throw new Error(
@@ -30,7 +39,10 @@ export function rebuildDecisionCache(projectRoot: string): RebuildResult {
     );
   }
   const bundle = loadSourceBundle(projectRoot);
-  const db = resetDatabaseCache(projectRoot);
+  const nonce = `${String(process.pid)}-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
+  const stagingDir = path.join(decisionRoot(projectRoot), `.staging-cache-${nonce}`);
+  const stagedDatabase = path.join(stagingDir, 'db.sqlite');
+  const db = openDatabaseFile(stagedDatabase);
   try {
     db.exec('BEGIN');
     try {
@@ -44,6 +56,14 @@ export function rebuildDecisionCache(projectRoot: string): RebuildResult {
   } finally {
     db.close();
   }
+  try {
+    replaceDatabase(stagedDatabase, dbPath(projectRoot));
+    for (const sidecar of dbSidecarPaths(projectRoot).slice(1)) {
+      if (fs.existsSync(sidecar)) fs.rmSync(sidecar, { force: true });
+    }
+  } finally {
+    fs.rmSync(stagingDir, { force: true, recursive: true });
+  }
   return {
     tasks: bundle.tasks.length,
     decisions: bundle.decisions.length,
@@ -54,6 +74,26 @@ export function rebuildDecisionCache(projectRoot: string): RebuildResult {
     implementationTraces: bundle.implementationTraces.length,
     events: bundle.events.length,
   };
+}
+
+function replaceDatabase(stagedDatabase: string, targetDatabase: string): void {
+  try {
+    fs.renameSync(stagedDatabase, targetDatabase);
+    return;
+  } catch (error) {
+    if (!fs.existsSync(targetDatabase)) throw error;
+  }
+
+  const backup = `${targetDatabase}.${String(process.pid)}.rollback`;
+  fs.renameSync(targetDatabase, backup);
+  try {
+    fs.renameSync(stagedDatabase, targetDatabase);
+    fs.rmSync(backup, { force: true });
+  } catch (error) {
+    if (fs.existsSync(targetDatabase)) fs.rmSync(targetDatabase, { force: true });
+    fs.renameSync(backup, targetDatabase);
+    throw error;
+  }
 }
 
 function cacheHasSourceFingerprint(projectRoot: string): boolean {

@@ -1,11 +1,15 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { ensureReadableCache } from './cache.js';
-import { decisionGraphExportPath, graphifyExportDir } from './paths.js';
-import { rebuildDecisionCache } from './rebuild.js';
-import { appendSourceEvent, loadSourceBundleForWrite, writeSourceBundle } from './source-store.js';
-import { getCurrentTaskId } from './state.js';
+import { DecisionWorkspace } from './decision-workspace.js';
+import {
+  decisionGraphExportPath,
+  graphifyExportDir,
+  sourceDecisionsDir,
+  sourceImplementationsDir,
+  sourceTasksDir,
+  toRelativePath,
+} from './paths.js';
+import { appendSourceEvent } from './source-store.js';
 
 import type { Decision, Evidence, ImplementationTrace, Task } from '../../types/index.js';
 
@@ -14,41 +18,44 @@ export interface RememberResult {
 }
 
 export function remember(projectRoot: string): RememberResult {
-  ensureReadableCache(projectRoot);
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  const taskId = getCurrentTaskId(projectRoot);
-  if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
-  const task = bundle.tasks.find((item) => item.id === taskId);
-  if (task === undefined) throw new Error(`Task not found: ${taskId}`);
-  const decisions = bundle.decisions.filter((decision) => decision.taskId === task.id);
-  const evidence = bundle.evidence.filter((item) => item.taskId === task.id);
-  const traces = bundle.implementationTraces.filter((trace) => trace.taskId === task.id);
-  const created: string[] = [];
-  created.push(
-    writeFile(
-      graphifyExportDir(projectRoot),
-      'DECISION_REPORT.md',
+  return new DecisionWorkspace(projectRoot).mutate(({ artifacts, bundle, state }) => {
+    const taskId = state.currentTaskId;
+    const sourcePaths = [
+      ...bundle.tasks.map((item) => path.join(sourceTasksDir(projectRoot), `${item.id}.md`)),
+      ...bundle.decisions.map((item) =>
+        path.join(sourceDecisionsDir(projectRoot), `${item.id}.md`),
+      ),
+      ...bundle.implementationTraces.map((item) =>
+        path.join(sourceImplementationsDir(projectRoot), `${item.id}.md`),
+      ),
+    ];
+    if (taskId === null) {
+      if (bundle.tasks.length === 0) {
+        throw new Error('No decision records to remember. Run `sduck work "..."` first.');
+      }
+      return { created: sourcePaths };
+    }
+    const task = bundle.tasks.find((item) => item.id === taskId);
+    if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+    const decisions = bundle.decisions.filter(
+      (decision) => decision.taskId === task.id && decision.status === 'CONFIRMED',
+    );
+    const evidence = bundle.evidence.filter((item) => item.taskId === task.id);
+    const traces = bundle.implementationTraces.filter((trace) => trace.taskId === task.id);
+    const reportPath = path.join(graphifyExportDir(projectRoot), 'DECISION_REPORT.md');
+    const graphPath = decisionGraphExportPath(projectRoot);
+    artifacts.set(
+      toRelativePath(projectRoot, reportPath),
       renderDecisionReport(task, decisions, traces),
-    ),
-  );
-  created.push(
-    writeFile(
-      graphifyExportDir(projectRoot),
-      path.basename(decisionGraphExportPath(projectRoot)),
+    );
+    artifacts.set(
+      toRelativePath(projectRoot, graphPath),
       `${JSON.stringify(buildDecisionGraph(task, decisions, evidence, traces), null, 2)}\n`,
-    ),
-  );
-  appendSourceEvent(bundle, { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } });
-  created.unshift(...writeSourceBundle(projectRoot, bundle).written);
-  rebuildDecisionCache(projectRoot);
-  return { created };
-}
-
-function writeFile(dir: string, fileName: string, content: string): string {
-  fs.mkdirSync(dir, { recursive: true });
-  const filePath = path.join(dir, fileName);
-  fs.writeFileSync(filePath, content);
-  return filePath;
+    );
+    const created = [...sourcePaths, reportPath, graphPath];
+    appendSourceEvent(bundle, { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } });
+    return { created };
+  });
 }
 
 function renderDecisionReport(

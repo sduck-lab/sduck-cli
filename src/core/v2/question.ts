@@ -1,13 +1,8 @@
-import { ensureReadableCache } from './cache.js';
+import { DecisionWorkspace } from './decision-workspace.js';
 import { nextEntityId, nowIso } from './ids.js';
-import { rebuildDecisionCache } from './rebuild.js';
-import {
-  appendSourceEvent,
-  loadSourceBundleForWrite,
-  nextSourceEntityId,
-  writeSourceBundle,
-} from './source-store.js';
+import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { decodeJson, encodeJson } from './store.js';
+import { TaskLifecycle } from './task-lifecycle.js';
 
 import type { Decision, Evidence, DraftQuestion, Question } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -100,84 +95,90 @@ export function answerQuestion(
   questionId: string,
   input: { optionIndex?: number; text?: string },
 ): { question: Question; answer: string } {
-  ensureReadableCache(projectRoot);
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  const question = bundle.questions.find((item) => item.id === questionId);
-  if (question === undefined) {
-    throw new Error(`Question not found: ${questionId}`);
-  }
-  if (question.answered) {
-    throw new Error(`Question is already answered: ${questionId}`);
-  }
-  const answer = resolveAnswer(question, input);
-  const updatedQuestion: Question = { ...question, answered: true, answer };
-  const evidenceId = nextSourceEntityId(
-    bundle.evidence.map((item) => item.id),
-    'EVD',
-  );
-  const evidence: Evidence = {
-    id: evidenceId,
-    taskId: question.taskId,
-    decisionId: question.decisionId,
-    sourceType: 'USER_ANSWER',
-    sourceRef: question.id,
-    summary: answer,
-    confidence: 1,
-    createdAt: nowIso(),
-  };
-  bundle.questions = bundle.questions.map((item) =>
-    item.id === question.id ? updatedQuestion : item,
-  );
-  bundle.evidence.push(evidence);
-  if (question.decisionId !== null) {
-    bundle.decisions = bundle.decisions.map((decision) =>
-      decision.id === question.decisionId
-        ? {
-            ...decision,
-            kind: 'EXPLICIT',
-            status: 'CONFIRMED',
-            confidence: 1,
-            summary: answer,
-            sourceRefs: [...decision.sourceRefs, `USER_ANSWER:${question.id}`],
-            updatedAt: nowIso(),
-          }
-        : decision,
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    const question = bundle.questions.find((item) => item.id === questionId);
+    if (question === undefined) {
+      throw new Error(`Question not found: ${questionId}`);
+    }
+    if (state.currentTaskId !== question.taskId) {
+      throw new Error(
+        `Question ${questionId} does not belong to current task ${state.currentTaskId ?? 'none'}. Run \`sduck resume ${question.taskId}\` first.`,
+      );
+    }
+    if (question.answered) {
+      throw new Error(`Question is already answered: ${questionId}`);
+    }
+    new TaskLifecycle(bundle, question.taskId).assertAllowed('answer');
+    const answer = resolveAnswer(question, input);
+    const answeredAt = nowIso();
+    const updatedQuestion: Question = { ...question, answered: true, answer };
+    const evidenceId = nextSourceEntityId(
+      bundle.evidence.map((item) => item.id),
+      'EVD',
     );
-  } else {
-    const decisionId = nextSourceEntityId(
-      bundle.decisions.map((item) => item.id),
-      'DEC',
-    );
-    const decision: Decision = {
-      id: decisionId,
+    const evidence: Evidence = {
+      id: evidenceId,
       taskId: question.taskId,
-      title: question.text,
-      kind: 'EXPLICIT',
-      status: 'CONFIRMED',
-      confidence: 1,
+      decisionId: question.decisionId,
+      sourceType: 'USER_ANSWER',
+      sourceRef: question.id,
       summary: answer,
-      rationale: [`User answered ${question.id}.`],
-      appliesTo: [],
-      avoids: [],
-      sourceRefs: [`USER_ANSWER:${question.id}`, evidence.id],
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
+      confidence: 1,
+      createdAt: answeredAt,
     };
-    bundle.decisions.push(decision);
+    bundle.questions = bundle.questions.map((item) =>
+      item.id === question.id ? updatedQuestion : item,
+    );
+    bundle.evidence.push(evidence);
+    if (question.decisionId !== null) {
+      bundle.decisions = bundle.decisions.map((decision) =>
+        decision.id === question.decisionId
+          ? {
+              ...decision,
+              kind: 'EXPLICIT',
+              status: 'CONFIRMED',
+              confidence: 1,
+              summary: answer,
+              sourceRefs: [...decision.sourceRefs, `USER_ANSWER:${question.id}`],
+              updatedAt: answeredAt,
+            }
+          : decision,
+      );
+    } else {
+      const decisionId = nextSourceEntityId(
+        bundle.decisions.map((item) => item.id),
+        'DEC',
+      );
+      const decision: Decision = {
+        id: decisionId,
+        taskId: question.taskId,
+        title: question.text,
+        kind: 'EXPLICIT',
+        status: 'CONFIRMED',
+        confidence: 1,
+        summary: answer,
+        rationale: [`User answered ${question.id}.`],
+        appliesTo: [],
+        avoids: [],
+        sourceRefs: [`USER_ANSWER:${question.id}`, evidence.id],
+        createdAt: answeredAt,
+        updatedAt: answeredAt,
+      };
+      bundle.decisions.push(decision);
+      appendSourceEvent(bundle, {
+        taskId: question.taskId,
+        type: 'DECISION_CREATED',
+        payload: { decisionId },
+      });
+    }
     appendSourceEvent(bundle, {
       taskId: question.taskId,
-      type: 'DECISION_CREATED',
-      payload: { decisionId },
+      type: 'QUESTION_ANSWERED',
+      payload: { questionId: question.id, answer },
     });
-  }
-  appendSourceEvent(bundle, {
-    taskId: question.taskId,
-    type: 'QUESTION_ANSWERED',
-    payload: { questionId: question.id, answer },
+    new TaskLifecycle(bundle, question.taskId).reconcileBriefReadiness(answeredAt);
+    return { question: updatedQuestion, answer };
   });
-  writeSourceBundle(projectRoot, bundle);
-  rebuildDecisionCache(projectRoot);
-  return { question: updatedQuestion, answer };
 }
 
 function resolveAnswer(question: Question, input: { optionIndex?: number; text?: string }): string {

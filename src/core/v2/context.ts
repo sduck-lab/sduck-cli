@@ -1,7 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { ensureReadableCache } from './cache.js';
+import { DecisionWorkspace } from './decision-workspace.js';
 import { mapDecision } from './decision.js';
 import { listEvidenceByTask } from './evidence.js';
 import { nextEntityId, nowIso } from './ids.js';
@@ -11,7 +13,6 @@ import {
   resolveInsideProject,
   toRelativePath,
 } from './paths.js';
-import { rebuildDecisionCache } from './rebuild.js';
 import {
   DEFAULT_ATTACH_THRESHOLD,
   GRAPH_RELEVANCE_SCORE,
@@ -20,14 +21,10 @@ import {
   readGraphDecisionFileLinks,
   scoreDecisionForFiles,
 } from './relevance.js';
-import {
-  appendSourceEvent,
-  loadSourceBundleForWrite,
-  nextSourceEntityId,
-  writeSourceBundle,
-} from './source-store.js';
+import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { getCurrentTaskId } from './state.js';
 import { decodeJson, encodeJson, openDatabase } from './store.js';
+import { TaskLifecycle } from './task-lifecycle.js';
 import { getTaskById } from './task.js';
 import { mapTraceRow } from './trace.js';
 
@@ -117,68 +114,80 @@ export function insertContextItem(
 
 export function buildContextIndex(projectRoot: string, task: Task): ContextItem[] {
   ensureReadableCache(projectRoot);
-  const db = openDatabase(projectRoot);
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  let contextIds = bundle.contextItems.map((item) => item.id);
-  const candidates: ContextCandidate[] = [];
-  try {
-    const discoveredFiles = findRelevantFiles(projectRoot, task.description).slice(0, 20);
-    const scopedFiles = collectScopedFiles(projectRoot, db, task, discoveredFiles);
-    candidates.push(...findGraphContextCandidates(projectRoot, task, scopedFiles));
-    candidates.push(...findMemoryItems(db, task));
-    candidates.push(...findAppliesToContextCandidates(projectRoot, db, task, scopedFiles));
-    for (const file of discoveredFiles) {
-      candidates.push({
-        taskId: task.id,
-        sourceType: 'DISCOVERY',
-        sourceRef: file,
-        summary: `Filename/path appears relevant to: ${task.description}`,
-        metadata: {
-          reason: RELEVANCE_REASONS.weakSubstringFallback,
-          score: 0.3,
-          attached: false,
-        },
-      });
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle }) => {
+    const canonicalTask = bundle.tasks.find((item) => item.id === task.id);
+    if (canonicalTask === undefined) throw new Error(`Task not found: ${task.id}`);
+    new TaskLifecycle(bundle, task.id).assertAllowed('context');
+    const db = openDatabase(projectRoot);
+    let contextIds = bundle.contextItems.map((item) => item.id);
+    const candidates: ContextCandidate[] = [];
+    try {
+      const discoveredFiles = findRelevantFiles(projectRoot, canonicalTask.description).slice(
+        0,
+        20,
+      );
+      const scopedFiles = collectScopedFiles(projectRoot, db, canonicalTask, discoveredFiles);
+      candidates.push(...findGraphContextCandidates(projectRoot, db, canonicalTask, scopedFiles));
+      candidates.push(...findMemoryItems(db, canonicalTask));
+      candidates.push(
+        ...findAppliesToContextCandidates(projectRoot, db, canonicalTask, scopedFiles),
+      );
+      for (const file of discoveredFiles) {
+        const excerpt = findRelevantExcerpt(projectRoot, file, canonicalTask.description);
+        candidates.push({
+          taskId: canonicalTask.id,
+          sourceType: 'DISCOVERY',
+          sourceRef: file,
+          summary:
+            excerpt === null
+              ? `Path appears relevant to: ${canonicalTask.description}`
+              : `File evidence: ${excerpt.text}`,
+          metadata: {
+            reason: RELEVANCE_REASONS.weakSubstringFallback,
+            score: 0.3,
+            attached: false,
+            ...(excerpt === null ? {} : { excerpt: excerpt.text, line: excerpt.line }),
+          },
+        });
+      }
+      const report = graphifyReportPath(projectRoot);
+      if (fs.existsSync(report)) {
+        candidates.push({
+          taskId: canonicalTask.id,
+          sourceType: 'GRAPHIFY_REPORT',
+          sourceRef: toRelativePath(projectRoot, report),
+          summary: 'Existing Graphify report is available as evidence.',
+          metadata: {},
+        });
+      }
+      const graph = graphifyGraphPath(projectRoot);
+      if (fs.existsSync(graph)) {
+        candidates.push({
+          taskId: canonicalTask.id,
+          sourceType: 'GRAPHIFY_GRAPH',
+          sourceRef: toRelativePath(projectRoot, graph),
+          summary: 'Existing Graphify graph JSON is available as evidence.',
+          metadata: {},
+        });
+      }
+    } finally {
+      db.close();
     }
-    const report = graphifyReportPath(projectRoot);
-    if (fs.existsSync(report)) {
-      candidates.push({
-        taskId: task.id,
-        sourceType: 'GRAPHIFY_REPORT',
-        sourceRef: toRelativePath(projectRoot, report),
-        summary: 'Existing Graphify report is available as evidence.',
-        metadata: {},
+    const inserted = dedupeContextCandidates(candidates)
+      .slice(0, 40)
+      .map((candidate) => {
+        const item = makeSourceContextItem(contextIds, candidate);
+        contextIds = [...contextIds, item.id];
+        return item;
       });
-    }
-    const graph = graphifyGraphPath(projectRoot);
-    if (fs.existsSync(graph)) {
-      candidates.push({
-        taskId: task.id,
-        sourceType: 'GRAPHIFY_GRAPH',
-        sourceRef: toRelativePath(projectRoot, graph),
-        summary: 'Existing Graphify graph JSON is available as evidence.',
-        metadata: {},
-      });
-    }
-  } finally {
-    db.close();
-  }
-  const inserted = dedupeContextCandidates(candidates)
-    .slice(0, 40)
-    .map((candidate) => {
-      const item = makeSourceContextItem(contextIds, candidate);
-      contextIds = [...contextIds, item.id];
-      return item;
+    bundle.contextItems.push(...inserted);
+    appendSourceEvent(bundle, {
+      taskId: canonicalTask.id,
+      type: 'CONTEXT_INDEXED',
+      payload: { itemCount: inserted.length },
     });
-  bundle.contextItems.push(...inserted);
-  appendSourceEvent(bundle, {
-    taskId: task.id,
-    type: 'CONTEXT_INDEXED',
-    payload: { itemCount: inserted.length },
+    return inserted;
   });
-  writeSourceBundle(projectRoot, bundle);
-  rebuildDecisionCache(projectRoot);
-  return inserted;
 }
 
 export function getContextPack(projectRoot: string): ContextPack {
@@ -218,7 +227,11 @@ function findMemoryItems(db: DatabaseSync, task: Task): ContextCandidate[] {
   for (const like of likes) {
     const decisionRows = db
       .prepare(
-        `SELECT * FROM decisions WHERE task_id != ? AND (title LIKE ? OR summary LIKE ?) LIMIT 5`,
+        `SELECT d.* FROM decisions d
+         JOIN tasks t ON t.id = d.task_id
+         WHERE d.task_id != ? AND d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
+           AND (d.title LIKE ? OR d.summary LIKE ?)
+         LIMIT 5`,
       )
       .all(task.id, like, like) as unknown as Parameters<typeof mapDecision>[0][];
     for (const row of decisionRows) {
@@ -238,7 +251,11 @@ function findMemoryItems(db: DatabaseSync, task: Task): ContextCandidate[] {
     }
     const traceRows = db
       .prepare(
-        `SELECT * FROM implementation_traces WHERE task_id != ? AND (summary LIKE ? OR files_changed_json LIKE ?) LIMIT 5`,
+        `SELECT i.* FROM implementation_traces i
+         JOIN tasks t ON t.id = i.task_id
+         WHERE i.task_id != ? AND t.status != 'ABANDONED'
+           AND (i.summary LIKE ? OR i.files_changed_json LIKE ?)
+         LIMIT 5`,
       )
       .all(task.id, like, like) as unknown as Parameters<typeof mapTraceRow>[0][];
     for (const row of traceRows) {
@@ -262,11 +279,13 @@ function findMemoryItems(db: DatabaseSync, task: Task): ContextCandidate[] {
 
 function findGraphContextCandidates(
   projectRoot: string,
+  db: DatabaseSync,
   task: Task,
   scopedFiles: string[],
 ): ContextCandidate[] {
   return readGraphDecisionFileLinks(projectRoot)
     .filter((link) => graphFileIntersectsScope(projectRoot, link.file, scopedFiles))
+    .filter((link) => isReusableGraphDecision(db, link.decisionId, task.id))
     .map((link) => ({
       taskId: task.id,
       sourceType: 'MEMORY' as const,
@@ -283,6 +302,28 @@ function findGraphContextCandidates(
     }));
 }
 
+function isReusableGraphDecision(
+  db: DatabaseSync,
+  decisionId: string,
+  currentTaskId: string,
+): boolean {
+  const row = db
+    .prepare(
+      `SELECT d.status AS decision_status, d.task_id, t.status AS task_status
+       FROM decisions d JOIN tasks t ON t.id = d.task_id
+       WHERE d.id = ?`,
+    )
+    .get(decisionId) as
+    | { decision_status: string; task_id: string; task_status: string }
+    | undefined;
+  if (row === undefined) return true;
+  return (
+    row.task_id !== currentTaskId &&
+    row.decision_status === 'CONFIRMED' &&
+    row.task_status !== 'ABANDONED'
+  );
+}
+
 function findAppliesToContextCandidates(
   projectRoot: string,
   db: DatabaseSync,
@@ -291,8 +332,13 @@ function findAppliesToContextCandidates(
 ): ContextCandidate[] {
   if (scopedFiles.length === 0) return [];
   const decisionRows = db
-    .prepare(`SELECT * FROM decisions ORDER BY created_at DESC LIMIT 50`)
-    .all() as unknown as Parameters<typeof mapDecision>[0][];
+    .prepare(
+      `SELECT d.* FROM decisions d
+       JOIN tasks t ON t.id = d.task_id
+       WHERE d.task_id != ? AND d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
+       ORDER BY d.created_at DESC LIMIT 50`,
+    )
+    .all(task.id) as unknown as Parameters<typeof mapDecision>[0][];
   const output: ContextCandidate[] = [];
   for (const row of decisionRows) {
     const decision = mapDecision(row);
@@ -399,7 +445,12 @@ function metadataScore(metadata: Record<string, unknown>): number {
 
 function listPriorDecisions(db: DatabaseSync, taskId: string) {
   const rows = db
-    .prepare(`SELECT * FROM decisions WHERE task_id != ? ORDER BY created_at DESC LIMIT 20`)
+    .prepare(
+      `SELECT d.* FROM decisions d
+       JOIN tasks t ON t.id = d.task_id
+       WHERE d.task_id != ? AND d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
+       ORDER BY d.created_at DESC LIMIT 20`,
+    )
     .all(taskId) as unknown as Parameters<typeof mapDecision>[0][];
   return rows.map(mapDecision);
 }
@@ -407,41 +458,48 @@ function listPriorDecisions(db: DatabaseSync, taskId: string) {
 function listPriorTraces(db: DatabaseSync, taskId: string) {
   const rows = db
     .prepare(
-      `SELECT * FROM implementation_traces WHERE task_id != ? ORDER BY created_at DESC LIMIT 20`,
+      `SELECT i.* FROM implementation_traces i
+       JOIN tasks t ON t.id = i.task_id
+       WHERE i.task_id != ? AND t.status != 'ABANDONED'
+       ORDER BY i.created_at DESC LIMIT 20`,
     )
     .all(taskId) as unknown as Parameters<typeof mapTraceRow>[0][];
   return rows.map(mapTraceRow);
 }
 
 export function addContextPath(projectRoot: string, pathOrGlob: string): ContextItem[] {
-  ensureReadableCache(projectRoot);
-  const taskId = requireCurrentTaskId(projectRoot);
   const matches = expandPathOrGlob(projectRoot, pathOrGlob);
   if (matches.length === 0) {
     throw new Error(`No matching files: ${pathOrGlob}`);
   }
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  let contextIds = bundle.contextItems.map((item) => item.id);
-  const items = matches.map((file) => {
-    const item = makeSourceContextItem(contextIds, {
-      taskId,
-      sourceType: 'FILE',
-      sourceRef: file,
-      summary: `Added by agent/user context request: ${file}`,
-      metadata: { requested: pathOrGlob },
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    const taskId = requireCurrentTaskIdFromState(state.currentTaskId);
+    new TaskLifecycle(bundle, taskId).assertAllowed('context');
+    let contextIds = bundle.contextItems.map((item) => item.id);
+    const items = matches.map((file) => {
+      const item = makeSourceContextItem(contextIds, {
+        taskId,
+        sourceType: 'FILE',
+        sourceRef: file,
+        summary: `Added by agent/user context request: ${file}`,
+        metadata: { requested: pathOrGlob },
+      });
+      contextIds = [...contextIds, item.id];
+      return item;
     });
-    contextIds = [...contextIds, item.id];
-    return item;
+    bundle.contextItems.push(...items);
+    appendSourceEvent(bundle, {
+      taskId,
+      type: 'CONTEXT_ITEM_ADDED',
+      payload: { pathOrGlob, count: items.length },
+    });
+    return items;
   });
-  bundle.contextItems.push(...items);
-  appendSourceEvent(bundle, {
-    taskId,
-    type: 'CONTEXT_ITEM_ADDED',
-    payload: { pathOrGlob, count: items.length },
-  });
-  writeSourceBundle(projectRoot, bundle);
-  rebuildDecisionCache(projectRoot);
-  return items;
+}
+
+function requireCurrentTaskIdFromState(taskId: string | null): string {
+  if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+  return taskId;
 }
 
 function makeSourceContextItem(
@@ -488,10 +546,21 @@ function findRelevantFiles(projectRoot: string, description: string): string[] {
     .filter((word) => word.length >= 3);
   const files = walk(projectRoot);
   if (keywords.length === 0) return files.slice(0, 10);
-  return files.filter((file) => keywords.some((keyword) => file.toLowerCase().includes(keyword)));
+  return files
+    .map((file) => {
+      const pathMatches = keywords.filter((keyword) => file.toLowerCase().includes(keyword)).length;
+      const content = readTextSample(projectRoot, file)?.toLowerCase() ?? '';
+      const contentMatches = keywords.filter((keyword) => content.includes(keyword)).length;
+      return { file, score: pathMatches * 2 + contentMatches };
+    })
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score || left.file.localeCompare(right.file))
+    .map((candidate) => candidate.file);
 }
 
 function walk(root: string): string[] {
+  const gitVisible = listGitVisibleFiles(root);
+  if (gitVisible !== null) return gitVisible;
   const output: string[] = [];
   const ignored = new Set(['.git', 'node_modules', 'dist', '.decision', '.sduck-worktrees']);
   function visit(dir: string): void {
@@ -504,6 +573,93 @@ function walk(root: string): string[] {
   }
   visit(root);
   return output;
+}
+
+function listGitVisibleFiles(root: string): string[] | null {
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: root,
+      env: isolatedGitEnv(),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const output = execFileSync(
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard', '--'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: isolatedGitEnv(),
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    );
+    return output
+      .split('\n')
+      .map((file) => file.trim().replaceAll('\\', '/'))
+      .filter((file) => file !== '' && isContextFile(file))
+      .filter((file) => {
+        try {
+          return fs.statSync(path.join(root, file)).isFile();
+        } catch {
+          return false;
+        }
+      });
+  } catch {
+    return null;
+  }
+}
+
+function isContextFile(file: string): boolean {
+  return ![
+    '.git/',
+    '.decision/',
+    '.sduck/',
+    '.sduck-worktrees/',
+    'node_modules/',
+    'dist/',
+    'coverage/',
+    'test/workspaces/',
+  ].some((prefix) => file === prefix.slice(0, -1) || file.startsWith(prefix));
+}
+
+function findRelevantExcerpt(
+  projectRoot: string,
+  file: string,
+  description: string,
+): { line: number; text: string } | null {
+  const content = readTextSample(projectRoot, file);
+  if (content === null) return null;
+  const keywords = description
+    .toLowerCase()
+    .split(/[^a-z0-9가-힣]+/i)
+    .filter((word) => word.length >= 3);
+  const lines = content.split('\n');
+  const index = lines.findIndex((line) =>
+    keywords.some((keyword) => line.toLowerCase().includes(keyword)),
+  );
+  if (index < 0) return null;
+  const text = lines[index]?.trim().slice(0, 240) ?? '';
+  return text === '' ? null : { line: index + 1, text };
+}
+
+function readTextSample(projectRoot: string, file: string): string | null {
+  const absolutePath = path.join(projectRoot, file);
+  try {
+    const stat = fs.statSync(absolutePath);
+    if (!stat.isFile() || stat.size > 128 * 1024) return null;
+    const content = fs.readFileSync(absolutePath, 'utf8').slice(0, 16 * 1024);
+    return content.includes('\0') ? null : content;
+  } catch {
+    return null;
+  }
+}
+
+function isolatedGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env['GIT_DIR'];
+  delete env['GIT_WORK_TREE'];
+  delete env['GIT_INDEX_FILE'];
+  delete env['GIT_PREFIX'];
+  return env;
 }
 
 function expandPathOrGlob(projectRoot: string, pathOrGlob: string): string[] {

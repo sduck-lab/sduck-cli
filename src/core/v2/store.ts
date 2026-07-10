@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
+import * as path from 'node:path';
 
 import { dbPath, dbSidecarPaths, decisionRoot } from './paths.js';
 
@@ -26,8 +27,13 @@ export function decodeJson<T>(value: string | null | undefined, fallback: T): T 
 }
 
 export function openDatabase(projectRoot: string): DatabaseSyncType {
-  fs.mkdirSync(decisionRoot(projectRoot), { recursive: true });
-  const db = new DatabaseSync(dbPath(projectRoot));
+  return openDatabaseFile(dbPath(projectRoot));
+}
+
+export function openDatabaseFile(location: string): DatabaseSyncType {
+  fs.mkdirSync(path.dirname(location), { recursive: true });
+  const db = new DatabaseSync(location);
+  db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = DELETE;');
   ensureSchema(db);
   return db;
 }

@@ -1,9 +1,8 @@
-import { ensureReadableCache } from './cache.js';
+import { DecisionWorkspace } from './decision-workspace.js';
 import { createTaskId, nowIso } from './ids.js';
-import { rebuildDecisionCache } from './rebuild.js';
-import { appendSourceEvent, loadSourceBundleForWrite, writeSourceBundle } from './source-store.js';
-import { getCurrentTaskId, setCurrentTaskId } from './state.js';
+import { appendSourceEvent } from './source-store.js';
 import { decodeJson, encodeJson } from './store.js';
+import { TaskLifecycle } from './task-lifecycle.js';
 
 import type { Task, TaskStatus } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -38,30 +37,30 @@ export function getTaskById(db: DatabaseSync, taskId: string): Task | null {
 }
 
 export function createTask(projectRoot: string, description: string): Task {
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  let id = createTaskId(description);
-  let suffix = 2;
-  while (bundle.tasks.some((task) => task.id === id)) {
-    id = `${createTaskId(description)}-${String(suffix)}`;
-    suffix += 1;
-  }
-  const createdAt = nowIso();
-  const task: Task = {
-    id,
-    title: description,
-    description,
-    status: 'OPEN',
-    expectedScope: [],
-    avoidScope: [],
-    createdAt,
-    updatedAt: createdAt,
-  };
-  bundle.tasks.push(task);
-  appendSourceEvent(bundle, { taskId: task.id, type: 'TASK_CREATED', payload: { description } });
-  writeSourceBundle(projectRoot, bundle);
-  setCurrentTaskId(projectRoot, task.id);
-  rebuildDecisionCache(projectRoot);
-  return task;
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    let id = createTaskId(description);
+    let suffix = 2;
+    while (bundle.tasks.some((task) => task.id === id)) {
+      id = `${createTaskId(description)}-${String(suffix)}`;
+      suffix += 1;
+    }
+    const createdAt = nowIso();
+    const task: Task = {
+      id,
+      title: description,
+      description,
+      status: 'OPEN',
+      expectedScope: [],
+      avoidScope: [],
+      createdAt,
+      updatedAt: createdAt,
+    };
+    bundle.tasks.push(task);
+    appendSourceEvent(bundle, { taskId: task.id, type: 'TASK_CREATED', payload: { description } });
+    state.currentTaskId = task.id;
+    state.updatedAt = createdAt;
+    return task;
+  });
 }
 
 export function updateTaskStatus(db: DatabaseSync, taskId: string, status: TaskStatus): void {
@@ -84,27 +83,38 @@ export function updateTaskScopes(
 }
 
 export function setTerminalStatus(projectRoot: string, status: 'CLOSED' | 'ABANDONED'): Task {
-  ensureReadableCache(projectRoot);
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  const taskId = requireCurrentTaskId(projectRoot);
-  const task = bundle.tasks.find((item) => item.id === taskId);
-  if (task === undefined) {
-    throw new Error(`Task not found: ${taskId}`);
-  }
-  const updated: Task = { ...task, status, updatedAt: nowIso() };
-  bundle.tasks = bundle.tasks.map((item) => (item.id === taskId ? updated : item));
-  appendSourceEvent(bundle, {
-    taskId: task.id,
-    type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
-    payload: {},
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    const taskId = requireCurrentTaskId(state.currentTaskId);
+    const task = bundle.tasks.find((item) => item.id === taskId);
+    if (task === undefined) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    const updatedAt = nowIso();
+    new TaskLifecycle(bundle, taskId).setTerminal(status, updatedAt);
+    const updated = bundle.tasks.find((item) => item.id === taskId);
+    if (updated === undefined) throw new Error(`Task not found: ${taskId}`);
+    appendSourceEvent(bundle, {
+      taskId: task.id,
+      type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
+      payload: {},
+    });
+    state.currentTaskId = null;
+    state.updatedAt = updatedAt;
+    return updated;
   });
-  writeSourceBundle(projectRoot, bundle);
-  rebuildDecisionCache(projectRoot);
-  return updated;
 }
 
-function requireCurrentTaskId(projectRoot: string): string {
-  const taskId = getCurrentTaskId(projectRoot);
+export function resumeTask(projectRoot: string, taskId: string): Task {
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    const lifecycle = new TaskLifecycle(bundle, taskId);
+    lifecycle.assertAllowed('resume');
+    state.currentTaskId = taskId;
+    state.updatedAt = nowIso();
+    return lifecycle.task;
+  });
+}
+
+function requireCurrentTaskId(taskId: string | null): string {
   if (taskId === null) {
     throw new Error('No current task. Run `sduck work "..."` first.');
   }

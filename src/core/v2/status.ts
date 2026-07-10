@@ -1,12 +1,11 @@
 import { ensureReadableCache } from './cache.js';
+import { DecisionWorkspace } from './decision-workspace.js';
 import { emptyDecisionKindCounts, listDecisionsByTask } from './decision.js';
 import { listEvents } from './events.js';
-import { nowIso } from './ids.js';
 import { listQuestionsByTask } from './question.js';
-import { rebuildDecisionCache } from './rebuild.js';
-import { loadSourceBundleForWrite, writeSourceBundle } from './source-store.js';
 import { getCurrentTaskId } from './state.js';
 import { openDatabase } from './store.js';
+import { TaskLifecycle } from './task-lifecycle.js';
 import { getTaskById } from './task.js';
 
 import type { StatusView } from '../../types/index.js';
@@ -70,36 +69,12 @@ export function buildStatusView(projectRoot: string): StatusView {
 }
 
 export function maybeMarkBriefReady(projectRoot: string): void {
-  ensureReadableCache(projectRoot);
-  const db = openDatabase(projectRoot);
-  let shouldMarkReady = false;
-  let taskId: string | null = null;
-  try {
-    taskId = getCurrentTaskId(projectRoot);
-    if (taskId === null) return;
-    const task = getTaskById(db, taskId);
-    if (task?.status !== 'OPEN') return;
-    const openQuestions = scalarCount(
-      db,
-      `SELECT COUNT(*) AS count FROM questions WHERE task_id = ? AND answered = 0`,
-      taskId,
+  new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    if (state.currentTaskId === null) return;
+    new TaskLifecycle(bundle, state.currentTaskId).reconcileBriefReadiness(
+      new Date().toISOString(),
     );
-    const decisions = scalarCount(
-      db,
-      `SELECT COUNT(*) AS count FROM decisions WHERE task_id = ?`,
-      taskId,
-    );
-    shouldMarkReady = openQuestions === 0 && decisions > 0;
-  } finally {
-    db.close();
-  }
-  if (!shouldMarkReady) return;
-  const bundle = loadSourceBundleForWrite(projectRoot);
-  bundle.tasks = bundle.tasks.map((task) =>
-    task.id === taskId ? { ...task, status: 'BRIEF_READY', updatedAt: nowIso() } : task,
-  );
-  writeSourceBundle(projectRoot, bundle);
-  rebuildDecisionCache(projectRoot);
+  });
 }
 
 function scalarCount(db: DatabaseSync, sql: string, value: string): number {
