@@ -130,15 +130,16 @@ export async function approvePlans(
     }
 
     const planContent = await readFile(planPath, 'utf8');
-    const totalSteps = countPlanSteps(planContent);
-
-    if (totalSteps === 0) {
+    try {
+      validatePlanHasSteps(planContent);
+    } catch (error) {
       failed.push({
-        note: 'invalid or missing Step headers (format: ## Step N. 제목)',
+        note: error instanceof Error ? error.message : String(error),
         taskId: task.id,
       });
       continue;
     }
+    const totalSteps = countPlanSteps(planContent);
 
     await patchTaskMeta(metaPath, (meta) => approvePlanInMeta(meta, approvedAt, totalSteps));
 

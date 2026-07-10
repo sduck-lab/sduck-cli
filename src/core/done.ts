@@ -63,6 +63,59 @@ export function extractUncheckedChecklistItems(specContent: string): string[] {
     .map((item) => item.trim());
 }
 
+const COMPLETION_HEADING_PATTERNS: readonly RegExp[] = [
+  /완료\s*조건/,
+  /완료\s*기준/,
+  /수용\s*기준/,
+  /acceptance\s+criteria/i,
+];
+
+function isCompletionHeading(headingText: string): boolean {
+  return COMPLETION_HEADING_PATTERNS.some((pattern) => pattern.test(headingText));
+}
+
+/**
+ * Collects unchecked checklist items ("- [ ]") that appear only inside
+ * "completion" sections (완료 조건 / 수용 기준 / Acceptance Criteria). Checkboxes
+ * in other sections (선택지, 리뷰 체크리스트, 미결 사항 등) are ignored. When the
+ * spec has no completion section at all, returns an empty list so the
+ * review-ready / done gate does not block.
+ */
+export function extractGatingUncheckedItems(specContent: string): string[] {
+  const headingPattern = /^(#{1,6})\s+(.+?)\s*$/;
+  const sectionLines: string[] = [];
+  let capturing = false;
+  let sectionLevel = 0;
+
+  for (const line of specContent.split('\n')) {
+    const headingMatch = headingPattern.exec(line);
+
+    if (headingMatch) {
+      const level = headingMatch[1]?.length ?? 0;
+      const headingText = headingMatch[2] ?? '';
+
+      if (isCompletionHeading(headingText)) {
+        capturing = true;
+        sectionLevel = level;
+      } else if (capturing && level <= sectionLevel) {
+        capturing = false;
+      }
+
+      continue;
+    }
+
+    if (capturing) {
+      sectionLines.push(line);
+    }
+  }
+
+  if (sectionLines.length === 0) {
+    return [];
+  }
+
+  return extractUncheckedChecklistItems(sectionLines.join('\n'));
+}
+
 export function extractTaskEvalCriteriaLabels(taskEvalContent: string): string[] {
   const labels = [...taskEvalContent.matchAll(/^\s{6}label:\s+(.+)$/gm)]
     .map((match) => match[1])
@@ -145,23 +198,77 @@ function validateDoneTarget(task: DoneTarget): void {
   }
 }
 
-async function checkReviewWarning(
+async function validateReviewFile(
   projectRoot: string,
   task: DoneTarget,
-): Promise<string | undefined> {
+  taskEvalCriteria: readonly string[],
+): Promise<void> {
   const reviewPath = join(projectRoot, task.path, 'review.md');
 
   if ((await getFsEntryKind(reviewPath)) !== 'file') {
-    return `review.md is missing for task ${task.id}. Consider running \`sduck review ready\` to create it.`;
+    throw new Error(`Review evidence is missing for task ${task.id}: review.md does not exist.`);
   }
 
   const content = await readFile(reviewPath, 'utf8');
+  validateReviewEvidence(content, taskEvalCriteria);
+}
 
-  if (content.trim().length === 0) {
-    return `review.md is empty for task ${task.id}.`;
+export function validateReviewEvidence(content: string, taskEvalCriteria: readonly string[]): void {
+  const summary = extractReviewSection(content, ['변경 요약', 'Change summary']);
+  if (!hasMeaningfulBullet(summary)) {
+    throw new Error('Review evidence is incomplete: change summary is a placeholder.');
   }
 
-  return undefined;
+  const tests = extractReviewSection(content, ['테스트 결과', 'Test results']);
+  if (
+    !hasMeaningfulBullet(tests) ||
+    !/(?:✅|\bpass(?:ed)?\b|통과|성공|exit\s*0|`[^`]+`|\b(?:npm|pnpm|yarn|vitest|pytest|cargo|build|lint|typecheck)\b)/i.test(
+      tests,
+    )
+  ) {
+    throw new Error('Review evidence is incomplete: test results need a command or pass result.');
+  }
+
+  const checklist = extractReviewSection(content, ['리뷰 체크리스트', 'Review checklist']);
+  if (/^\s*- \[ \]/m.test(checklist) || !/^\s*- \[[xX]\]/m.test(checklist)) {
+    throw new Error('Review evidence is incomplete: review checklist is not fully checked.');
+  }
+
+  for (const criterion of taskEvalCriteria) {
+    const escaped = escapeRegExp(criterion);
+    const bullet = new RegExp(`^\\s*-\\s+${escaped}:\\s*([1-5])\\s+(?:—|-)\\s+(.+)$`, 'im').exec(
+      content,
+    );
+    const table = new RegExp(
+      `^\\s*\\|\\s*${escaped}\\s*\\|\\s*([1-5])\\s*\\|\\s*(.+?)\\s*\\|\\s*$`,
+      'im',
+    ).exec(content);
+    const evidence = bullet?.[2] ?? table?.[2] ?? '';
+    if (evidence.trim().length < 4 || /<evidence>|todo|tbd|placeholder/i.test(evidence)) {
+      throw new Error(`Review evaluation lacks scored evidence for: ${criterion}.`);
+    }
+  }
+}
+
+function extractReviewSection(content: string, headings: readonly string[]): string {
+  for (const heading of headings) {
+    const match = new RegExp(
+      `^#{2,6}\\s+${escapeRegExp(heading)}\\s*$\\n([\\s\\S]*?)(?=^#{1,6}\\s+|$)`,
+      'im',
+    ).exec(content);
+    if (match?.[1] !== undefined) return match[1].trim();
+  }
+  return '';
+}
+
+function hasMeaningfulBullet(section: string): boolean {
+  return section
+    .split('\n')
+    .some((line) => /^\s*-\s+\S.{2,}/.test(line) && !/<[^>]+>|todo|tbd|placeholder/i.test(line));
+}
+
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function loadTaskEvalCriteria(projectRoot: string): Promise<string[]> {
@@ -200,13 +307,13 @@ async function completeTask(
     throw new Error(`Missing spec.md for task ${task.id}.`);
   }
 
-  const reviewWarning = await checkReviewWarning(projectRoot, task);
+  await validateReviewFile(projectRoot, task, taskEvalCriteria);
 
   const metaContent = await readFile(metaPath, 'utf8');
   validateDoneMetaContent(metaContent);
 
   const specContent = await readFile(specPath, 'utf8');
-  const uncheckedItems = extractUncheckedChecklistItems(specContent);
+  const uncheckedItems = extractGatingUncheckedItems(specContent);
 
   if (uncheckedItems.length > 0) {
     throw new Error(`Spec checklist is incomplete: ${uncheckedItems.join('; ')}`);
@@ -226,7 +333,7 @@ async function completeTask(
   return {
     completedAt,
     note: `task eval checked (${String(taskEvalCriteria.length)} criteria)`,
-    reviewWarning,
+    reviewWarning: undefined,
     taskEvalCriteria: [...taskEvalCriteria],
     taskId: task.id,
   };

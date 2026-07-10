@@ -1,8 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { extractUncheckedChecklistItems } from './done.js';
+import { extractGatingUncheckedItems, extractTaskEvalCriteriaLabels } from './done.js';
 import { getFsEntryKind } from './fs.js';
+import { getProjectRelativeSduckAssetPath } from './project-paths.js';
 import { assertTransition, refreshAgentContextBestEffort } from './task-lifecycle.js';
 import { markReviewReadyInMeta, patchTaskMeta, readTaskMeta, type TaskMeta } from './task-meta.js';
 import { resolveTaskTarget } from './task-target.js';
@@ -35,7 +36,7 @@ function validateStepsComplete(workId: string, meta: TaskMeta): void {
 }
 
 function validateSpecChecklist(workId: string, specContent: string): void {
-  const uncheckedItems = extractUncheckedChecklistItems(specContent);
+  const uncheckedItems = extractGatingUncheckedItems(specContent);
 
   if (uncheckedItems.length > 0) {
     throw new Error(
@@ -44,7 +45,7 @@ function validateSpecChecklist(workId: string, specContent: string): void {
   }
 }
 
-function renderReviewTemplate(workId: string): string {
+function renderReviewTemplate(workId: string, criteria: readonly string[]): string {
   return [
     `# Review: ${workId}`,
     '',
@@ -62,7 +63,18 @@ function renderReviewTemplate(workId: string): string {
     '- [ ] 테스트 통과 확인',
     '- [ ] 문서 업데이트 확인',
     '',
+    '## Task evaluation',
+    '',
+    ...criteria.map((criterion) => `- ${criterion}: <1-5> — <evidence>`),
+    '',
   ].join('\n');
+}
+
+async function loadTaskEvalCriteria(projectRoot: string): Promise<string[]> {
+  const relativePath = getProjectRelativeSduckAssetPath('eval', 'task.yml');
+  const filePath = join(projectRoot, relativePath);
+  if ((await getFsEntryKind(filePath)) !== 'file') return [];
+  return extractTaskEvalCriteriaLabels(await readFile(filePath, 'utf8'));
 }
 
 export async function resolveReviewTarget(
@@ -103,7 +115,11 @@ export async function runReviewReadyWorkflow(
   const reviewPath = join(projectRoot, work.path, 'review.md');
 
   if ((await getFsEntryKind(reviewPath)) !== 'file') {
-    await writeFile(reviewPath, renderReviewTemplate(work.id), 'utf8');
+    await writeFile(
+      reviewPath,
+      renderReviewTemplate(work.id, await loadTaskEvalCriteria(projectRoot)),
+      'utf8',
+    );
   }
   await patchTaskMeta(metaPath, (currentMeta) => markReviewReadyInMeta(currentMeta, date));
 

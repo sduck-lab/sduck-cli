@@ -441,7 +441,7 @@ const CLAUDE_CODE_HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/sdd-guard.
 
 function createClaudeCodeHookEntry(): Record<string, unknown> {
   return {
-    matcher: 'Edit|Write',
+    matcher: 'Edit|Write|MultiEdit',
     hooks: [
       {
         type: 'command',

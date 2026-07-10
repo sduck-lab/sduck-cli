@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -127,6 +128,7 @@ function applyTemplateDefaults(
   type: SupportedTaskType,
   slug: string,
   currentDate: Date,
+  author: string,
 ): string {
   const displayName = slug.replace(/-/g, ' ');
 
@@ -134,9 +136,26 @@ function applyTemplateDefaults(
     .replace(/\{기능명\}/g, displayName)
     .replace(/\{버그 요약 한 줄\}/g, displayName)
     .replace(/YYYY-MM-DD/g, formatUtcDate(currentDate))
-    .replace(/> \*\*작성자:\*\*\s*$/m, '> **작성자:** taehee')
+    .replace(/> \*\*작성자:\*\*\s*$/m, `> **작성자:** ${author}`)
     .replace(/> \*\*연관 티켓:\*\*\s*$/m, '> **연관 티켓:** -')
     .replace(/^# \[(feature|fix|refactor|chore|build)\] .*/m, `# [${type}] ${displayName}`);
+}
+
+function resolveSpecAuthor(projectRoot: string): string {
+  try {
+    const author = execFileSync('git', ['config', '--get', 'user.name'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (author !== '') return author;
+  } catch {
+    // Fall through to process identity when the target is not a Git repository.
+  }
+  const gitAuthor = process.env['GIT_AUTHOR_NAME']?.trim();
+  if (gitAuthor !== undefined && gitAuthor !== '') return gitAuthor;
+  const user = process.env['USER']?.trim();
+  return user === undefined || user === '' ? '-' : user;
 }
 
 export interface StartTaskOptions {
@@ -181,7 +200,13 @@ export async function startTask(
   }
 
   const specTemplate = await readFile(templatePath, 'utf8');
-  const specContent = applyTemplateDefaults(specTemplate, rawType, slug, currentDate);
+  const specContent = applyTemplateDefaults(
+    specTemplate,
+    rawType,
+    slug,
+    currentDate,
+    resolveSpecAuthor(projectRoot),
+  );
   const timestamp = formatUtcTimestamp(currentDate);
   const metaContent = renderTaskMeta(
     createInitialTaskMeta({
