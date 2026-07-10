@@ -12,3 +12,9 @@ coverage/
 .decision/db.sqlite-*
 .decision/*.db
 .decision/*.db-*
+.decision/state.json
+.decision/workspace.lock/
+.decision/.staging-*/
+.decision/.rollback-*/
+.decision/exports/graphify/
+test/workspaces/

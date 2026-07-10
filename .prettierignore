@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.decision/
+.sduck/sduck-workspace/
+.sduck/sduck-archive/
+.sduck-worktrees/
+test/workspaces/

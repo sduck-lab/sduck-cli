@@ -30,11 +30,29 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm run test:unit
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests and coverage
+        run: npm run test:coverage
 
       - name: E2E tests
         run: npm run test:e2e
 
       - name: Build
         run: npm run build
+
+      - name: Package dry-run
+        run: npm run package:check
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Full dependency audit
+        run: npm run audit
+
+      - name: Verify tests left the checkout clean
+        run: test -z "$(git status --porcelain --untracked-files=all)"
