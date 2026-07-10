@@ -6,6 +6,13 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
+      reporter: ['text', 'json-summary', 'lcov'],
+      thresholds: {
+        statements: 60,
+        branches: 70,
+        functions: 75,
+        lines: 60,
+      },
     },
   },
 });

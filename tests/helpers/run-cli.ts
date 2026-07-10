@@ -11,29 +11,29 @@ export interface RunCliResult {
 export interface RunCliOptions {
   cliRoot: string;
   cwd: string;
+  stdin?: string;
 }
 
 async function resolveRepoLocalCliEntrypoint(
   cliRoot: string,
-): Promise<{ cliEntrypoint: string; tsxBinaryPath: string }> {
-  const tsxBinaryName = process.platform === 'win32' ? 'tsx.cmd' : 'tsx';
-  const tsxBinaryPath = join(cliRoot, 'node_modules', '.bin', tsxBinaryName);
+): Promise<{ cliEntrypoint: string; tsxLoaderPath: string }> {
+  const tsxLoaderPath = join(cliRoot, 'node_modules', 'tsx', 'dist', 'loader.mjs');
   const cliEntrypoint = join(cliRoot, 'src', 'cli.ts');
 
-  await access(tsxBinaryPath);
+  await access(tsxLoaderPath);
   await access(cliEntrypoint);
 
-  return { cliEntrypoint, tsxBinaryPath };
+  return { cliEntrypoint, tsxLoaderPath };
 }
 
 export async function runCli(args: string[], options: RunCliOptions): Promise<RunCliResult> {
-  const { cliEntrypoint, tsxBinaryPath } = await resolveRepoLocalCliEntrypoint(options.cliRoot);
+  const { cliEntrypoint, tsxLoaderPath } = await resolveRepoLocalCliEntrypoint(options.cliRoot);
 
   return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [tsxBinaryPath, cliEntrypoint, ...args], {
+    const child = spawn(process.execPath, ['--import', tsxLoaderPath, cliEntrypoint, ...args], {
       cwd: options.cwd,
       env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     let stdout = '';
@@ -58,5 +58,7 @@ export async function runCli(args: string[], options: RunCliOptions): Promise<Ru
         stdout,
       });
     });
+
+    child.stdin.end(options.stdin ?? '');
   });
 }

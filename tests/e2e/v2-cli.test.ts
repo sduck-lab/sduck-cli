@@ -68,14 +68,11 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(await readFile(join(workspace, 'CLAUDE.md'), 'utf8')).toContain(
       'Primary workflow: v2 `.decision` decision briefing',
     );
-    const codexRules = await readFile(join(workspace, 'AGENT.md'), 'utf8');
-    const opencodeRules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
-    expect(codexRules).toContain('<!-- sduck:begin -->');
-    expect(codexRules).toContain('Selected agents: Codex');
-    expect(codexRules).not.toContain('OpenCode Instructions');
-    expect(opencodeRules).toContain('<!-- sduck:begin -->');
-    expect(opencodeRules).toContain('Selected agents: OpenCode');
-    expect(opencodeRules).not.toContain('Codex Instructions');
+    const agentRules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
+    expect(agentRules).toContain('<!-- sduck:begin -->');
+    expect(agentRules).toContain('Selected agents: Codex, OpenCode');
+    expect(agentRules).toContain('Codex Instructions');
+    expect(agentRules).toContain('OpenCode Instructions');
     expect(await readFile(join(workspace, 'GEMINI.md'), 'utf8')).toContain('<!-- sduck:begin -->');
     const work = await runCli(['work', 'payment retry 추가'], { cliRoot, cwd: workspace });
     expect(work.stdout).toContain('작업을 시작했어');
@@ -122,12 +119,8 @@ describeIfSqlite('v2 CLI flow', () => {
       ],
       evidence: [],
     });
-    const submit = execFileSync(
-      join(cliRoot, 'node_modules', '.bin', 'tsx'),
-      [join(cliRoot, 'src', 'cli.ts'), 'submit', '--stdin'],
-      { cwd: workspace, input: draft, encoding: 'utf8' },
-    );
-    expect(submit).toContain('Draft submitted');
+    const submit = await runCli(['submit', '--stdin'], { cliRoot, cwd: workspace, stdin: draft });
+    expect(submit.stdout).toContain('Draft submitted');
 
     expect(
       (await runCli(['answer', 'Q1', '--option', '1'], { cliRoot, cwd: workspace })).stdout,
@@ -203,6 +196,21 @@ describeIfSqlite('v2 CLI flow', () => {
       '검색어',
     );
     expect((await runCli(['close'], { cliRoot, cwd: workspace })).stdout).toContain('closed');
-    expect(await readFile(join(cliRoot, '.gitignore'), 'utf8')).toContain('.decision/db.sqlite');
+    const gitignore = await readFile(join(workspace, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('.decision/db.sqlite');
+    expect(gitignore).toContain('.decision/db.sqlite-*');
+    expect(gitignore).toContain('.decision/state.json');
+    expect(gitignore).toContain('.decision/exports/graphify/');
+    expect(gitignore).not.toContain('.decision/exports/markdown/');
+    const decisionGitStatus = execFileSync(
+      'git',
+      ['status', '--short', '--untracked-files=all', '--', '.decision'],
+      { cwd: workspace, env: isolatedGitEnv(), encoding: 'utf8' },
+    );
+    expect(decisionGitStatus).toContain('.decision/exports/markdown/tasks/');
+    expect(decisionGitStatus).toContain('.decision/exports/markdown/decisions/');
+    expect(decisionGitStatus).not.toContain('db.sqlite');
+    expect(decisionGitStatus).not.toContain('state.json');
+    expect(decisionGitStatus).not.toContain('exports/graphify');
   }, 15_000);
 });

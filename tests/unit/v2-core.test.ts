@@ -247,6 +247,7 @@ describeIfSqlite('v2 core workflow', () => {
             id: 'DEC-delete-me',
             title: 'Delete me decision',
             kind: 'INFERRED',
+            status: 'CONFIRMED',
             summary: 'This source will be deleted.',
           },
         ],
@@ -311,16 +312,10 @@ describeIfSqlite('v2 core workflow', () => {
     await writeFile(join(workspace, 'src', 'feature-details.ts'), 'export const feature = 1;\n');
     execFileSync('git', ['add', 'src'], { cwd: workspace, env: isolatedGitEnv() });
     execFileSync('git', ['commit', '-m', 'initial'], { cwd: workspace, env: isolatedGitEnv() });
-    await writeFile(join(workspace, 'src', 'exact.ts'), 'export const exact = 2;\n');
-    await writeFile(
-      join(workspace, 'src', 'components', 'Button.ts'),
-      'export const button = 2;\n',
-    );
-    await writeFile(join(workspace, 'src', 'feature-details.ts'), 'export const feature = 2;\n');
-
     const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
     const { createTask } = await import('../../src/core/v2/task.js');
     const { submitDraft } = await import('../../src/core/v2/draft.js');
+    const { confirmBrief } = await import('../../src/core/v2/brief.js');
     const { createImplementationTrace } = await import('../../src/core/v2/trace.js');
     const { RELEVANCE_REASONS } = await import('../../src/core/v2/relevance.js');
 
@@ -369,6 +364,13 @@ describeIfSqlite('v2 core workflow', () => {
         evidence: [],
       }),
     );
+    confirmBrief(workspace);
+    await writeFile(join(workspace, 'src', 'exact.ts'), 'export const exact = 2;\n');
+    await writeFile(
+      join(workspace, 'src', 'components', 'Button.ts'),
+      'export const button = 2;\n',
+    );
+    await writeFile(join(workspace, 'src', 'feature-details.ts'), 'export const feature = 2;\n');
 
     const { trace } = createImplementationTrace(workspace);
     expect(trace.decisionToCodeMap).toEqual(
@@ -423,6 +425,7 @@ describeIfSqlite('v2 core workflow', () => {
     const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
     const { createTask } = await import('../../src/core/v2/task.js');
     const { buildContextIndex } = await import('../../src/core/v2/context.js');
+    const { submitDraft } = await import('../../src/core/v2/draft.js');
     const { RELEVANCE_REASONS } = await import('../../src/core/v2/relevance.js');
 
     initDecisionWorkspace(workspace);
@@ -437,7 +440,15 @@ describeIfSqlite('v2 core workflow', () => {
     ).toBe(false);
 
     const task = createTask(workspace, 'description without graph file words');
-    const context = buildContextIndex(workspace, { ...task, expectedScope: ['src/graph-only.ts'] });
+    submitDraft(
+      workspace,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        taskId: task.id,
+        expectedScope: ['src/graph-only.ts'],
+      }),
+    );
+    const context = buildContextIndex(workspace, task);
     const graphItem = context.find(
       (item) =>
         item.sourceType === 'MEMORY' &&

@@ -1,4 +1,5 @@
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -14,6 +15,43 @@ import { markStepCompleted } from '../../src/core/step.js';
 import { updateProject } from '../../src/core/update.js';
 import { writeProjectVersion } from '../../src/core/version-file.js';
 import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+
+const TASK_EVAL_LABELS = [
+  'spec alignment',
+  'plan alignment',
+  'implementation quality',
+  'test completeness',
+  'documentation quality',
+  'maintainability',
+] as const;
+
+async function writeReviewEvidence(taskPath: string, workId: string): Promise<void> {
+  await writeFile(
+    join(taskPath, 'review.md'),
+    [
+      `# Review: ${workId}`,
+      '',
+      '## 변경 요약',
+      '',
+      '- Public workflow behavior implemented and verified.',
+      '',
+      '## 테스트 결과',
+      '',
+      '- `npm run test:unit` passed with exit 0.',
+      '',
+      '## 리뷰 체크리스트',
+      '',
+      '- [x] 코드 품질 확인',
+      '- [x] 테스트 통과 확인',
+      '- [x] 문서 업데이트 확인',
+      '',
+      '## Task evaluation',
+      '',
+      ...TASK_EVAL_LABELS.map((label) => `- ${label}: 5 — Verified by the unit workflow.`),
+      '',
+    ].join('\n'),
+  );
+}
 
 describe('SDD core regression Interface', () => {
   let workspace: string | null = null;
@@ -128,6 +166,7 @@ describe('SDD core regression Interface', () => {
     expect(await readFile(join(taskPath, 'review.md'), 'utf8')).toContain(
       `# Review: ${started.workspaceId}`,
     );
+    await writeReviewEvidence(taskPath, started.workspaceId);
 
     const doneTargets = await loadDoneTargets(workspace, {});
     expect(doneTargets).toHaveLength(1);
@@ -184,13 +223,22 @@ describe('SDD core regression Interface', () => {
     const specPath = join(taskPath, 'spec.md');
     const planPath = join(taskPath, 'plan.md');
 
-    await approveSpecs(workspace, await loadSpecApprovalCandidates(workspace, {}), '2026-07-07T10:01:00Z');
+    await approveSpecs(
+      workspace,
+      await loadSpecApprovalCandidates(workspace, {}),
+      '2026-07-07T10:01:00Z',
+    );
     await writeFile(planPath, ['# Plan', '', '## Step 1. Fix it'].join('\n'), 'utf8');
-    await approvePlans(workspace, await loadPlanApprovalCandidates(workspace, {}), '2026-07-07T10:02:00Z');
+    await approvePlans(
+      workspace,
+      await loadPlanApprovalCandidates(workspace, {}),
+      '2026-07-07T10:02:00Z',
+    );
     await markStepCompleted(workspace, 1, undefined, new Date('2026-07-07T10:03:00Z'));
     const checkedSpec = (await readFile(specPath, 'utf8')).replaceAll('- [ ]', '- [x]');
     await writeFile(specPath, checkedSpec, 'utf8');
     await runReviewReadyWorkflow(workspace, undefined, new Date('2026-07-07T10:04:00Z'));
+    await writeReviewEvidence(taskPath, started.workspaceId);
 
     // REVIEW_READY → reopen transitions to IN_PROGRESS; output must match the file.
     const reopenFromReview = await runReopenCommand({}, workspace);
@@ -247,22 +295,17 @@ describe('SDD core regression Interface', () => {
     await expect(access(join(workspace, 'AGENT.md'))).rejects.toThrow();
   });
 
-  it('separates Codex and OpenCode root rule files', async () => {
+  it('merges Codex and OpenCode rules into the official AGENTS.md file', async () => {
     workspace = await createTempWorkspace('sdd-codex-opencode-');
     await initProject({ agents: ['codex', 'opencode'], force: false }, workspace);
 
-    const codexRules = await readFile(join(workspace, 'AGENT.md'), 'utf8');
-    const opencodeRules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
+    const rules = await readFile(join(workspace, 'AGENTS.md'), 'utf8');
 
-    expect(codexRules).toContain('<!-- sduck:begin -->');
-    expect(codexRules).toContain('Selected agents: Codex');
-    expect(codexRules).toContain('Codex Instructions');
-    expect(codexRules).not.toContain('OpenCode Instructions');
-
-    expect(opencodeRules).toContain('<!-- sduck:begin -->');
-    expect(opencodeRules).toContain('Selected agents: OpenCode');
-    expect(opencodeRules).toContain('OpenCode Instructions');
-    expect(opencodeRules).not.toContain('Codex Instructions');
+    expect(rules).toContain('<!-- sduck:begin -->');
+    expect(rules).toContain('Selected agents: Codex, OpenCode');
+    expect(rules).toContain('Codex Instructions');
+    expect(rules).toContain('OpenCode Instructions');
+    await expect(access(join(workspace, 'AGENT.md'))).rejects.toThrow();
   });
 
   it('preserves AGENTS.md user content when force-refreshing OpenCode rules', async () => {
@@ -298,5 +341,125 @@ describe('SDD core regression Interface', () => {
     expect(opencodeRules).toContain('OpenCode Instructions');
     expect(opencodeRules).not.toContain('Selected agents: Legacy OpenCode');
     expect(opencodeRules).not.toContain('Stale OpenCode Instructions');
+  });
+
+  it('scopes the advisory Claude hook to current_work_id and allows completion evidence edits', async () => {
+    workspace = await createTempWorkspace('sdd-hook-current-');
+    const root = workspace;
+    await initProject({ agents: ['claude-code'], force: false }, root);
+    const workspaceRoot = join(root, '.sduck', 'sduck-workspace');
+    const currentId = '20260710-1000-fix-current';
+    const otherId = '20260710-1100-fix-other';
+    await mkdir(join(workspaceRoot, currentId), { recursive: true });
+    await mkdir(join(workspaceRoot, otherId), { recursive: true });
+    await writeFile(
+      join(root, '.sduck', 'sduck-state.yml'),
+      `current_work_id: ${currentId}\nupdated_at: 2026-07-10T10:00:00Z\n`,
+    );
+    await writeFile(join(workspaceRoot, currentId, 'meta.yml'), 'status: IN_PROGRESS\n');
+    await writeFile(join(workspaceRoot, otherId, 'meta.yml'), 'status: REVIEW_READY\n');
+    const hook = join(root, '.claude', 'hooks', 'sdd-guard.sh');
+
+    expect(() =>
+      execFileSync('bash', [hook], {
+        cwd: root,
+        input: JSON.stringify({ cwd: root, tool_input: { file_path: join(root, 'src', 'x.ts') } }),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      execFileSync('bash', [hook], {
+        cwd: root,
+        input: JSON.stringify({
+          cwd: root,
+          tool_input: {
+            file_path: join(workspaceRoot, currentId, 'spec.md'),
+            old_string: '- [ ] verified',
+            new_string: '- [x] verified',
+          },
+        }),
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a non-contiguous legacy plan before changing task metadata', async () => {
+    workspace = await createTempWorkspace('sdd-plan-gap-');
+    const root = workspace;
+    await initProject({ agents: [], force: false }, root);
+    const started = await startTask(
+      'fix',
+      'reject-step-gap',
+      root,
+      new Date('2026-07-10T12:00:00Z'),
+      { noGit: true },
+    );
+    await approveSpecs(root, await loadSpecApprovalCandidates(root, {}), '2026-07-10T12:01:00Z');
+    const taskPath = join(root, started.workspacePath);
+    const metaPath = join(taskPath, 'meta.yml');
+    await writeFile(
+      join(taskPath, 'plan.md'),
+      ['# Plan', '', '## Step 1. First', '', '## Step 3. Missing second'].join('\n'),
+    );
+    const beforeMeta = await readFile(metaPath, 'utf8');
+
+    const result = await approvePlans(
+      root,
+      await loadPlanApprovalCandidates(root, {}),
+      '2026-07-10T12:02:00Z',
+    );
+
+    expect(result.succeeded).toEqual([]);
+    expect(result.failed[0]?.note).toMatch(/Step 2.*누락|연속/);
+    expect(await readFile(metaPath, 'utf8')).toBe(beforeMeta);
+  });
+
+  it('does not complete a task when review and evaluation contain only placeholders', async () => {
+    workspace = await createTempWorkspace('sdd-review-evidence-');
+    const root = workspace;
+    await initProject({ agents: [], force: false }, root);
+    const started = await startTask(
+      'fix',
+      'require-review-evidence',
+      root,
+      new Date('2026-07-10T13:00:00Z'),
+      { noGit: true },
+    );
+    const taskPath = join(root, started.workspacePath);
+    await approveSpecs(root, await loadSpecApprovalCandidates(root, {}), '2026-07-10T13:01:00Z');
+    await writeFile(join(taskPath, 'plan.md'), '# Plan\n\n## Step 1. Verify evidence\n');
+    await approvePlans(root, await loadPlanApprovalCandidates(root, {}), '2026-07-10T13:02:00Z');
+    await markStepCompleted(root, 1, undefined, new Date('2026-07-10T13:03:00Z'));
+    const specPath = join(taskPath, 'spec.md');
+    await writeFile(specPath, (await readFile(specPath, 'utf8')).replaceAll('- [ ]', '- [x]'));
+    await runReviewReadyWorkflow(root, undefined, new Date('2026-07-10T13:04:00Z'));
+    const metaPath = join(taskPath, 'meta.yml');
+    const beforeDone = await readFile(metaPath, 'utf8');
+
+    const result = await runDoneWorkflow(
+      root,
+      await loadDoneTargets(root, {}),
+      '2026-07-10T13:05:00Z',
+    );
+
+    expect(result.succeeded).toEqual([]);
+    expect(result.failed[0]?.note).toMatch(/review.*evidence|placeholder/i);
+    expect(await readFile(metaPath, 'utf8')).toBe(beforeDone);
+  });
+
+  it('uses the repository Git author in generated specs instead of a hardcoded person', async () => {
+    workspace = await createTempWorkspace('sdd-spec-author-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Team Member'], { cwd: root });
+    await initProject({ agents: [], force: false }, root);
+    const started = await startTask(
+      'fix',
+      'dynamic-author',
+      root,
+      new Date('2026-07-10T14:00:00Z'),
+      { noGit: true },
+    );
+
+    const spec = await readFile(join(root, started.workspacePath, 'spec.md'), 'utf8');
+    expect(spec).toContain('> **작성자:** Team Member');
   });
 });
