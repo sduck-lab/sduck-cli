@@ -4,7 +4,7 @@ Terminal-first decision briefing harness for AI coding agents.
 
 `sduck` helps a developer and a coding agent align on implementation decisions before code changes start. It gives the agent a compact project context, lets the agent submit structured decisions/questions/evidence, renders an implementation brief, and records the implementation trace afterward.
 
-The current public CLI is the v2 `.decision` decision briefing workflow. The source of truth is the durable markdown/entity text files under `.decision/exports/markdown/{tasks,decisions,implementations}/`, written by `sduck remember` and read back by `sduck rebuild`. `.decision/db.sqlite` is a Git-ignored, rebuildable local cache regenerated from that markdown source.
+The current public CLI is the v2 `.decision` decision briefing workflow. The source of truth is the durable Markdown/entity files under `.decision/exports/markdown/{tasks,decisions,implementations}/`. Every successful mutation updates that source atomically; `sduck remember` writes reusable graph exports and `sduck rebuild` regenerates the ignored SQLite cache.
 
 ## Requirements
 
@@ -70,6 +70,10 @@ sduck recall "payment retry"
 # 9) Finish or abandon the current task
 sduck close
 # sduck abandon
+
+# Diagnose source/cache problems, or resume an earlier non-terminal task
+sduck doctor
+sduck resume TASK-20260507-payment-retry
 ```
 
 ## How the workflow works
@@ -79,9 +83,9 @@ sduck close
 3. **Give context to the agent**: `sduck context` prints relevant files, prior decisions, prior implementation traces, the grill-me protocol, and the draft schema.
 4. **Clarify decisions**: the agent explores the codebase first, asks the user only when needed, and submits a structured draft with `sduck submit --stdin`.
 5. **Answer questions**: `sduck ask` shows the next unresolved question; `sduck answer` records the user's answer and promotes it to explicit decision evidence.
-6. **Confirm the brief**: `sduck brief` renders the implementation brief; `sduck confirm` snapshots it and marks the task as confirmed.
-7. **Trace implementation**: after code changes, `sduck trace` reads git changes and maps confirmed decisions to changed files where possible.
-8. **Remember**: `sduck remember` exports task, decision, and implementation memory for future `sduck recall` searches.
+6. **Confirm the brief**: `sduck confirm` leaves source unchanged while questions or active `OPEN`/`CONFLICT` decisions remain. On success it promotes default `DRAFT` decisions and captures a Git baseline.
+7. **Trace implementation**: `sduck trace` finds committed, staged, unstaged, and new implementation files since confirmation and maps confirmed decisions to them.
+8. **Remember**: `sduck remember` generates reusable graph exports; `sduck recall` searches confirmed memory from non-abandoned tasks.
 
 ## Agent-led grill-me loop
 
@@ -104,16 +108,20 @@ This keeps the conversation terminal-first while still producing durable decisio
 ```bash
 sduck init [--agents <list>] [--force] [--no-agent-rules]
 sduck work "<task description>"
+sduck resume <taskId>
 sduck status [--json]
+sduck doctor [--repair]
 ```
 
-- `init` initializes `.decision/`, copies bundled `.sduck/sduck-assets`, and installs managed rule files for selected agents.
+- `init` initializes `.decision/`, ignores local cache/generated paths, copies compatibility `.sduck` assets, and installs compact managed rules. Codex and OpenCode merge into `AGENTS.md`.
 - In non-interactive shells, `sduck init` defaults to all supported agents unless `--agents` or `--no-agent-rules` is provided.
 - `--agents` accepts `claude-code,codex,opencode,gemini-cli,cursor,antigravity`.
 - `--force` refreshes bundled assets and managed rule blocks.
 - `--no-agent-rules` skips managed instruction file installation.
-- `work` starts a new decision briefing task and indexes lightweight context.
+- `work` starts a decision task and indexes Git-visible file paths plus relevant content excerpts.
+- `resume` selects an earlier non-terminal decision task; closed and abandoned tasks remain immutable.
 - `status` shows the active task and counts for context items, questions, decisions, brief snapshots, traces, and exports.
+- `doctor` reports malformed source, DB-only legacy workspaces, and stale caches. `--repair` handles safe migrations and cache rebuilds.
 
 After init, selected agents receive managed instruction files and hooks where applicable, for example `CLAUDE.md` and `.claude/hooks/sdd-guard.sh` for Claude Code.
 
@@ -161,7 +169,7 @@ sduck confirm
 ```
 
 - `brief` renders grouped decisions, open questions, evidence, expected scope, and avoid scope.
-- `confirm` snapshots the brief and marks the task `CONFIRMED`.
+- `confirm` requires `BRIEF_READY`, rejects unresolved questions/conflicts, promotes active DRAFT decisions, and records the confirmation baseline.
 
 ### Implementation memory
 
@@ -171,9 +179,9 @@ sduck remember
 sduck recall "<query>"
 ```
 
-- `trace` records changed files from git and creates an implementation trace.
-- `remember` exports Markdown and graph-style artifacts.
-- `recall` searches prior decisions and implementation traces.
+- `trace` records implementation files changed since confirmation; harness state and common generated paths are excluded.
+- `remember` writes graph-style exports. Canonical Markdown is already updated by every successful command.
+- `recall` searches confirmed decisions and traces from non-abandoned tasks.
 
 ### Lifecycle
 
@@ -265,10 +273,12 @@ The schema is intentionally small:
       decision-graph.json
 ```
 
-- `.decision/exports/markdown/{tasks,decisions,implementations}/` is the source of truth: durable markdown/entity text written by `sduck remember` and read back by `sduck rebuild`.
+- `.decision/exports/markdown/{tasks,decisions,implementations}/` is the Git-tracked source of truth and is updated only after complete bundle validation.
 - `.decision/db.sqlite` (and its `-shm`, `-wal`, `-journal` sidecars) is a Git-ignored, rebuildable local cache that stores tasks, decisions, questions, evidence, context items, brief snapshots, implementation traces, and events. It is regenerated from the markdown source via `sduck rebuild` (or auto-rebuild), and can be deleted freely.
-- `.decision/state.json` tracks the active task.
-- `.decision/exports/graphify/*` contains generated graph-style decision exports.
+- `.decision/state.json` tracks the local active task and is ignored by Git.
+- `.decision/exports/graphify/*` contains ignored, generated graph-style decision exports.
+
+Writers are serialized by a workspace lock. Each mutation validates a staged bundle, builds a temporary DB, and commits only changed Markdown with rollback. Invalid input leaves source and cache unchanged. See [migration guidance](docs/migration.md) for DB-only workspaces.
 
 Graphify is not required at runtime. `sduck` can read existing `graphify-out/GRAPH_REPORT.md` or `graphify-out/graph.json` as context evidence when present, and it can generate Graphify-style exports itself.
 
@@ -290,9 +300,12 @@ npm run typecheck
 npm run lint
 npm run format:check
 npm run test:unit
+npm run test:coverage
 npm run test:e2e
 npm run test
 npm run build
+npm run package:check
+npm run audit:prod
 ```
 
 Run a single test file with Vitest:
@@ -320,7 +333,7 @@ The CLI layer is intentionally thin: it parses arguments, delegates to core func
 ## Limitations and notes
 
 - `sduck trace` requires a git work tree and depends on git status/diff output.
-- Context discovery is lightweight filename/path keyword matching, not AST indexing or vector search.
+- Context discovery uses Git-visible files, `.gitignore`, bounded content excerpts, and lightweight keyword matching; it is not AST or vector indexing.
 - `context add` resolves paths inside the project and rejects paths outside the project root.
 - Graphify is optional; `sduck` only reads existing Graphify output when it is already present.
 - `.decision/db.sqlite` (and its `-shm`, `-wal`, `-journal` sidecars) is a rebuildable local cache, not the source of truth. It is Git-ignored and regenerated from the markdown files under `.decision/exports/markdown/**` via `sduck rebuild`.
@@ -332,10 +345,12 @@ The CLI layer is intentionally thin: it parses arguments, delegates to core func
 - **CI gate**: CI now runs as a repository-level verification gate, but it does not guarantee API or schema stability.
 - **Ownership**: teams should designate an owner/maintainer before adoption.
 - **Bus factor**: the project is small with a low bus factor; treat decision records as the durable artifact, not the running tool.
+- **License decision**: repository/homepage/bugs metadata is present, but the package license remains intentionally unset until the team chooses it.
+- **Pilot**: use [the team pilot evaluation](docs/pilot-evaluation.md) before broad rollout.
 
 ## Legacy `.sduck` workflow in this repository
 
-The `.decision` decision briefing workflow documented above is the primary public workflow of `sduck`. The `.sduck` Spec-Driven Development workflow is a legacy compatibility/internal gated workflow kept for agents and teams that need explicit spec and plan approval gates. `sduck init` installs the managed rule files that point agents at the `.sduck` workflow, and the legacy SDD commands remain available alongside the `.decision` workflow.
+The `.decision` decision briefing workflow documented above is the primary public workflow of `sduck`. The `.sduck` Spec-Driven Development workflow is compatibility-only. Generated rules apply its approval gates only when `.sduck/sduck-state.yml` has a non-null `current_work_id`; otherwise they do not constrain v2 work.
 
 For decision briefing, use the `.decision` workflow. For gated agent implementation with spec/plan approval, use the legacy `.sduck` SDD commands.
 
