@@ -11,7 +11,7 @@
 - 요구사항 해석 오류나 기존 설계 위반으로 재작업이 반복되던 영역의 작업
 - 신규 기능, 비단순 버그 수정, 구조 변경, 팀 간 계약 변경
 
-각 작업은 시작 시 `small`, `medium`, `large`로 분류하고 근거를 남긴다. `small`은 한 개의 간결한 decision과 질문 0개로 끝낼 수 있어야 하며 full briefing을 강제하지 않는다.
+각 작업은 시작 시 `small`, `medium`, `large`로 분류하고 근거를 남긴다. 새로 초기화한 v2 workspace/task에서는 `small`도 `sduck grill-me` gate를 실행해야 한다. 다만 `small`은 한 개의 간결한 decision과 질문 0개로 끝낼 수 있어야 하며 불필요한 full briefing을 강제하지 않는다. `.decision/policy.json` 도입 전 workspace/task는 permissive/legacy-compatible로 남는다.
 
 ## 적용 제외 기준
 
@@ -25,16 +25,18 @@
 
 ## 측정 항목
 
-| 지표              | 정의                                                                                                  | 수집 방법                                           | 권장 기준                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------ |
-| Brief 작성 시간   | `sduck work`부터 성공한 `sduck confirm`까지의 사람+agent 활성 시간. 대기 시간은 제외한다.             | task event와 5분 단위 작업 기록                     | medium/large에서 전체 작업 시간의 15% 이하 |
-| 재작업률          | confirm된 decision 위반, 누락된 scope, 이미 답한 질문 때문에 폐기·재작성한 구현 시간 / 전체 구현 시간 | PR review 사유와 `decision-caused-rework` 태그      | matched baseline보다 감소                  |
-| Decision 재사용률 | 반복 영역의 eligible 작업 중 `recall` 결과가 brief/구현/리뷰에 실제 source ref로 사용된 작업 비율     | brief의 `CARRIED` decision, source refs, trace 확인 | 30% 이상                                   |
-| 사용자 만족도     | “brief가 구현 결정을 명확하게 했다”, “절차 비용이 합리적이었다”, “recall이 유용했다”의 1–5점 평균     | 작업 종료 직후 3문항 설문                           | 평균 3.8 이상, 1–2점 응답 20% 미만         |
-| Confirm 실패 품질 | 열린 질문·conflict·invalid source를 구현 전에 차단한 비율과 false block 수                            | CLI 실패 코드와 후속 해결 기록                      | false block 5% 미만                        |
-| Trace 완전성      | 실제 구현 파일 중 trace에 포함된 비율과 harness/generated noise 비율                                  | PR changed files와 trace 비교                       | 실제 파일 95% 이상, noise 0%               |
+| 지표              | 정의                                                                                                  | 수집 방법                                                          | 권장 기준                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| Brief 작성 시간   | `sduck work`부터 성공한 `sduck confirm`까지의 사람+agent 활성 시간. 대기 시간은 제외한다.             | task event와 5분 단위 작업 기록                                    | medium/large에서 전체 작업 시간의 15% 이하 |
+| 재작업률          | confirm된 decision 위반, 누락된 scope, 이미 답한 질문 때문에 폐기·재작성한 구현 시간 / 전체 구현 시간 | PR review 사유와 `decision-caused-rework` 태그                     | matched baseline보다 감소                  |
+| Decision 재사용률 | 반복 영역의 eligible 작업 중 `recall` 결과가 brief/구현/리뷰에 실제 source ref로 사용된 작업 비율     | brief의 `CARRIED` decision, source refs, trace 확인                | 30% 이상                                   |
+| 사용자 만족도     | “brief가 구현 결정을 명확하게 했다”, “절차 비용이 합리적이었다”, “recall이 유용했다”의 1–5점 평균     | 작업 종료 직후 3문항 설문                                          | 평균 3.8 이상, 1–2점 응답 20% 미만         |
+| Confirm 실패 품질 | 열린 질문·conflict·invalid source를 구현 전에 차단한 비율과 false block 수                            | 실행한 command, exit status, 분류한 failure reason, 후속 해결 기록 | false block 5% 미만                        |
+| Trace 완전성      | 실제 구현 파일 중 trace에 포함된 비율과 harness/generated noise 비율                                  | PR changed files와 trace 비교                                      | 실제 파일 95% 이상, noise 0%               |
 
 “Decision 재사용”은 단순 검색 노출이 아니다. 과거 decision ID가 새 brief의 `CARRIED` 항목, evidence/source ref, 구현 선택 설명, 또는 리뷰 근거 중 하나에 인용되고 실제 선택에 영향을 줘야 한다.
+
+측정 시 canonical v2 flow는 `work → context → grill-me → submit → ask/answer → brief/confirm → 구현 활동 → trace → remember/recall → close`로 기록한다. `sduck config locale en|ko`는 user-global terminal 표시 설정이며 tracked artifact, JSON output, canonical source에는 영향을 주지 않으므로 지표 비교 기준에 포함하지 않는다.
 
 ## 작업별 기록 양식
 

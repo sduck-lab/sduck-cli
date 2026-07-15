@@ -1,11 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { runWorkCommand } from '../../src/commands/v2/index.js';
 import { confirmBrief } from '../../src/core/v2/brief.js';
 import { buildContextIndex, getContextPack } from '../../src/core/v2/context.js';
 import { submitDraft } from '../../src/core/v2/draft.js';
+import { recordGrillMeStarted } from '../../src/core/v2/grill.js';
+import { policyPath } from '../../src/core/v2/paths.js';
 import { recall } from '../../src/core/v2/recall.js';
 import { sourceFingerprint } from '../../src/core/v2/source-store.js';
 import { getCurrentTaskId } from '../../src/core/v2/state.js';
@@ -52,6 +56,7 @@ describe('v2 decision task lifecycle', () => {
 
     initDecisionWorkspace(workspace);
     const task = createTask(workspace, 'add payment retry support');
+    recordGrillMeStarted(workspace);
     submitDraft(
       workspace,
       JSON.stringify({
@@ -80,11 +85,118 @@ describe('v2 decision task lifecycle', () => {
     expect(trace.decisionIds).toContain('DEC-retry-policy');
   });
 
+  it('keeps pre-policy workspaces and tasks permissive', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-pre-policy-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    await unlink(join(root, '.decision', 'policy.json'));
+    const task = createTask(root, 'legacy permissive task');
+
+    submitDraft(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        taskId: task.id,
+        decisions: [
+          {
+            id: 'DEC-legacy-permissive',
+            title: 'Legacy permissive',
+            kind: 'EXPLICIT',
+            summary: 'Pre-policy tasks do not require grill-me.',
+          },
+        ],
+      }),
+    );
+
+    expect(buildStatusView(root).indicators).toMatchObject({
+      grillMeRequired: false,
+      grillMeStarted: false,
+    });
+    expect(confirmBrief(root).snapshot.task.id).toBe(task.id);
+  });
+
+  it('writes policy for empty or partial initializations', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-policy-init-');
+    const root = workspace;
+    await mkdir(join(root, '.decision'), { recursive: true });
+
+    initDecisionWorkspace(root);
+    expect(existsSync(policyPath(root))).toBe(true);
+
+    await unlink(policyPath(root));
+    initDecisionWorkspace(root);
+    expect(existsSync(policyPath(root))).toBe(true);
+  });
+
+  it('uses the task-created policy snapshot even if workspace policy changes later', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-policy-snapshot-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'snapshot remains required');
+    await writeFile(
+      policyPath(root),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: false }, null, 2)}\n`,
+    );
+    await unlink(policyPath(root));
+
+    expect(() =>
+      submitDraft(
+        root,
+        JSON.stringify({
+          schemaVersion: 'v2alpha1',
+          taskId: task.id,
+          decisions: [
+            {
+              id: 'DEC-snapshot-required',
+              title: 'Snapshot required',
+              kind: 'EXPLICIT',
+              summary: 'Workspace policy changes do not alter this task.',
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/GRILL_ME_REQUIRED/);
+
+    recordGrillMeStarted(root);
+    expect(
+      submitDraft(
+        root,
+        JSON.stringify({
+          schemaVersion: 'v2alpha1',
+          taskId: task.id,
+          decisions: [
+            {
+              id: 'DEC-snapshot-required',
+              title: 'Snapshot required',
+              kind: 'EXPLICIT',
+              summary: 'Workspace policy changes do not alter this task.',
+            },
+          ],
+        }),
+      ).decisions,
+    ).toBe(1);
+  });
+
+  it('keeps a durable pre-existing no-policy workspace legacy and renders work accordingly', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-legacy-work-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    createTask(root, 'historical source before policy deletion');
+    await unlink(policyPath(root));
+
+    const result = runWorkCommand(root, 'new work in legacy workspace');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('sduck grill-me (legacy/permissive)');
+    expect(buildStatusView(root).indicators.grillMeRequired).toBe(false);
+  });
+
   it('rejects confirm with an open question without changing canonical source', async () => {
     workspace = await createTempWorkspace('v2-lifecycle-question-');
     const root = workspace;
     initDecisionWorkspace(root);
     const task = createTask(root, 'choose retry limit');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -115,7 +227,7 @@ describe('v2 decision task lifecycle', () => {
     const beforeFingerprint = sourceFingerprint(root);
     const beforeTask = await readFile(taskPath, 'utf8');
 
-    expect(() => confirmBrief(root)).toThrow(/open question/i);
+    expect(() => confirmBrief(root)).toThrow(/CONFIRM_OPEN_QUESTIONS/);
     expect(sourceFingerprint(root)).toBe(beforeFingerprint);
     expect(await readFile(taskPath, 'utf8')).toBe(beforeTask);
   });
@@ -125,6 +237,7 @@ describe('v2 decision task lifecycle', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     const task = createTask(root, 'resolve storage conflict');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -144,7 +257,7 @@ describe('v2 decision task lifecycle', () => {
 
     expect(buildStatusView(root).task?.status).toBe('OPEN');
     const beforeFingerprint = sourceFingerprint(root);
-    expect(() => confirmBrief(root)).toThrow(/unresolved CONFLICT DEC-storage-conflict/);
+    expect(() => confirmBrief(root)).toThrow(/CONFIRM_UNRESOLVED_DECISIONS/);
     expect(sourceFingerprint(root)).toBe(beforeFingerprint);
     expect(buildStatusView(root).task?.id).toBe(task.id);
   });
@@ -156,9 +269,10 @@ describe('v2 decision task lifecycle', () => {
     const task = createTask(root, 'close lifecycle');
     const beforeFingerprint = sourceFingerprint(root);
 
-    expect(() => setTerminalStatus(root, 'CLOSED')).toThrow(/status is OPEN/);
+    expect(() => setTerminalStatus(root, 'CLOSED')).toThrow(/TASK_STATUS_NOT_ALLOWED/);
     expect(sourceFingerprint(root)).toBe(beforeFingerprint);
     expect(getCurrentTaskId(root)).toBe(task.id);
+    recordGrillMeStarted(root);
 
     submitDraft(
       root,
@@ -205,6 +319,7 @@ describe('v2 decision task lifecycle', () => {
     execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
     initDecisionWorkspace(root);
     const task = createTask(root, 'trace baseline');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -273,6 +388,7 @@ describe('v2 decision task lifecycle', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     createTask(root, 'visibility source');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -310,6 +426,7 @@ describe('v2 decision task lifecycle', () => {
       }),
     );
     createTask(root, 'abandoned visibility source');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -327,6 +444,7 @@ describe('v2 decision task lifecycle', () => {
     );
     setTerminalStatus(root, 'ABANDONED');
     const current = createTask(root, 'reuse visibility memory');
+    recordGrillMeStarted(root);
     await mkdir(join(root, '.decision', 'exports', 'graphify'), { recursive: true });
     await writeFile(
       join(root, '.decision', 'exports', 'graphify', 'decision-graph.json'),
@@ -378,6 +496,7 @@ describe('v2 decision task lifecycle', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     const previous = createTask(root, 'previous task question');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({

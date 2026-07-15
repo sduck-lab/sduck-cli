@@ -11,23 +11,35 @@ Use this skill to turn existing codebase knowledge into reusable sduck memory.
 
 ```bash
 sduck work "Codebase decision inventory"
+sduck context
+sduck grill-me
 sduck context add "src/**"
 sduck context add "docs/**"
 sduck submit --stdin < draft.md
+sduck ask
+sduck answer QUESTION-1 --option 1
+sduck brief
+sduck confirm
+sduck trace
 sduck remember
 sduck recall "architecture decisions"
+sduck close
 ```
 
 ## Workflow
 
 1. Confirm or create a decision task with `sduck status --json`; if none exists, run `sduck work "Codebase decision inventory"`.
-2. Identify relevant sources: README, ADRs, specs, agent rules, package/config files, core modules, tests, and migration/history docs.
-3. Add explored context with `sduck context add <path-or-glob>` for important files or directories.
-4. Extract decision candidates and separate observed facts from inferred rationale.
-5. Classify each candidate as `EXPLICIT`, `INFERRED`, `CARRIED`, `CONFLICT`, or `OPEN`.
-6. Submit a `SduckDraft` using raw JSON or a ```json sduck-draft fenced block via `sduck submit --stdin`.
-7. Export durable artifacts with `sduck remember`.
-8. Verify recall with `sduck recall <query>`.
+2. Run `sduck context` and identify relevant sources: README, ADRs, specs, agent rules, package/config files, core modules, tests, and migration/history docs.
+3. Run `sduck grill-me` before submitting a draft for new policy-required tasks.
+4. Add explored context with `sduck context add <path-or-glob>` for important files or directories.
+5. Extract decision candidates and separate observed facts from inferred rationale.
+6. Classify each candidate as `EXPLICIT`, `INFERRED`, `CARRIED`, `CONFLICT`, or `OPEN`.
+7. Submit a `SduckDraft` using raw JSON or a ```json sduck-draft fenced block via `sduck submit --stdin`.
+8. Resolve every open question with `sduck ask` and `sduck answer`.
+9. Render and confirm the brief with `sduck brief` and `sduck confirm`.
+10. Perform the implementation activity, then record it with `sduck trace`.
+11. Export durable artifacts with `sduck remember`, then verify recall with `sduck recall <query>`.
+12. Finish with `sduck close`.
 
 ## Decision classification
 
@@ -92,6 +104,6 @@ Use conservative `confidence` for inferred decisions. Prefer questions over pret
 
 ## Verification
 
-- Run `sduck remember` after submission.
+- Run `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded.
 - Run `sduck recall <important topic>` and confirm the new decisions are retrievable.
 - Leave unresolved assumptions as `questions` instead of silently dropping them.

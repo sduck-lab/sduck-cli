@@ -1,7 +1,9 @@
 import { ensureReadableCache } from './cache.js';
 import { DecisionWorkspace } from './decision-workspace.js';
 import { emptyDecisionKindCounts, listDecisionsByTask } from './decision.js';
+import { taskNotFound } from './errors.js';
 import { listEvents } from './events.js';
+import { hasGrillMeStarted, isGrillMeRequiredForTask } from './grill.js';
 import { listQuestionsByTask } from './question.js';
 import { getCurrentTaskId } from './state.js';
 import { openDatabase } from './store.js';
@@ -22,6 +24,8 @@ export function buildStatusView(projectRoot: string): StatusView {
         indicators: {
           contextItems: 0,
           draftSubmissions: 0,
+          grillMeRequired: false,
+          grillMeStarted: false,
           questionsOpen: 0,
           questionsAnswered: 0,
           decisionsByKind: emptyDecisionKindCounts(),
@@ -32,7 +36,7 @@ export function buildStatusView(projectRoot: string): StatusView {
       };
     }
     const task = getTaskById(db, taskId);
-    if (task === null) throw new Error(`Task not found: ${taskId}`);
+    if (task === null) throw taskNotFound(taskId);
     const decisions = listDecisionsByTask(db, task.id);
     const decisionsByKind = emptyDecisionKindCounts();
     for (const decision of decisions) {
@@ -47,6 +51,8 @@ export function buildStatusView(projectRoot: string): StatusView {
         task.id,
       ),
       draftSubmissions: events.filter((event) => event.type === 'DRAFT_SUBMITTED').length,
+      grillMeRequired: isGrillMeRequiredForTask(events, task.id),
+      grillMeStarted: hasGrillMeStarted(events, task.id),
       questionsOpen: questions.filter((question) => !question.answered).length,
       questionsAnswered: questions.filter((question) => question.answered).length,
       decisionsByKind,

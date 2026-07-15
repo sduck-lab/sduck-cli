@@ -5,7 +5,9 @@ import * as path from 'node:path';
 import { ensureReadableCache } from './cache.js';
 import { DecisionWorkspace } from './decision-workspace.js';
 import { mapDecision } from './decision.js';
+import { noCurrentTask, taskNotFound, V2ExpectedError } from './errors.js';
 import { listEvidenceByTask } from './evidence.js';
+import { GRILL_ME_CHECKLIST, GRILL_ME_PROMPT, GRILL_ME_PROTOCOL } from './grill.js';
 import { nextEntityId, nowIso } from './ids.js';
 import {
   graphifyGraphPath,
@@ -37,6 +39,8 @@ import type {
 } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
 
+export { GRILL_ME_CHECKLIST, GRILL_ME_PROMPT, GRILL_ME_PROTOCOL } from './grill.js';
+
 interface ContextRow {
   id: string;
   task_id: string;
@@ -48,33 +52,6 @@ interface ContextRow {
 }
 
 type ContextCandidate = Omit<ContextItem, 'id' | 'createdAt'>;
-
-export const GRILL_ME_PROTOCOL = [
-  'Ask one question at a time.',
-  'Do not ask what can be inferred from context.',
-  'Provide a recommended answer with rationale.',
-  'Separate EXPLICIT, INFERRED, CARRIED, CONFLICT, and OPEN decisions.',
-  'Submit structured draft with `sduck submit --stdin`.',
-] as const;
-
-export const GRILL_ME_PROMPT = [
-  'Interview the user relentlessly about every aspect of this plan until shared understanding is reached.',
-  'Walk down each branch of the design tree, resolving dependencies between decisions one-by-one.',
-  'Ask one question at a time.',
-  'For each question, provide a recommended answer and rationale.',
-  'If a question can be answered by exploring the codebase, explore the codebase instead and cite evidence/source refs.',
-  'Do not ask what can already be inferred from context.',
-  'Classify outcomes as EXPLICIT, INFERRED, CARRIED, CONFLICT, or OPEN decisions.',
-  'When the decision tree is sufficiently resolved, submit a structured draft with `sduck submit --stdin`.',
-].join('\n');
-
-export const GRILL_ME_CHECKLIST = [
-  'Domain/docs: check glossary, ADRs, and contradictions between user claims and code.',
-  'Brief quality: keep the final brief durable, behavioral, testable, and explicit about out-of-scope items.',
-  'Testing: identify public interfaces, observable behaviors, and test priorities.',
-  'Bug/performance: establish feedback loop, reproduction signal, and falsifiable hypotheses before fix choices.',
-  'Architecture/refactor: reason in terms of module, interface, seam, locality, and leverage.',
-] as const;
 
 export function mapContextItem(row: ContextRow): ContextItem {
   return {
@@ -116,7 +93,7 @@ export function buildContextIndex(projectRoot: string, task: Task): ContextItem[
   ensureReadableCache(projectRoot);
   return new DecisionWorkspace(projectRoot).mutate(({ bundle }) => {
     const canonicalTask = bundle.tasks.find((item) => item.id === task.id);
-    if (canonicalTask === undefined) throw new Error(`Task not found: ${task.id}`);
+    if (canonicalTask === undefined) throw taskNotFound(task.id);
     new TaskLifecycle(bundle, task.id).assertAllowed('context');
     const db = openDatabase(projectRoot);
     let contextIds = bundle.contextItems.map((item) => item.id);
@@ -196,7 +173,7 @@ export function getContextPack(projectRoot: string): ContextPack {
   try {
     const taskId = requireCurrentTaskId(projectRoot);
     const task = getTaskById(db, taskId);
-    if (task === null) throw new Error(`Task not found: ${taskId}`);
+    if (task === null) throw taskNotFound(taskId);
     const rows = db
       .prepare(`SELECT * FROM context_items WHERE task_id = ? ORDER BY created_at ASC`)
       .all(taskId) as unknown as ContextRow[];
@@ -314,8 +291,7 @@ function isReusableGraphDecision(
        WHERE d.id = ?`,
     )
     .get(decisionId) as
-    | { decision_status: string; task_id: string; task_status: string }
-    | undefined;
+    { decision_status: string; task_id: string; task_status: string } | undefined;
   if (row === undefined) return true;
   return (
     row.task_id !== currentTaskId &&
@@ -470,7 +446,7 @@ function listPriorTraces(db: DatabaseSync, taskId: string) {
 export function addContextPath(projectRoot: string, pathOrGlob: string): ContextItem[] {
   const matches = expandPathOrGlob(projectRoot, pathOrGlob);
   if (matches.length === 0) {
-    throw new Error(`No matching files: ${pathOrGlob}`);
+    throw new V2ExpectedError('CONTEXT_NO_MATCHES', { path: pathOrGlob });
   }
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     const taskId = requireCurrentTaskIdFromState(state.currentTaskId);
@@ -498,7 +474,7 @@ export function addContextPath(projectRoot: string, pathOrGlob: string): Context
 }
 
 function requireCurrentTaskIdFromState(taskId: string | null): string {
-  if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+  if (taskId === null) throw noCurrentTask();
   return taskId;
 }
 
@@ -535,7 +511,7 @@ function buildGrillMeChecklist(): string[] {
 
 function requireCurrentTaskId(projectRoot: string): string {
   const taskId = getCurrentTaskId(projectRoot);
-  if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+  if (taskId === null) throw noCurrentTask();
   return taskId;
 }
 

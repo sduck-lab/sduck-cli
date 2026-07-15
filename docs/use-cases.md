@@ -16,22 +16,26 @@ sduck는 코딩 에이전트와 함께 일하는 팀을 위한 Git-native decisi
 
 1. 개발자가 작업을 시작한다: `sduck work "add payment retry support"`
 2. 에이전트가 컨텍스트를 읽는다: `sduck context` — 관련 파일, 과거 confirmed decision, 이전 구현 trace, draft 스키마가 출력된다.
-3. 에이전트가 코드베이스를 탐색한 뒤 구조화된 draft를 제출한다: `sduck submit --stdin < draft.json` (decision, question, evidence, expected/avoid scope 포함)
-4. 개발자가 열린 질문을 확인하고 답한다: `sduck ask` → `sduck answer QUESTION-1 --option 1` 또는 `--text "..."`
-5. 모든 질문이 답변되고 OPEN/CONFLICT decision이 해소되면 task가 `BRIEF_READY`로 승격된다.
-6. 개발자가 brief를 검토하고 확정한다: `sduck brief` → `sduck confirm` — DRAFT decision이 CONFIRMED로 승격되고 Git baseline이 기록된다.
-7. 에이전트가 구현하고, 완료 후 `sduck trace`로 confirm 이후 변경된 실제 구현 파일(커밋됨/스테이징/미스테이징/신규 모두)을 decision에 매핑한다.
-8. `sduck remember`로 재사용 가능한 graph export를 남기고 `sduck close`로 종료한다.
+3. 새 정책 task에서는 작은 작업이라도 에이전트/개발자가 `sduck grill-me`를 실행하고 출력된 질문 프로토콜을 따른다.
+4. 에이전트가 코드베이스를 탐색한 뒤 구조화된 draft를 제출한다: `sduck submit --stdin < draft.json` (decision, question, evidence, expected/avoid scope 포함)
+5. 개발자가 열린 질문을 확인하고 답한다: `sduck ask` → `sduck answer QUESTION-1 --option 1` 또는 `--text "..."`
+6. 모든 질문이 답변되고 OPEN/CONFLICT decision이 해소되면 task가 `BRIEF_READY`로 승격된다.
+7. 개발자가 brief를 검토하고 확정한다: `sduck brief` → `sduck confirm` — DRAFT decision이 CONFIRMED로 승격되고 Git baseline이 기록된다.
+8. 에이전트가 구현하고, 완료 후 `sduck trace`로 confirm 이후 변경된 실제 구현 파일(커밋됨/스테이징/미스테이징/신규 모두)을 decision에 매핑한다.
+9. `sduck remember`로 재사용 가능한 graph export를 남기고 `sduck close`로 종료한다.
 
 **보장되는 결과**
 
 - status를 명시하지 않은 기본값 DRAFT decision도 confirm 후 trace/recall에 유지된다.
+- `sduck init`으로 생성된 새 `.decision` workspace의 task는 `sduck grill-me` 전에는 submit/confirm이 거부된다. 기존 policy 없는 workspace/task는 legacy/permissive로 유지된다.
+- `sduck config locale en|ko`는 user-global v2 표시 설정이며 JSON output과 canonical Markdown artifact를 바꾸지 않는다. Legacy SDD command output은 영어로 유지된다.
 - trace에는 `.decision/`, `.sduck/` 등 하네스 상태와 생성물이 섞이지 않는다.
 
 **예외 흐름**
 
 - 4a. 열린 질문이 남은 채 `sduck confirm` 실행 → 명확한 오류로 거부되고 **canonical source는 바이트 단위로 변경되지 않는다.**
 - 5a. CONFLICT decision이 미해결 → task는 OPEN에 머물고 confirm이 거부된다.
+- 3a. grill-me 없이 `submit` 또는 `confirm` 실행 → `sduck grill-me`를 실행하라는 명확한 오류로 거부된다.
 
 ---
 
@@ -68,7 +72,7 @@ sduck는 코딩 에이전트와 함께 일하는 팀을 위한 Git-native decisi
 **보장되는 결과**
 
 - 병렬 submit 20회에서 데이터 손실, ID 충돌, `SQLITE_BUSY`/`database is locked` 오류가 없다 (자동 ID는 전부 고유하게 발급).
-- lock 획득 실패 시 10초 대기 후 "Decision workspace is busy" 오류로 명확히 실패한다 — 조용한 덮어쓰기가 없다.
+- lock 획득 실패 시 10초 대기 후 workspace가 다른 process에 의해 잠겨 있음을 알리는 명확한 오류로 실패한다 — 조용한 덮어쓰기가 없다.
 - 죽은 프로세스가 남긴 stale lock은 pid 생존 확인 후 자동 정리된다.
 
 ---
@@ -137,11 +141,13 @@ sduck는 코딩 에이전트와 함께 일하는 팀을 위한 Git-native decisi
 **기본 흐름**
 
 1. `sduck doctor` — exit code 1과 함께 문제 파일, 누락 필드(예: `broken.md … task.title`), 구체적 복구 경로가 출력된다.
-2. 안내에 따라 source를 고치거나 `sduck doctor --repair`로 안전한 복구(cache rebuild, 마이그레이션)를 수행한다.
+2. malformed canonical source는 수동으로 수정한다. `sduck doctor --repair`는 malformed source를 자동 수정하지 않는다.
+3. source를 수정한 뒤 stale cache라면 `sduck rebuild` 또는 `sduck doctor --repair`로 cache를 재빌드한다. DB-only migration은 UC-6 경로를 따른다.
 
 **보장되는 결과**
 
-- stale cache는 `--repair`로 전체 rebuild 후 교체된다. 진단만으로는 아무것도 변경되지 않는다.
+- malformed source 진단은 문제 파일과 복구 방향을 알려주지만 source를 고치지 않는다.
+- stale cache는 source가 유효할 때 `--repair`로 전체 rebuild 후 교체된다. 진단만으로는 아무것도 변경되지 않는다.
 
 ---
 
@@ -158,7 +164,7 @@ sduck는 코딩 에이전트와 함께 일하는 팀을 위한 Git-native decisi
 
 **보장되는 결과**
 
-- `sduck init` 직후 SQLite cache와 sidecar(`db.sqlite*`), 생성물 경로는 `.gitignore`에 등록되어 **Git에는 canonical 결정 문서만 추적**된다.
+- `sduck init`은 `.decision/exports/markdown/{tasks,decisions,implementations}/` 디렉터리를 만들지만 Git은 빈 디렉터리를 추적하지 않는다. `.decision/policy.json`은 init 직후 추적 대상이고, canonical 결정 문서는 generated content가 생긴 뒤 add/commit할 때 추적된다.
 - 변경 없는 파일은 commit 단계에서 교체되지 않으므로(내용 동일 시 skip) diff 노이즈가 없다.
 
 ---
@@ -179,6 +185,7 @@ sduck는 코딩 에이전트와 함께 일하는 팀을 위한 Git-native decisi
 
 - Codex가 표준 `AGENTS.md`에서 규칙을 읽을 수 있다 (`AGENT.md`는 더 이상 생성되지 않음).
 - Claude hook은 `current_work_id`의 task에만 개입하고, 완료 근거(evidence) 수정은 허용한다.
+- 설치되는 rule/template은 항상 canonical English이며 사용자의 CLI locale에 따라 번역되지 않는다.
 
 ---
 

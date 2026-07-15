@@ -12,6 +12,7 @@ export interface RunCliOptions {
   cliRoot: string;
   cwd: string;
   stdin?: string;
+  env?: NodeJS.ProcessEnv;
 }
 
 async function resolveRepoLocalCliEntrypoint(
@@ -32,7 +33,11 @@ export async function runCli(args: string[], options: RunCliOptions): Promise<Ru
   return await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', tsxLoaderPath, cliEntrypoint, ...args], {
       cwd: options.cwd,
-      env: process.env,
+      env: {
+        ...process.env,
+        SDUCK_CONFIG_HOME: join(options.cwd, '.sduck-test-config'),
+        ...options.env,
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { V2ExpectedError } from './errors.js';
 import { decisionRoot } from './paths.js';
 
 const LOCK_TIMEOUT_MS = 10_000;
@@ -23,9 +24,7 @@ export function withDecisionWorkspaceLock<T>(projectRoot: string, operation: () 
       if (!isAlreadyExists(error)) throw error;
       if (clearStaleLock(lockPath)) continue;
       if (Date.now() >= deadline) {
-        throw new Error(
-          'Decision workspace is busy. Retry the command after the active writer finishes.',
-        );
+        throw new V2ExpectedError('WORKSPACE_LOCKED', { path: lockPath });
       }
       wait(LOCK_RETRY_MS);
     }

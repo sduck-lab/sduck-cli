@@ -117,5 +117,9 @@ describeIfSqlite('SDD CLI reachability regression', () => {
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
     expect(claudeRules).toContain('Primary workflow: v2 `.decision` decision briefing');
-  });
+    expect(claudeRules).toContain(
+      'work -> context -> grill-me -> submit -> ask/answer -> brief/confirm',
+    );
+    expect(claudeRules).toContain('New policy-required tasks must pass this gate');
+  }, 15_000);
 });

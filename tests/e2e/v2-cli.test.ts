@@ -75,7 +75,7 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(agentRules).toContain('OpenCode Instructions');
     expect(await readFile(join(workspace, 'GEMINI.md'), 'utf8')).toContain('<!-- sduck:begin -->');
     const work = await runCli(['work', 'payment retry 추가'], { cliRoot, cwd: workspace });
-    expect(work.stdout).toContain('작업을 시작했어');
+    expect(work.stdout).toContain('Decision task started.');
 
     const context = await runCli(['context'], { cliRoot, cwd: workspace });
     expect(context.stdout).toContain('Agent grill-me prompt:');
@@ -93,6 +93,15 @@ describeIfSqlite('v2 CLI flow', () => {
 
     const status = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
     const taskId = (JSON.parse(status.stdout) as { task: { id: string } }).task.id;
+    const grill = await runCli(['grill-me'], { cliRoot, cwd: workspace });
+    expect(grill.exitCode).toBe(0);
+    expect(grill.stdout).toContain('Grill-me started.');
+    const grillAgain = await runCli(['grill-me', '--json'], { cliRoot, cwd: workspace });
+    expect(grillAgain.exitCode).toBe(0);
+    expect(JSON.parse(grillAgain.stdout)).toMatchObject({
+      taskId,
+      recorded: false,
+    });
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
@@ -187,13 +196,17 @@ describeIfSqlite('v2 CLI flow', () => {
       task: { id: taskId },
       openQuestionCount: parseBriefJson(briefBeforeRebuild.stdout).openQuestionCount,
     });
+    const statusAfterRebuild = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
+    expect(JSON.parse(statusAfterRebuild.stdout)).toMatchObject({
+      indicators: { grillMeRequired: true, grillMeStarted: true },
+    });
 
     await unlink(join(workspace, '.decision', 'db.sqlite'));
     const autoStatus = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
     expect(autoStatus.exitCode).toBe(0);
     expect(JSON.parse(autoStatus.stdout)).toMatchObject({ task: { id: taskId } });
     expect((await runCli(['recall', 'retry'], { cliRoot, cwd: workspace })).stdout).toContain(
-      '검색어',
+      'Query',
     );
     expect((await runCli(['close'], { cliRoot, cwd: workspace })).stdout).toContain('closed');
     const gitignore = await readFile(join(workspace, '.gitignore'), 'utf8');
@@ -213,4 +226,35 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(decisionGitStatus).not.toContain('state.json');
     expect(decisionGitStatus).not.toContain('exports/graphify');
   }, 15_000);
+
+  it('blocks submit and confirm before grill-me in a new required workspace', async () => {
+    workspace = await createTempWorkspace('v2-cli-grill-required-');
+    const init = await runCli(['init'], { cliRoot, cwd: workspace });
+    expect(init.exitCode).toBe(0);
+    const work = await runCli(['work', 'required grill gate'], { cliRoot, cwd: workspace });
+    expect(work.exitCode).toBe(0);
+    const taskId = (
+      JSON.parse((await runCli(['status', '--json'], { cliRoot, cwd: workspace })).stdout) as {
+        task: { id: string };
+      }
+    ).task.id;
+    const draft = JSON.stringify({
+      schemaVersion: 'v2alpha1',
+      taskId,
+      decisions: [{ id: 'DEC-gated', title: 'Gated', kind: 'EXPLICIT', summary: 'Blocked.' }],
+    });
+
+    const submit = await runCli(['submit', '--stdin'], { cliRoot, cwd: workspace, stdin: draft });
+    expect(submit.exitCode).toBe(1);
+    expect(`${submit.stdout}\n${submit.stderr}`).toContain('sduck grill-me');
+    const confirm = await runCli(['confirm'], { cliRoot, cwd: workspace });
+    expect(confirm.exitCode).toBe(1);
+    expect(`${confirm.stdout}\n${confirm.stderr}`).toContain('sduck grill-me');
+
+    expect((await runCli(['grill-me'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
+    expect(
+      (await runCli(['submit', '--stdin'], { cliRoot, cwd: workspace, stdin: draft })).exitCode,
+    ).toBe(0);
+    expect((await runCli(['confirm'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
+  });
 });

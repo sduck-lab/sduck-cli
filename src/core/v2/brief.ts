@@ -1,6 +1,7 @@
 import { ensureReadableCache } from './cache.js';
 import { DecisionWorkspace } from './decision-workspace.js';
 import { listDecisionsByTask } from './decision.js';
+import { noCurrentTask, taskNotFound } from './errors.js';
 import { listEvidenceByTask } from './evidence.js';
 import { captureGitBaseline } from './git-diff.js';
 import { nowIso } from './ids.js';
@@ -19,9 +20,9 @@ export function buildBriefView(projectRoot: string): BriefView {
   const db = openDatabase(projectRoot);
   try {
     const taskId = getCurrentTaskId(projectRoot);
-    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    if (taskId === null) throw noCurrentTask();
     const task = getTaskById(db, taskId);
-    if (task === null) throw new Error(`Task not found: ${taskId}`);
+    if (task === null) throw taskNotFound(taskId);
     const grouped: Record<DecisionKind, BriefView['decisions'][DecisionKind]> = {
       EXPLICIT: [],
       INFERRED: [],
@@ -82,7 +83,7 @@ export function confirmBrief(projectRoot: string): BriefSnapshot {
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     const confirmedAt = nowIso();
     const taskId = state.currentTaskId;
-    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    if (taskId === null) throw noCurrentTask();
     const lifecycle = new TaskLifecycle(bundle, taskId);
     lifecycle.confirm(confirmedAt);
     const view = buildBriefViewFromBundle(bundle, taskId);
@@ -109,7 +110,7 @@ export function confirmBrief(projectRoot: string): BriefSnapshot {
 
 function buildBriefViewFromBundle(bundle: SourceBundle, taskId: string): BriefView {
   const task = bundle.tasks.find((item) => item.id === taskId);
-  if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+  if (task === undefined) throw taskNotFound(taskId);
   const grouped: BriefView['decisions'] = {
     EXPLICIT: [],
     INFERRED: [],

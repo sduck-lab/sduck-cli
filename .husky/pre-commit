@@ -1,6 +1,6 @@
 npx lint-staged
+unset $(git rev-parse --local-env-vars)
 npm run typecheck
 npm run test:unit
-unset $(git rev-parse --local-env-vars)
 npm run test:e2e
 npm run build

@@ -1,8 +1,14 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import {
+  DecisionWorkspace,
+  recoverInterruptedDecisionWorkspace,
+} from '../../src/core/v2/decision-workspace.js';
 import { submitDraft } from '../../src/core/v2/draft.js';
+import { recordGrillMeStarted } from '../../src/core/v2/grill.js';
 import { remember } from '../../src/core/v2/remember.js';
 import { loadSourceBundle, sourceFingerprint } from '../../src/core/v2/source-store.js';
 import { openDatabase } from '../../src/core/v2/store.js';
@@ -24,6 +30,7 @@ describe('DecisionWorkspace', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     const task = createTask(root, 'preserve source on invalid input');
+    recordGrillMeStarted(root);
     const taskPath = join(root, '.decision', 'exports', 'markdown', 'tasks', `${task.id}.md`);
     const beforeFingerprint = sourceFingerprint(root);
     const beforeContent = await readFile(taskPath, 'utf8');
@@ -43,7 +50,7 @@ describe('DecisionWorkspace', () => {
           ],
         }),
       ),
-    ).toThrow(/question\.decisionId: missing decision DEC-does-not-exist/);
+    ).toThrow(/SOURCE_VALIDATION/);
 
     expect(sourceFingerprint(root)).toBe(beforeFingerprint);
     expect(await readFile(taskPath, 'utf8')).toBe(beforeContent);
@@ -54,6 +61,7 @@ describe('DecisionWorkspace', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     createTask(root, 'preserve duplicate IDs');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -94,10 +102,147 @@ describe('DecisionWorkspace', () => {
           ],
         }),
       ),
-    ).toThrow(/decisions\.id: duplicate id DEC-stable/);
+    ).toThrow(/SOURCE_VALIDATION/);
 
     expect(sourceFingerprint(root)).toBe(beforeFingerprint);
     expect(await readFile(decisionPath, 'utf8')).toBe(beforeContent);
+  });
+
+  it('rejects path traversal IDs without changing source files', async () => {
+    workspace = await createTempWorkspace('decision-workspace-traversal-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    createTask(root, 'reject path traversal IDs');
+    recordGrillMeStarted(root);
+    const beforeFingerprint = sourceFingerprint(root);
+
+    expect(() =>
+      submitDraft(
+        root,
+        JSON.stringify({
+          schemaVersion: 'v2alpha1',
+          decisions: [
+            {
+              id: '../escape',
+              title: 'Unsafe ID',
+              kind: 'INFERRED',
+              summary: 'Must be rejected before staging.',
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/id.*portable|invalid.*id|path/i);
+
+    expect(sourceFingerprint(root)).toBe(beforeFingerprint);
+    expect(existsSync(join(root, '.decision', 'exports', 'markdown', 'escape.md'))).toBe(false);
+  });
+
+  it('preserves unmanaged nested markdown files during canonical source replacement', async () => {
+    workspace = await createTempWorkspace('decision-workspace-foreign-source-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    createTask(root, 'preserve foreign markdown');
+    recordGrillMeStarted(root);
+    const foreignPath = join(
+      root,
+      '.decision',
+      'exports',
+      'markdown',
+      'tasks',
+      'foreign',
+      'notes.md',
+    );
+    await mkdir(join(foreignPath, '..'), { recursive: true });
+    await writeFile(foreignPath, '# User note\n\nDo not delete this file.\n');
+
+    submitDraft(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        decisions: [
+          {
+            title: 'Managed update',
+            kind: 'INFERRED',
+            summary: 'Only managed files should be replaced.',
+          },
+        ],
+      }),
+    );
+
+    expect(await readFile(foreignPath, 'utf8')).toContain('Do not delete this file.');
+  });
+
+  it('restores canonical source when a later artifact replacement fails', async () => {
+    workspace = await createTempWorkspace('decision-workspace-rollback-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'restore source after failed commit');
+    const taskPath = join(root, '.decision', 'exports', 'markdown', 'tasks', `${task.id}.md`);
+    const beforeContent = await readFile(taskPath, 'utf8');
+    await writeFile(join(root, 'generated'), 'a file blocks the artifact directory');
+
+    expect(() => {
+      new DecisionWorkspace(root).mutate(({ bundle, artifacts }) => {
+        bundle.tasks = bundle.tasks.map((item) =>
+          item.id === task.id ? { ...item, title: 'must roll back' } : item,
+        );
+        artifacts.set('generated/output.txt', 'this replacement must fail');
+      });
+    }).toThrow(/EEXIST|generated|artifact/i);
+
+    expect(await readFile(taskPath, 'utf8')).toBe(beforeContent);
+  });
+
+  it('rejects artifacts that target decision-managed files before commit', async () => {
+    workspace = await createTempWorkspace('decision-workspace-artifact-guard-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    createTask(root, 'guard managed artifacts');
+    const beforeFingerprint = sourceFingerprint(root);
+
+    expect(() => {
+      new DecisionWorkspace(root).mutate(({ artifacts }) => {
+        artifacts.set('.decision/db.sqlite', 'must not replace the cache');
+      });
+    }).toThrow(/artifact.*managed|decision workspace|reserved/i);
+
+    expect(sourceFingerprint(root)).toBe(beforeFingerprint);
+  });
+
+  it('recovers a durable commit journal after an interrupted replacement', async () => {
+    workspace = await createTempWorkspace('decision-workspace-journal-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'recover interrupted replacement');
+    const targetPath = join(root, '.decision', 'exports', 'markdown', 'tasks', `${task.id}.md`);
+    const originalContent = await readFile(targetPath, 'utf8');
+    const backupRoot = join(root, '.decision', '.rollback-test', 'markdown', 'tasks');
+    const backupPath = join(backupRoot, `${task.id}.md`);
+    await mkdir(backupRoot, { recursive: true });
+    await writeFile(backupPath, originalContent);
+    await writeFile(targetPath, '# interrupted replacement\n');
+    const journalPath = join(root, '.decision', '.commit-test.json');
+    await writeFile(
+      journalPath,
+      `${JSON.stringify({
+        stagingRoot: join(root, '.decision', '.staging-test'),
+        backupRoot: join(root, '.decision', '.rollback-test'),
+        replacements: [
+          {
+            backupPath,
+            hadOriginal: true,
+            stagedPath: join(root, '.decision', '.staging-test', 'tasks', `${task.id}.md`),
+            targetPath,
+            originalMoved: true,
+            stagedMoved: true,
+          },
+        ],
+      })}\n`,
+    );
+
+    expect(recoverInterruptedDecisionWorkspace(root)).toBe(true);
+    expect(await readFile(targetPath, 'utf8')).toBe(originalContent);
+    expect(existsSync(journalPath)).toBe(false);
   });
 
   it('serializes 20 concurrent automatic-ID submissions without data loss or SQLite errors', async () => {
@@ -105,6 +250,7 @@ describe('DecisionWorkspace', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     createTask(root, 'concurrent writers');
+    recordGrillMeStarted(root);
 
     const results = await Promise.all(
       Array.from({ length: 20 }, (_, index) =>
@@ -140,6 +286,7 @@ describe('DecisionWorkspace', () => {
     const root = workspace;
     initDecisionWorkspace(root);
     createTask(root, 'migrate legacy cache');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -183,5 +330,26 @@ describe('DecisionWorkspace', () => {
     expect(result.exitCode).toBe(1);
     expect(`${result.stdout}\n${result.stderr}`).toMatch(/broken\.md.*task\.title/s);
     expect(`${result.stdout}\n${result.stderr}`).toMatch(/fix.*source.*rebuild|repair/i);
+  });
+
+  it('rejects malformed state before changing canonical source or cache', async () => {
+    workspace = await createTempWorkspace('decision-workspace-state-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    createTask(root, 'reject malformed state');
+    recordGrillMeStarted(root);
+    const beforeFingerprint = sourceFingerprint(root);
+    await writeFile(join(root, '.decision', 'state.json'), '{"currentTaskId": null}\n');
+
+    expect(() =>
+      submitDraft(
+        root,
+        JSON.stringify({
+          schemaVersion: 'v2alpha1',
+          decisions: [{ title: 'Blocked', kind: 'INFERRED', summary: 'Must not write.' }],
+        }),
+      ),
+    ).toThrow(/STATE_INVALID/);
+    expect(sourceFingerprint(root)).toBe(beforeFingerprint);
   });
 });

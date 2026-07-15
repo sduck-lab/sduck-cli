@@ -1,5 +1,6 @@
 import { ensureReadableCache } from './cache.js';
 import { DecisionWorkspace } from './decision-workspace.js';
+import { noCurrentTask } from './errors.js';
 import { listChangedFiles } from './git-diff.js';
 import { nowIso } from './ids.js';
 import {
@@ -40,7 +41,7 @@ export function createImplementationTrace(
 ): TraceView {
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     const taskId = state.currentTaskId;
-    if (taskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    if (taskId === null) throw noCurrentTask();
     new TaskLifecycle(bundle, taskId).assertAllowed('trace');
     const latestSnapshot = bundle.briefSnapshots
       .filter((snapshot) => snapshot.taskId === taskId)

@@ -6,9 +6,12 @@ import {
   markdownDecisionsDir,
   markdownImplementationsDir,
   markdownTasksDir,
+  policyPath,
 } from './paths.js';
+import { writeDefaultPolicy } from './policy.js';
+import { sourceFileCount } from './source-store.js';
 import { writeState } from './state.js';
-import { openDatabase } from './store.js';
+import { cacheHasRows, openDatabase } from './store.js';
 
 export interface InitWorkspaceResult {
   created: string[];
@@ -16,8 +19,10 @@ export interface InitWorkspaceResult {
 }
 
 export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult {
+  const root = decisionRoot(projectRoot);
+  const shouldCreatePolicy = !hasExistingDurableWorkspace(projectRoot);
   const dirs = [
-    decisionRoot(projectRoot),
+    root,
     markdownTasksDir(projectRoot),
     markdownDecisionsDir(projectRoot),
     markdownImplementationsDir(projectRoot),
@@ -42,5 +47,19 @@ export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult 
   } else {
     existing.push(stateFilePath);
   }
+  const policyFilePath = policyPath(projectRoot);
+  if (shouldCreatePolicy && !fs.existsSync(policyFilePath)) {
+    created.push(writeDefaultPolicy(projectRoot));
+  } else if (fs.existsSync(policyFilePath)) {
+    existing.push(policyFilePath);
+  }
   return { created, existing };
+}
+
+function hasExistingDurableWorkspace(projectRoot: string): boolean {
+  return (
+    fs.existsSync(policyPath(projectRoot)) ||
+    sourceFileCount(projectRoot) > 0 ||
+    cacheHasRows(projectRoot)
+  );
 }

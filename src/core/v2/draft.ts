@@ -1,4 +1,5 @@
 import { DecisionWorkspace } from './decision-workspace.js';
+import { noCurrentTask, taskNotFound, V2ExpectedError } from './errors.js';
 import { nowIso } from './ids.js';
 import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { TaskLifecycle } from './task-lifecycle.js';
@@ -15,26 +16,38 @@ export interface SubmitDraftResult {
 export function parseDraftInput(content: string): unknown {
   const trimmed = content.trim();
   if (trimmed.startsWith('{')) {
-    return JSON.parse(trimmed) as SduckDraft;
+    try {
+      return JSON.parse(trimmed) as SduckDraft;
+    } catch (error) {
+      throw new V2ExpectedError('DRAFT_JSON_INVALID', { detail: formatParseDetail(error) });
+    }
   }
   const match = /```json\s+sduck-draft\s*\n([\s\S]*?)\n```/m.exec(content);
   if (match?.[1] === undefined) {
-    throw new Error('Markdown draft must contain a ```json sduck-draft fenced block.');
+    throw new V2ExpectedError('DRAFT_FENCE_MISSING');
   }
-  return JSON.parse(match[1]) as SduckDraft;
+  try {
+    return JSON.parse(match[1]) as SduckDraft;
+  } catch (error) {
+    throw new V2ExpectedError('DRAFT_JSON_INVALID', { detail: formatParseDetail(error) });
+  }
+}
+
+function formatParseDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function submitDraft(projectRoot: string, content: string): SubmitDraftResult {
   const draft = validateDraft(parseDraftInput(content));
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     const currentTaskId = state.currentTaskId;
-    if (currentTaskId === null) throw new Error('No current task. Run `sduck work "..."` first.');
+    if (currentTaskId === null) throw noCurrentTask();
     const taskId = draft.taskId ?? currentTaskId;
     if (taskId !== currentTaskId) {
-      throw new Error(`Draft taskId ${taskId} does not match current task ${currentTaskId}.`);
+      throw new V2ExpectedError('DRAFT_TASK_MISMATCH', { taskId, currentTaskId });
     }
     const task = bundle.tasks.find((item) => item.id === taskId);
-    if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+    if (task === undefined) throw taskNotFound(taskId);
     new TaskLifecycle(bundle, taskId).assertAllowed('submit');
     const decisions = draft.decisions ?? [];
     const questions = draft.questions ?? [];
@@ -129,11 +142,11 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
 
 function validateDraft(draft: unknown): SduckDraft {
   if (typeof draft !== 'object' || draft === null || !('schemaVersion' in draft)) {
-    throw new Error('Draft must be an object with schemaVersion.');
+    throw new V2ExpectedError('DRAFT_SCHEMA', { problemCode: 'missing-schema-version' });
   }
   const raw = draft as Record<string, unknown>;
   if (raw['schemaVersion'] !== 'v2alpha1') {
-    throw new Error('Draft schemaVersion must be v2alpha1.');
+    throw new V2ExpectedError('DRAFT_SCHEMA', { problemCode: 'unsupported-schema-version' });
   }
   const candidate = draft as SduckDraft;
   assertOptionalArray(candidate.decisions, 'decisions');
@@ -145,14 +158,14 @@ function validateDraft(draft: unknown): SduckDraft {
     assertString(decision.title, 'decision.title');
     assertString(decision.summary, 'decision.summary');
     if (!['EXPLICIT', 'INFERRED', 'CARRIED', 'CONFLICT', 'OPEN'].includes(decision.kind)) {
-      throw new Error(`Invalid decision kind: ${decision.kind}`);
+      throw new V2ExpectedError('DRAFT_DECISION_KIND', { kind: decision.kind });
     }
     assertOptionalStringArray(decision.rationale, 'decision.rationale');
     assertOptionalStringArray(decision.appliesTo, 'decision.appliesTo');
     assertOptionalStringArray(decision.avoids, 'decision.avoids');
     assertOptionalStringArray(decision.sourceRefs, 'decision.sourceRefs');
     if (decision.confidence !== undefined && (decision.confidence < 0 || decision.confidence > 1)) {
-      throw new Error(`Decision confidence must be between 0 and 1: ${decision.title}`);
+      throw new V2ExpectedError('DRAFT_CONFIDENCE', { field: 'Decision', ref: decision.title });
     }
   }
   for (const item of candidate.evidence ?? []) {
@@ -160,7 +173,7 @@ function validateDraft(draft: unknown): SduckDraft {
     assertString(item.sourceRef, 'evidence.sourceRef');
     assertString(item.summary, 'evidence.summary');
     if (item.confidence !== undefined && (item.confidence < 0 || item.confidence > 1)) {
-      throw new Error(`Evidence confidence must be between 0 and 1: ${item.sourceRef}`);
+      throw new V2ExpectedError('DRAFT_CONFIDENCE', { field: 'Evidence', ref: item.sourceRef });
     }
   }
   for (const question of candidate.questions ?? []) {
@@ -174,16 +187,17 @@ function validateDraft(draft: unknown): SduckDraft {
 
 function assertString(value: unknown, field: string): asserts value is string {
   if (typeof value !== 'string' || value.trim() === '')
-    throw new Error(`${field} must be a non-empty string.`);
+    throw new V2ExpectedError('DRAFT_FIELD', { field, problemCode: 'non-empty-string' });
 }
 
 function assertOptionalArray(value: unknown, field: string): void {
-  if (value !== undefined && !Array.isArray(value)) throw new Error(`${field} must be an array.`);
+  if (value !== undefined && !Array.isArray(value))
+    throw new V2ExpectedError('DRAFT_FIELD', { field, problemCode: 'array' });
 }
 
 function assertOptionalStringArray(value: unknown, field: string): void {
   if (value === undefined) return;
   if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    throw new Error(`${field} must be a string array.`);
+    throw new V2ExpectedError('DRAFT_FIELD', { field, problemCode: 'string-array' });
   }
 }

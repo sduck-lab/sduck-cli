@@ -1,3 +1,4 @@
+import { V2ExpectedError } from './errors.js';
 import { appendEvent } from './events.js';
 import { nextEntityId, nowIso } from './ids.js';
 import { decodeJson, encodeJson } from './store.js';
@@ -57,7 +58,7 @@ export function insertDecision(db: DatabaseSync, taskId: string, draft: DraftDec
     updatedAt: createdAt,
   };
   if (decision.confidence < 0 || decision.confidence > 1) {
-    throw new Error(`Decision confidence must be between 0 and 1: ${decision.title}`);
+    throw new V2ExpectedError('DRAFT_CONFIDENCE', { field: 'decision', ref: decision.title });
   }
   db.prepare(
     `INSERT OR REPLACE INTO decisions
@@ -89,8 +90,7 @@ export function updateDecisionFromAnswer(
   questionId: string,
 ): Decision | null {
   const row = db.prepare(`SELECT * FROM decisions WHERE id = ?`).get(decisionId) as
-    | DecisionRow
-    | undefined;
+    DecisionRow | undefined;
   if (row === undefined) return null;
   const decision = mapDecision(row);
   const updatedAt = nowIso();
@@ -106,8 +106,7 @@ export function updateDecisionFromAnswer(
     decisionId,
   );
   const updated = db.prepare(`SELECT * FROM decisions WHERE id = ?`).get(decisionId) as
-    | DecisionRow
-    | undefined;
+    DecisionRow | undefined;
   return updated === undefined ? null : mapDecision(updated);
 }
 

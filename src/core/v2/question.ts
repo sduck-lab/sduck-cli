@@ -1,4 +1,5 @@
 import { DecisionWorkspace } from './decision-workspace.js';
+import { V2ExpectedError } from './errors.js';
 import { nextEntityId, nowIso } from './ids.js';
 import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { decodeJson, encodeJson } from './store.js';
@@ -76,8 +77,7 @@ export function listQuestionsByTask(db: DatabaseSync, taskId: string): Question[
 
 export function getQuestion(db: DatabaseSync, questionId: string): Question | null {
   const row = db.prepare(`SELECT * FROM questions WHERE id = ?`).get(questionId) as
-    | QuestionRow
-    | undefined;
+    QuestionRow | undefined;
   return row === undefined ? null : mapQuestion(row);
 }
 
@@ -98,15 +98,17 @@ export function answerQuestion(
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     const question = bundle.questions.find((item) => item.id === questionId);
     if (question === undefined) {
-      throw new Error(`Question not found: ${questionId}`);
+      throw new V2ExpectedError('QUESTION_NOT_FOUND', { questionId });
     }
     if (state.currentTaskId !== question.taskId) {
-      throw new Error(
-        `Question ${questionId} does not belong to current task ${state.currentTaskId ?? 'none'}. Run \`sduck resume ${question.taskId}\` first.`,
-      );
+      throw new V2ExpectedError('QUESTION_TASK_MISMATCH', {
+        questionId,
+        taskId: state.currentTaskId ?? 'none',
+        expectedTaskId: question.taskId,
+      });
     }
     if (question.answered) {
-      throw new Error(`Question is already answered: ${questionId}`);
+      throw new V2ExpectedError('QUESTION_ALREADY_ANSWERED', { questionId });
     }
     new TaskLifecycle(bundle, question.taskId).assertAllowed('answer');
     const answer = resolveAnswer(question, input);
@@ -185,14 +187,14 @@ function resolveAnswer(question: Question, input: { optionIndex?: number; text?:
   if (input.text !== undefined && input.text.trim() !== '') return input.text.trim();
   if (input.optionIndex !== undefined) {
     if (input.optionIndex < 1 || input.optionIndex > question.options.length) {
-      throw new Error(`Option index out of range: ${String(input.optionIndex)}`);
+      throw new V2ExpectedError('QUESTION_OPTION_RANGE', { optionIndex: input.optionIndex });
     }
     const option = question.options[input.optionIndex - 1];
     if (option === undefined) {
-      throw new Error(`Option index out of range: ${String(input.optionIndex)}`);
+      throw new V2ExpectedError('QUESTION_OPTION_RANGE', { optionIndex: input.optionIndex });
     }
     if (option === '추천안 사용') return question.recommendedAnswer;
     return option;
   }
-  throw new Error('Provide --option or --text.');
+  throw new V2ExpectedError('QUESTION_ANSWER_REQUIRED');
 }

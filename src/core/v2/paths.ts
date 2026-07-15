@@ -1,5 +1,7 @@
 import * as path from 'node:path';
 
+import { V2ExpectedError } from './errors.js';
+
 export const DECISION_DIR = '.decision';
 
 export function decisionRoot(projectRoot: string): string {
@@ -17,6 +19,10 @@ export function dbSidecarPaths(projectRoot: string): string[] {
 
 export function statePath(projectRoot: string): string {
   return path.join(decisionRoot(projectRoot), 'state.json');
+}
+
+export function policyPath(projectRoot: string): string {
+  return path.join(decisionRoot(projectRoot), 'policy.json');
 }
 
 export function markdownTasksDir(projectRoot: string): string {
@@ -69,7 +75,7 @@ export function resolveInsideProject(projectRoot: string, inputPath: string): st
   const resolved = path.resolve(projectRoot, inputPath);
   const relative = path.relative(projectRoot, resolved);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`Path is outside project: ${inputPath}`);
+    throw new V2ExpectedError('PATH_OUTSIDE_PROJECT', { path: inputPath });
   }
   return resolved;
 }

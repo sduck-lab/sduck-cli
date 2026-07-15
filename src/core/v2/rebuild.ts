@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { V2ExpectedError } from './errors.js';
 import { dbPath, dbSidecarPaths, decisionRoot } from './paths.js';
 import { loadSourceBundle, sourceFileCount, sourceFingerprint } from './source-store.js';
 import {
@@ -34,9 +35,7 @@ export function rebuildDecisionCache(projectRoot: string): RebuildResult {
 function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
   const files = sourceFileCount(projectRoot);
   if (files === 0 && cacheHasRows(projectRoot) && !cacheHasSourceFingerprint(projectRoot)) {
-    throw new Error(
-      'No markdown source files found. Run `sduck remember` before rebuilding this DB-only workspace.',
-    );
+    throw new V2ExpectedError('SOURCE_DB_ONLY');
   }
   const bundle = loadSourceBundle(projectRoot);
   const nonce = `${String(process.pid)}-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;

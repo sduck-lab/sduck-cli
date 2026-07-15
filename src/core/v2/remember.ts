@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 
 import { DecisionWorkspace } from './decision-workspace.js';
+import { taskNotFound, V2ExpectedError } from './errors.js';
 import {
   decisionGraphExportPath,
   graphifyExportDir,
@@ -31,12 +32,12 @@ export function remember(projectRoot: string): RememberResult {
     ];
     if (taskId === null) {
       if (bundle.tasks.length === 0) {
-        throw new Error('No decision records to remember. Run `sduck work "..."` first.');
+        throw new V2ExpectedError('REMEMBER_NO_RECORDS');
       }
       return { created: sourcePaths };
     }
     const task = bundle.tasks.find((item) => item.id === taskId);
-    if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+    if (task === undefined) throw taskNotFound(taskId);
     const decisions = bundle.decisions.filter(
       (decision) => decision.taskId === task.id && decision.status === 'CONFIRMED',
     );

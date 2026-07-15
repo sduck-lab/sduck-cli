@@ -17,8 +17,10 @@ import { runStartCommand } from './commands/start.js';
 import { runStepCommand } from './commands/step.js';
 import { runUpdateCommand } from './commands/update.js';
 import { runUseCommand } from './commands/use.js';
+import { isV2CommandError, V2CommandError } from './commands/v2/errors.js';
 import {
   readStdinIfRequested,
+  createV2Runtime,
   runAbandonCommand as runV2AbandonCommand,
   runAnswerCommand,
   runAskCommand,
@@ -27,7 +29,9 @@ import {
   runConfirmCommand,
   runContextAddCommand,
   runContextCommand,
+  runConfigLocaleCommand,
   runDoctorCommand,
+  runGrillMeCommand,
   runRecallCommand,
   runRebuildCommand,
   runRememberCommand,
@@ -36,12 +40,25 @@ import {
   runSubmitCommand,
   runTraceCommand,
   runWorkCommand,
+  renderConfigWarning,
+  renderV2CommandError,
 } from './commands/v2/index.js';
 import { CLI_DESCRIPTION, CLI_NAME, CLI_VERSION } from './core/command-metadata.js';
 
 const program = new Command();
+const v2Runtime = createV2Runtime();
+const rawRoute = classifyRawRoute(process.argv);
 
-program.name(CLI_NAME).description(CLI_DESCRIPTION).version(CLI_VERSION);
+if (v2Runtime.configWarning !== undefined && shouldRenderV2ConfigWarning(process.argv)) {
+  console.error(renderConfigWarning(v2Runtime.configWarning, v2Runtime.messages));
+}
+
+program
+  .name(CLI_NAME)
+  .description(
+    v2Runtime.locale === 'ko' ? 'AI 코딩 에이전트를 위한 decision briefing 도구' : CLI_DESCRIPTION,
+  )
+  .version(CLI_VERSION, '-V, --version', v2Runtime.messages.commander.versionOption);
 
 function parseInteger(value: string, label: string, minimum: number): number {
   const parsedValue = Number(value);
@@ -85,19 +102,200 @@ function printResult(result: { stdout: string; stderr: string; exitCode: number 
   if (result.exitCode !== 0) process.exitCode = result.exitCode;
 }
 
+function v2Text(en: string, ko: string): string {
+  return v2Runtime.locale === 'ko' ? ko : en;
+}
+
+function shouldRenderV2ConfigWarning(argv: string[]): boolean {
+  const command = argv.slice(2).find((arg) => !arg.startsWith('-'));
+  if (command === undefined) return true;
+  const route = classifyRawRoute(argv);
+  if (route === 'legacy-help' || route === 'targeted-abandon') return false;
+  if (command === 'abandon') return true;
+  return !new Set([
+    'start',
+    'fast-track',
+    'spec',
+    'plan',
+    'step',
+    'review',
+    'done',
+    'use',
+    'implement',
+    'clean',
+    'reopen',
+    'archive',
+    'update',
+  ]).has(command);
+}
+
+function getCommandArgs(argv: string[], command: string): string[] {
+  const commandIndex = argv.indexOf(command);
+  return commandIndex === -1 ? [] : argv.slice(commandIndex + 1);
+}
+
+function hasAbandonTarget(argv: string[]): boolean {
+  const args = getCommandArgs(argv, 'abandon');
+  for (const [index, arg] of args.entries()) {
+    if (arg === '--') return args.slice(args.indexOf(arg) + 1).length > 0;
+    if (arg === '--help' || arg === '-h') continue;
+    if (arg.startsWith('--')) continue;
+    if (arg.startsWith('-')) continue;
+    if (index > 0 && args[index - 1]?.startsWith('--') === true && args[index - 1] !== '--help') {
+      return true;
+    }
+    return true;
+  }
+  return false;
+}
+
+function classifyRawRoute(argv: string[]): 'targeted-abandon' | 'legacy-help' | 'other' {
+  if (isLegacyHelpRoute(argv)) return 'legacy-help';
+  if (argv.slice(2).includes('abandon') && hasAbandonTarget(argv)) return 'targeted-abandon';
+  return 'other';
+}
+
+function isLegacyHelpRoute(argv: string[]): boolean {
+  if (argv[2] !== 'help') return false;
+  const target = argv[3];
+  return target !== undefined && isLegacyCommandName(target);
+}
+
+function isLegacyCommandName(command: string): boolean {
+  return new Set([
+    'start',
+    'fast-track',
+    'spec',
+    'plan',
+    'step',
+    'review',
+    'done',
+    'use',
+    'implement',
+    'clean',
+    'reopen',
+    'archive',
+    'update',
+  ]).has(command);
+}
+
+function localizeCommanderError(text: string): string {
+  const unknownCommand = /^error: unknown command '([^']+)'/.exec(text);
+  if (unknownCommand?.[1] !== undefined) {
+    return `${v2Runtime.messages.commander.unknownCommand(unknownCommand[1])}\n`;
+  }
+  const unknownOption = /^error: unknown option '([^']+)'/.exec(text);
+  if (unknownOption?.[1] !== undefined) {
+    return `${v2Runtime.messages.commander.unknownOption(unknownOption[1])}\n`;
+  }
+  const missingArgument = /^error: missing required argument '([^']+)'/.exec(text);
+  if (missingArgument?.[1] !== undefined) {
+    return `${v2Runtime.messages.commander.missingArgument(missingArgument[1])}\n`;
+  }
+  const missingOptionValue = /^error: option '([^']+)' argument missing/.exec(text);
+  if (missingOptionValue?.[1] !== undefined) {
+    return `${v2Runtime.messages.commander.missingOptionValue(missingOptionValue[1])}\n`;
+  }
+  if (text.startsWith('error: too many arguments')) {
+    return `${v2Runtime.messages.commander.tooManyArguments}\n`;
+  }
+  return text;
+}
+
+function applyLocalizedCommander(command: Command): void {
+  if (v2Runtime.locale !== 'ko') return;
+  command
+    .configureHelp({
+      styleTitle: (title: string) => {
+        const mapped: Record<string, string> = {
+          'Usage:': v2Runtime.messages.commander.usage,
+          'Arguments:': v2Runtime.messages.commander.arguments,
+          'Options:': v2Runtime.messages.commander.options,
+          'Global Options:': v2Runtime.messages.commander.globalOptions,
+          'Commands:': v2Runtime.messages.commander.commands,
+        };
+        return mapped[title] ?? title;
+      },
+    })
+    .helpOption('-h, --help', v2Runtime.messages.commander.help)
+    .configureOutput({
+      outputError: (str, write) => {
+        write(localizeCommanderError(str));
+      },
+    })
+    .showHelpAfterError(v2Runtime.messages.commander.help);
+}
+
+function applyLocalizedCommanderToV2(): void {
+  if (v2Runtime.locale !== 'ko' || rawRoute === 'legacy-help' || rawRoute === 'targeted-abandon') {
+    return;
+  }
+  applyLocalizedCommander(program);
+  program.helpCommand('help [command]', v2Runtime.messages.commander.helpCommand);
+  for (const command of program.commands) {
+    if (isLegacyCommandName(command.name())) continue;
+    applyLocalizedCommander(command);
+    for (const child of command.commands) applyLocalizedCommander(child);
+  }
+}
+
 program
   .command('init')
   .description(
-    'Initialize the v2 .decision decision-briefing workspace, compatibility .sduck assets, and agent rule files',
+    v2Runtime.locale === 'ko'
+      ? 'v2 .decision decision-briefing workspace, 호환 .sduck assets, agent rule 파일을 초기화합니다'
+      : 'Initialize the v2 .decision decision-briefing workspace, compatibility .sduck assets, and agent rule files',
   )
   .option(
     '--agents <list>',
-    'Comma-separated agents: claude-code,codex,opencode,gemini-cli,cursor,antigravity',
+    v2Text(
+      'Comma-separated agents: claude-code,codex,opencode,gemini-cli,cursor,antigravity',
+      '쉼표로 구분한 agents: claude-code,codex,opencode,gemini-cli,cursor,antigravity',
+    ),
   )
-  .option('--force', 'Overwrite bundled assets and managed rule blocks')
-  .option('--no-agent-rules', 'Skip managed agent rule installation')
+  .option(
+    '--force',
+    v2Text(
+      'Overwrite bundled assets and managed rule blocks',
+      '번들 assets와 managed rule 블록 덮어쓰기',
+    ),
+  )
+  .option(
+    '--no-agent-rules',
+    v2Text('Skip managed agent rule installation', 'managed agent rule 설치 건너뛰기'),
+  )
   .action(async (options: { agentRules?: boolean; agents?: string; force?: boolean }) => {
-    printResult(await runSddInitCommand(toInitOptions(options), process.cwd()));
+    printResult(await runSddInitCommand(toInitOptions(options), process.cwd(), v2Runtime.messages));
+  });
+
+const config = program
+  .command('config')
+  .description(
+    v2Runtime.locale === 'ko'
+      ? '사용자 전역 sduck 설정 관리'
+      : 'Manage user-global sduck configuration',
+  );
+
+config
+  .command('locale <locale>')
+  .description(
+    v2Runtime.locale === 'ko'
+      ? 'v2 표시 언어를 en 또는 ko로 설정'
+      : 'Set v2 display locale to en or ko',
+  )
+  .action((locale: string) => {
+    if (locale !== 'en' && locale !== 'ko') {
+      printResult({
+        stdout: '',
+        stderr: renderV2CommandError(
+          new V2CommandError('INVALID_LOCALE', { locale }),
+          v2Runtime.messages,
+        ),
+        exitCode: 1,
+      });
+      return;
+    }
+    printResult(runConfigLocaleCommand(locale, v2Runtime));
   });
 
 program
@@ -210,50 +408,93 @@ program
 
 program
   .command('work <description...>')
-  .description('Start a decision briefing task and index context')
+  .description(
+    v2Text(
+      'Start a decision briefing task and index context',
+      'Decision briefing task를 시작하고 context를 색인',
+    ),
+  )
   .action((descriptionParts: string[]) => {
-    printResult(runWorkCommand(process.cwd(), descriptionParts.join(' ')));
+    printResult(runWorkCommand(process.cwd(), descriptionParts.join(' '), v2Runtime));
   });
 
 program
   .command('status')
-  .description('Show current decision briefing status')
-  .option('--json', 'Print machine-readable JSON')
+  .description(v2Text('Show current decision briefing status', '현재 decision briefing 상태 표시'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
   .action((options: { json?: boolean }) => {
-    printResult(runStatusCommand(process.cwd(), options.json === true));
+    printResult(runStatusCommand(process.cwd(), options.json === true, v2Runtime));
   });
 
 program
   .command('resume <taskId>')
-  .description('Resume a previous non-terminal decision briefing task')
+  .description(
+    v2Text(
+      'Resume a previous non-terminal decision briefing task',
+      '종료되지 않은 이전 decision task 재개',
+    ),
+  )
   .action((taskId: string) => {
-    printResult(runResumeCommand(process.cwd(), taskId));
+    printResult(runResumeCommand(process.cwd(), taskId, v2Runtime));
   });
 
-const context = program.command('context').description('Show or extend current context pack');
+const context = program
+  .command('context')
+  .description(v2Text('Show or extend current context pack', '현재 context pack 표시 또는 확장'));
 
-context.option('--json', 'Print machine-readable JSON').action((options: { json?: boolean }) => {
-  printResult(runContextCommand(process.cwd(), options.json === true));
-});
+context
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runContextCommand(process.cwd(), options.json === true, v2Runtime));
+  });
 
 context
   .command('add <pathOrGlob>')
-  .description('Add file/path context to the current decision task')
+  .description(
+    v2Text(
+      'Add file/path context to the current decision task',
+      '현재 decision task에 파일/경로 context 추가',
+    ),
+  )
   .action((pathOrGlob: string) => {
-    printResult(runContextAddCommand(process.cwd(), pathOrGlob));
+    printResult(runContextAddCommand(process.cwd(), pathOrGlob, v2Runtime));
+  });
+
+program
+  .command('grill-me')
+  .description(
+    v2Text(
+      'Record the required grill-me entry for the current decision task',
+      '현재 decision task의 필수 grill-me 기록',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runGrillMeCommand(process.cwd(), options.json === true, v2Runtime));
   });
 
 program
   .command('submit')
-  .description('Submit agent-generated JSON or Markdown draft from stdin')
-  .option('--stdin', 'Read draft from stdin')
+  .description(
+    v2Text(
+      'Submit agent-generated JSON or Markdown draft from stdin',
+      'stdin에서 agent draft JSON/Markdown 제출',
+    ),
+  )
+  .option('--stdin', v2Text('Read draft from stdin', 'stdin에서 draft 읽기'))
   .action((options: { stdin?: boolean }) => {
     try {
-      printResult(runSubmitCommand(process.cwd(), readStdinIfRequested(options.stdin)));
+      printResult(
+        runSubmitCommand(process.cwd(), readStdinIfRequested(options.stdin, v2Runtime), v2Runtime),
+      );
     } catch (error) {
       printResult({
         stdout: '',
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: isV2CommandError(error)
+          ? renderV2CommandError(error, v2Runtime.messages)
+          : error instanceof Error
+            ? error.message
+            : String(error),
         exitCode: 1,
       });
     }
@@ -261,91 +502,128 @@ program
 
 program
   .command('ask')
-  .description('Ask the next open question')
+  .description(v2Text('Ask the next open question', '다음 열린 질문 표시'))
   .action(async () => {
-    printResult(await runAskCommand(process.cwd()));
+    printResult(await runAskCommand(process.cwd(), v2Runtime));
   });
 
 program
   .command('answer <questionId>')
-  .description('Answer a question non-interactively')
-  .option('--option <n>', 'Answer with a 1-based option number')
-  .option('--text <answer>', 'Answer with free text')
+  .description(v2Text('Answer a question non-interactively', '질문에 비대화형으로 답변'))
+  .option(
+    '--option <n>',
+    v2Text('Answer with a 1-based option number', '1부터 시작하는 옵션 번호로 답변'),
+  )
+  .option('--text <answer>', v2Text('Answer with free text', '자유 텍스트로 답변'))
   .action((questionId: string, options: { option?: string; text?: string }) => {
-    printResult(runAnswerCommand(process.cwd(), questionId, options));
+    printResult(runAnswerCommand(process.cwd(), questionId, options, v2Runtime));
   });
 
 program
   .command('brief')
-  .description('Render the current implementation brief')
-  .option('--json', 'Print machine-readable JSON')
+  .description(v2Text('Render the current implementation brief', '현재 구현 brief 표시'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
   .action((options: { json?: boolean }) => {
-    printResult(runBriefCommand(process.cwd(), options.json === true));
+    printResult(runBriefCommand(process.cwd(), options.json === true, v2Runtime));
   });
 
 program
   .command('confirm')
-  .description('Confirm the current implementation brief')
+  .description(v2Text('Confirm the current implementation brief', '현재 구현 brief 확정'))
   .action(() => {
-    printResult(runConfirmCommand(process.cwd()));
+    printResult(runConfirmCommand(process.cwd(), v2Runtime));
   });
 
 program
   .command('trace')
-  .description('Create implementation trace from git changes')
-  .option('--base <ref>', 'Diff base ref')
-  .option('--json', 'Print machine-readable JSON')
+  .description(
+    v2Text('Create implementation trace from git changes', 'Git 변경에서 구현 trace 생성'),
+  )
+  .option('--base <ref>', v2Text('Diff base ref', 'Diff 기준 ref'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
   .action((options: { base?: string; json?: boolean }) => {
-    printResult(runTraceCommand(process.cwd(), options));
+    printResult(runTraceCommand(process.cwd(), options, v2Runtime));
   });
 
 program
   .command('remember')
-  .description('Export markdown and decision graph artifacts')
+  .description(
+    v2Text(
+      'Export markdown and decision graph artifacts',
+      'Markdown 및 decision graph 산출물 export',
+    ),
+  )
   .action(() => {
-    printResult(runRememberCommand(process.cwd()));
+    printResult(runRememberCommand(process.cwd(), v2Runtime));
   });
 
 program
   .command('rebuild')
-  .description('Rebuild the local decision DB cache from markdown source files')
+  .description(
+    v2Text(
+      'Rebuild the local decision DB cache from markdown source files',
+      'Markdown source에서 로컬 decision DB cache 재빌드',
+    ),
+  )
   .action(() => {
-    printResult(runRebuildCommand(process.cwd()));
+    printResult(runRebuildCommand(process.cwd(), v2Runtime));
   });
 
 program
   .command('doctor')
-  .description('Diagnose malformed source, legacy cache, and cache consistency')
-  .option('--repair', 'Repair DB-only migration or rebuildable cache problems')
+  .description(
+    v2Text(
+      'Diagnose malformed source, legacy cache, and cache consistency',
+      '잘못된 source, legacy cache, cache 일관성 진단',
+    ),
+  )
+  .option(
+    '--repair',
+    v2Text(
+      'Repair DB-only migration or rebuildable cache problems',
+      'DB-only 마이그레이션 또는 재빌드 가능한 cache 문제 복구',
+    ),
+  )
   .action((options: { repair?: boolean }) => {
-    printResult(runDoctorCommand(process.cwd(), options.repair === true));
+    printResult(runDoctorCommand(process.cwd(), options.repair === true, v2Runtime));
   });
 
 program
   .command('recall <query...>')
-  .description('Search prior decisions and implementation traces')
+  .description(
+    v2Text('Search prior decisions and implementation traces', '이전 결정과 구현 trace 검색'),
+  )
   .action((queryParts: string[]) => {
-    printResult(runRecallCommand(process.cwd(), queryParts.join(' ')));
+    printResult(runRecallCommand(process.cwd(), queryParts.join(' '), v2Runtime));
   });
 
 program
   .command('close')
-  .description('Close the current decision task')
+  .description(v2Text('Close the current decision task', '현재 decision task 종료'))
   .action(() => {
-    printResult(runCloseCommand(process.cwd()));
+    printResult(runCloseCommand(process.cwd(), v2Runtime));
   });
 
 program
   .command('abandon')
-  .description('Abandon the current decision task, or a legacy SDD task when a target is given')
+  .description(
+    rawRoute === 'targeted-abandon'
+      ? 'Abandon the current decision task, or a legacy SDD task when a target is given'
+      : v2Text(
+          'Abandon the current decision task, or a legacy SDD task when a target is given',
+          '현재 decision task 폐기 또는 target 지정 시 legacy SDD task 폐기',
+        ),
+  )
   .argument('[target]')
   .action(async (target?: string) => {
     printResult(
       target === undefined
-        ? runV2AbandonCommand(process.cwd())
+        ? runV2AbandonCommand(process.cwd(), v2Runtime)
         : await runSddAbandonCommand(target, process.cwd()),
     );
   });
+
+applyLocalizedCommanderToV2();
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));

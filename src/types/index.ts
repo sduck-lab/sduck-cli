@@ -14,16 +14,13 @@ export type EvidenceSourceType =
   | 'DISCOVERY';
 
 export type ContextSourceType =
-  | 'DISCOVERY'
-  | 'FILE'
-  | 'GRAPHIFY_REPORT'
-  | 'GRAPHIFY_GRAPH'
-  | 'MEMORY';
+  'DISCOVERY' | 'FILE' | 'GRAPHIFY_REPORT' | 'GRAPHIFY_GRAPH' | 'MEMORY';
 
 export type EventType =
   | 'TASK_CREATED'
   | 'CONTEXT_INDEXED'
   | 'CONTEXT_ITEM_ADDED'
+  | 'GRILL_STARTED'
   | 'DRAFT_SUBMITTED'
   | 'QUESTION_ANSWERED'
   | 'DECISION_CREATED'
@@ -159,6 +156,8 @@ export interface StatusView {
   indicators: {
     contextItems: number;
     draftSubmissions: number;
+    grillMeRequired: boolean;
+    grillMeStarted: boolean;
     questionsOpen: number;
     questionsAnswered: number;
     decisionsByKind: Record<DecisionKind, number>;

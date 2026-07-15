@@ -71,8 +71,7 @@ export function cacheHasRows(projectRoot: string): boolean {
 
 export function getCacheMetadata(db: DatabaseSyncType, key: string): string | null {
   const row = db.prepare(`SELECT value FROM cache_metadata WHERE key = ?`).get(key) as
-    | { value: string }
-    | undefined;
+    { value: string } | undefined;
   return row?.value ?? null;
 }
 

@@ -1,5 +1,7 @@
 import { DecisionWorkspace } from './decision-workspace.js';
+import { noCurrentTask, taskNotFound } from './errors.js';
 import { createTaskId, nowIso } from './ids.js';
+import { resolveTaskCreationPolicy } from './policy.js';
 import { appendSourceEvent } from './source-store.js';
 import { decodeJson, encodeJson } from './store.js';
 import { TaskLifecycle } from './task-lifecycle.js';
@@ -37,6 +39,7 @@ export function getTaskById(db: DatabaseSync, taskId: string): Task | null {
 }
 
 export function createTask(projectRoot: string, description: string): Task {
+  const policy = resolveTaskCreationPolicy(projectRoot);
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     let id = createTaskId(description);
     let suffix = 2;
@@ -56,7 +59,11 @@ export function createTask(projectRoot: string, description: string): Task {
       updatedAt: createdAt,
     };
     bundle.tasks.push(task);
-    appendSourceEvent(bundle, { taskId: task.id, type: 'TASK_CREATED', payload: { description } });
+    appendSourceEvent(bundle, {
+      taskId: task.id,
+      type: 'TASK_CREATED',
+      payload: { description, policy },
+    });
     state.currentTaskId = task.id;
     state.updatedAt = createdAt;
     return task;
@@ -87,12 +94,12 @@ export function setTerminalStatus(projectRoot: string, status: 'CLOSED' | 'ABAND
     const taskId = requireCurrentTaskId(state.currentTaskId);
     const task = bundle.tasks.find((item) => item.id === taskId);
     if (task === undefined) {
-      throw new Error(`Task not found: ${taskId}`);
+      throw taskNotFound(taskId);
     }
     const updatedAt = nowIso();
     new TaskLifecycle(bundle, taskId).setTerminal(status, updatedAt);
     const updated = bundle.tasks.find((item) => item.id === taskId);
-    if (updated === undefined) throw new Error(`Task not found: ${taskId}`);
+    if (updated === undefined) throw taskNotFound(taskId);
     appendSourceEvent(bundle, {
       taskId: task.id,
       type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
@@ -116,7 +123,7 @@ export function resumeTask(projectRoot: string, taskId: string): Task {
 
 function requireCurrentTaskId(taskId: string | null): string {
   if (taskId === null) {
-    throw new Error('No current task. Run `sduck work "..."` first.');
+    throw noCurrentTask();
   }
   return taskId;
 }

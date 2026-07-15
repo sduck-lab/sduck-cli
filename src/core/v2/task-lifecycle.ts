@@ -1,15 +1,11 @@
+import { taskNotFound, V2ExpectedError } from './errors.js';
+import { hasGrillMeStarted, isGrillMeRequiredForTask } from './grill.js';
+
 import type { SourceBundle } from './source-types.js';
 import type { Task, TaskStatus } from '../../types/index.js';
 
 export type DecisionTaskCommand =
-  | 'answer'
-  | 'confirm'
-  | 'context'
-  | 'submit'
-  | 'trace'
-  | 'close'
-  | 'abandon'
-  | 'resume';
+  'answer' | 'confirm' | 'context' | 'submit' | 'trace' | 'close' | 'abandon' | 'resume';
 
 const COMMAND_STATUSES: Record<DecisionTaskCommand, readonly TaskStatus[]> = {
   answer: ['OPEN', 'BRIEF_READY'],
@@ -31,47 +27,49 @@ export class TaskLifecycle {
     readonly taskId: string,
   ) {
     const task = bundle.tasks.find((item) => item.id === taskId);
-    if (task === undefined) throw new Error(`Task not found: ${taskId}`);
+    if (task === undefined) throw taskNotFound(taskId);
     this.task = task;
   }
 
   assertAllowed(command: DecisionTaskCommand): void {
     const allowed = COMMAND_STATUSES[command];
-    if (allowed.includes(this.task.status)) return;
+    if (allowed.includes(this.task.status)) {
+      this.assertGrillMeSatisfied(command);
+      return;
+    }
 
-    throw new Error(
-      `Cannot ${command} task ${this.task.id}: status is ${this.task.status}. Expected: ${allowed.join(', ')}.`,
-    );
+    throw new V2ExpectedError('TASK_STATUS_NOT_ALLOWED', {
+      command,
+      taskId: this.task.id,
+      status: this.task.status,
+      expected: allowed.join(', '),
+    });
+  }
+
+  private assertGrillMeSatisfied(command: DecisionTaskCommand): void {
+    if (command !== 'submit' && command !== 'confirm') return;
+    if (!isGrillMeRequiredForTask(this.bundle.events, this.taskId)) return;
+    if (hasGrillMeStarted(this.bundle.events, this.taskId)) return;
+    throw new V2ExpectedError('GRILL_ME_REQUIRED', { command, taskId: this.taskId });
   }
 
   reconcileBriefReadiness(updatedAt: string): TaskStatus {
     if (this.task.status !== 'OPEN' && this.task.status !== 'BRIEF_READY') return this.task.status;
-
-    const questionsOpen = this.bundle.questions.some(
-      (question) => question.taskId === this.taskId && !question.answered,
-    );
-    const activeDecisions = this.bundle.decisions.filter(
-      (decision) =>
-        decision.taskId === this.taskId &&
-        (decision.status === 'DRAFT' || decision.status === 'CONFIRMED'),
-    );
-    const unresolvedDecision = activeDecisions.some(
-      (decision) => decision.kind === 'OPEN' || decision.kind === 'CONFLICT',
-    );
-    const status: TaskStatus =
-      !questionsOpen && !unresolvedDecision && activeDecisions.length > 0 ? 'BRIEF_READY' : 'OPEN';
+    const status: TaskStatus = this.computeBriefReadiness();
     this.setStatus(status, updatedAt);
     return status;
   }
 
   confirm(updatedAt: string): void {
+    this.assertGrillMeSatisfied('confirm');
     const openQuestions = this.bundle.questions.filter(
       (question) => question.taskId === this.taskId && !question.answered,
     );
     if (openQuestions.length > 0) {
-      throw new Error(
-        `Cannot confirm task ${this.taskId}: ${String(openQuestions.length)} open question(s) remain.`,
-      );
+      throw new V2ExpectedError('CONFIRM_OPEN_QUESTIONS', {
+        taskId: this.taskId,
+        count: openQuestions.length,
+      });
     }
 
     const unresolved = this.bundle.decisions.filter(
@@ -81,12 +79,16 @@ export class TaskLifecycle {
         (decision.kind === 'OPEN' || decision.kind === 'CONFLICT'),
     );
     if (unresolved.length > 0) {
-      throw new Error(
-        `Cannot confirm task ${this.taskId}: unresolved ${unresolved.map((item) => `${item.kind} ${item.id}`).join(', ')}.`,
-      );
+      throw new V2ExpectedError('CONFIRM_UNRESOLVED_DECISIONS', {
+        taskId: this.taskId,
+        items: unresolved.map((item) => `${item.kind} ${item.id}`).join(', '),
+      });
     }
-
+    if (this.computeBriefReadiness() !== 'BRIEF_READY') {
+      throw new V2ExpectedError('CONFIRM_BRIEF_NOT_READY', { taskId: this.taskId });
+    }
     this.assertAllowed('confirm');
+
     this.bundle.decisions = this.bundle.decisions.map((decision) =>
       decision.taskId === this.taskId && decision.status === 'DRAFT'
         ? { ...decision, status: 'CONFIRMED', updatedAt }
@@ -106,5 +108,22 @@ export class TaskLifecycle {
     );
     this.task.status = status;
     this.task.updatedAt = updatedAt;
+  }
+
+  private computeBriefReadiness(): TaskStatus {
+    const questionsOpen = this.bundle.questions.some(
+      (question) => question.taskId === this.taskId && !question.answered,
+    );
+    const activeDecisions = this.bundle.decisions.filter(
+      (decision) =>
+        decision.taskId === this.taskId &&
+        (decision.status === 'DRAFT' || decision.status === 'CONFIRMED'),
+    );
+    const unresolvedDecision = activeDecisions.some(
+      (decision) => decision.kind === 'OPEN' || decision.kind === 'CONFLICT',
+    );
+    return !questionsOpen && !unresolvedDecision && activeDecisions.length > 0
+      ? 'BRIEF_READY'
+      : 'OPEN';
   }
 }

@@ -1,3 +1,4 @@
+import { V2ExpectedError } from './errors.js';
 import { nextEntityId, nowIso } from './ids.js';
 
 import type { DraftEvidence, Evidence, EvidenceSourceType } from '../../types/index.js';
@@ -39,7 +40,7 @@ export function insertEvidence(db: DatabaseSync, taskId: string, draft: DraftEvi
     createdAt: nowIso(),
   };
   if (evidence.confidence < 0 || evidence.confidence > 1) {
-    throw new Error(`Evidence confidence must be between 0 and 1: ${evidence.sourceRef}`);
+    throw new V2ExpectedError('DRAFT_CONFIDENCE', { field: 'evidence', ref: evidence.sourceRef });
   }
   db.prepare(
     `INSERT OR REPLACE INTO evidence (id, task_id, decision_id, source_type, source_ref, summary, confidence, created_at)

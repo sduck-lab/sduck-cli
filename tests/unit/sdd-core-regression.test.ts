@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runReopenCommand } from '../../src/commands/reopen.js';
+import { SUPPORTED_AGENTS, type SupportedAgentId } from '../../src/core/agent-rules.js';
 import { runDoneWorkflow, loadDoneTargets } from '../../src/core/done.js';
 import { initProject } from '../../src/core/init.js';
 import { approvePlans, loadPlanApprovalCandidates } from '../../src/core/plan-approve.js';
@@ -24,6 +25,27 @@ const TASK_EVAL_LABELS = [
   'documentation quality',
   'maintainability',
 ] as const;
+
+const CANONICAL_TEMPLATE_SEQUENCE =
+  '`sduck work` → `sduck context` → `sduck grill-me` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck remember`/`sduck recall` → `sduck close`';
+
+const INSTALLED_AGENT_RULE_PATHS: Record<SupportedAgentId, string> = {
+  'claude-code': 'CLAUDE.md',
+  codex: 'AGENTS.md',
+  opencode: 'AGENTS.md',
+  'gemini-cli': 'GEMINI.md',
+  cursor: join('.cursor', 'rules', 'sduck-core.mdc'),
+  antigravity: join('.agents', 'rules', 'sduck-core.md'),
+};
+
+function expectInOrder(content: string, labels: readonly string[]): void {
+  let cursor = -1;
+  for (const label of labels) {
+    const next = content.indexOf(label, cursor + 1);
+    expect(next, label).toBeGreaterThan(cursor);
+    cursor = next;
+  }
+}
 
 async function writeReviewEvidence(taskPath: string, workId: string): Promise<void> {
   await writeFile(
@@ -282,7 +304,112 @@ describe('SDD core regression Interface', () => {
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
     expect(refreshedRules).toContain('Primary workflow: v2 `.decision` decision briefing');
+    expect(refreshedRules).toContain(
+      'work -> context -> grill-me -> submit -> ask/answer -> brief/confirm',
+    );
     expect(refreshedRules).toContain('Legacy SDD gated implementation rules');
+  });
+
+  it('installs every supported agent rule and decision inventory skill with the canonical v2 gate sequence', async () => {
+    for (const agent of SUPPORTED_AGENTS) {
+      workspace = await createTempWorkspace(`sdd-agent-${agent.id}-`);
+      await initProject({ agents: [agent.id], force: false }, workspace);
+
+      const installedRulePath = INSTALLED_AGENT_RULE_PATHS[agent.id];
+      const installedRule = await readFile(join(workspace, installedRulePath), 'utf8');
+      expect(installedRule, agent.id).toContain(CANONICAL_TEMPLATE_SEQUENCE);
+      expect(installedRule, agent.id).toContain(
+        'New policy-required tasks must run `sduck grill-me` before `submit` or `confirm`, including small work.',
+      );
+      expect(installedRule, agent.id).toContain('Installed rules are canonical English');
+
+      const installedSkill = await readFile(
+        join(
+          workspace,
+          '.sduck',
+          'sduck-assets',
+          'agent-rules',
+          'skills',
+          'sduck-codebase-decisions',
+          'SKILL.md',
+        ),
+        'utf8',
+      );
+      expectInOrder(installedSkill, [
+        'sduck work "Codebase decision inventory"',
+        'sduck context',
+        'sduck grill-me',
+        'sduck submit --stdin < draft.md',
+        'sduck ask',
+        'sduck answer QUESTION-1 --option 1',
+        'sduck brief',
+        'sduck confirm',
+        'sduck trace',
+        'sduck remember',
+        'sduck recall "architecture decisions"',
+        'sduck close',
+      ]);
+      expect(installedSkill, agent.id).toContain(
+        'Run `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded.',
+      );
+
+      await removeTempWorkspace(workspace);
+      workspace = null;
+    }
+
+    const root = process.cwd();
+    const core = await readFile(join(root, '.sduck/sduck-assets/agent-rules/core.md'), 'utf8');
+    expect(core).toContain(
+      'work -> context -> grill-me -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> remember/recall -> close',
+    );
+    for (const command of [
+      'sduck start',
+      'sduck fast-track',
+      'sduck spec approve',
+      'sduck plan approve',
+      'sduck step done',
+      'sduck review ready',
+      'sduck done',
+      'sduck use',
+      'sduck implement',
+      'sduck clean',
+      'sduck reopen',
+      'sduck archive',
+      'sduck update',
+      'sduck abandon <target>',
+    ]) {
+      expect(core).toContain(command);
+    }
+  });
+
+  it('documents corrected Phase 3 storage, locale, and malformed-source facts', async () => {
+    const root = process.cwd();
+    const readme = await readFile(join(root, 'README.md'), 'utf8');
+    const readmeKo = await readFile(join(root, 'README.ko.md'), 'utf8');
+    for (const content of [readme, readmeKo]) {
+      expect(content).toContain('.decision/workspace.lock/');
+      expect(content).toContain('.decision/exports/graphify/');
+      expect(content).toContain('.decision/.commit-*.json');
+      expect(content).toContain('%APPDATA%\\\\sduck\\\\config.json');
+      expect(content).toContain('~/AppData/Roaming/sduck/config.json');
+      expect(content).not.toContain('.decision/locks/');
+      expect(content).not.toContain('.decision/exports/graph/');
+    }
+    expect(readme).toContain('Run the required grill-me gate for new policy-required tasks.');
+    expect(readmeKo).toContain('새 policy-required task의 필수 grill-me gate');
+
+    const useCases = await readFile(join(root, 'docs/use-cases.md'), 'utf8');
+    expect(useCases).toContain('malformed canonical source는 수동으로 수정한다');
+    expect(useCases).toContain('`sduck doctor --repair`는 malformed source를 자동 수정하지 않는다');
+    expect(useCases).toContain('Git은 빈 디렉터리를 추적하지 않는다');
+    expect(useCases).toContain(
+      '`.decision/policy.json`은 init 직후 추적 대상이고, canonical 결정 문서는 generated content가 생긴 뒤 add/commit할 때 추적된다',
+    );
+    expect(useCases).not.toContain('"Decision workspace is busy"');
+
+    const pilot = await readFile(join(root, 'docs/pilot-evaluation.md'), 'utf8');
+    expect(pilot).toContain('실행한 command, exit status, 분류한 failure reason');
+    expect(pilot).not.toContain('CLI 실패 코드');
   });
 
   it('writes OpenCode rules to AGENTS.md instead of AGENT.md', async () => {
@@ -305,6 +432,8 @@ describe('SDD core regression Interface', () => {
     expect(rules).toContain('Selected agents: Codex, OpenCode');
     expect(rules).toContain('Codex Instructions');
     expect(rules).toContain('OpenCode Instructions');
+    expect(rules).toContain('New policy-required tasks must run `sduck grill-me`');
+    expect(rules).toContain('Installed rules are canonical English');
     await expect(access(join(workspace, 'AGENT.md'))).rejects.toThrow();
   });
 

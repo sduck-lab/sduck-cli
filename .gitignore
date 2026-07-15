@@ -18,3 +18,4 @@ coverage/
 .decision/.rollback-*/
 .decision/exports/graphify/
 test/workspaces/
+.slim/deepwork/

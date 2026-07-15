@@ -50,6 +50,7 @@ describeIfSqlite('v2 core workflow', () => {
       GRILL_ME_PROTOCOL,
     } = await import('../../src/core/v2/context.js');
     const { submitDraft } = await import('../../src/core/v2/draft.js');
+    const { recordGrillMeStarted } = await import('../../src/core/v2/grill.js');
     const { answerQuestion } = await import('../../src/core/v2/question.js');
     const { buildBriefView, confirmBrief } = await import('../../src/core/v2/brief.js');
     const { remember } = await import('../../src/core/v2/remember.js');
@@ -58,6 +59,7 @@ describeIfSqlite('v2 core workflow', () => {
 
     initDecisionWorkspace(workspace);
     const task = createTask(workspace, 'payment retry 추가');
+    recordGrillMeStarted(workspace);
     const context = buildContextIndex(workspace, task);
     expect(context.some((item) => item.sourceRef.includes('paymentService'))).toBe(true);
 
@@ -150,14 +152,43 @@ describeIfSqlite('v2 core workflow', () => {
     expect(buildBriefView(workspace).task.id).toBe(task.id);
   });
 
+  it('raises typed expected errors for reserved artifact paths', async () => {
+    workspace = await createTempWorkspace('v2-artifact-errors-');
+    const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
+    const { DecisionWorkspace } = await import('../../src/core/v2/decision-workspace.js');
+    const { isV2ExpectedError } = await import('../../src/core/v2/errors.js');
+
+    const root = workspace;
+    initDecisionWorkspace(root);
+    try {
+      new DecisionWorkspace(root).mutate(({ artifacts }) => {
+        artifacts.set('.sduck/legacy.md', 'nope');
+      });
+      throw new Error('expected artifact path error');
+    } catch (error) {
+      expect(isV2ExpectedError(error)).toBe(true);
+      if (isV2ExpectedError(error)) expect(error.code).toBe('ARTIFACT_PATH_RESERVED');
+    }
+    try {
+      new DecisionWorkspace(root).mutate(({ artifacts }) => {
+        artifacts.set('../escape.md', 'nope');
+      });
+    } catch (error) {
+      expect(isV2ExpectedError(error)).toBe(true);
+      if (isV2ExpectedError(error)) expect(error.code).toBe('ARTIFACT_PATH_OUTSIDE_WORKSPACE');
+    }
+  });
+
   it('parses markdown fenced json draft', async () => {
     workspace = await createTempWorkspace('v2-markdown-');
     const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
     const { createTask } = await import('../../src/core/v2/task.js');
     const { submitDraft } = await import('../../src/core/v2/draft.js');
+    const { recordGrillMeStarted } = await import('../../src/core/v2/grill.js');
 
     initDecisionWorkspace(workspace);
     const task = createTask(workspace, 'markdown draft');
+    recordGrillMeStarted(workspace);
     const result = submitDraft(
       workspace,
       `# Draft\n\n\`\`\`json sduck-draft\n{"schemaVersion":"v2alpha1","taskId":"${task.id}","questions":[],"decisions":[],"evidence":[]}\n\`\`\`\n`,
@@ -179,6 +210,46 @@ describeIfSqlite('v2 core workflow', () => {
     );
 
     expect(() => rebuildDecisionCache(root)).toThrow(/broken\.md: task\.title/);
+  });
+
+  it('rejects malformed task-created policy snapshots in canonical source', async () => {
+    workspace = await createTempWorkspace('v2-policy-snapshot-parse-');
+    const root = workspace;
+    const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
+    const { createTask } = await import('../../src/core/v2/task.js');
+    const { loadSourceBundle } = await import('../../src/core/v2/source-store.js');
+
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'malformed policy snapshot');
+    const taskPath = join(root, '.decision', 'exports', 'markdown', 'tasks', `${task.id}.md`);
+    const source = await readFile(taskPath, 'utf8');
+    await writeFile(
+      taskPath,
+      source.replace('"grillMeRequired": true', '"grillMeRequired": "yes"'),
+    );
+
+    expect(() => loadSourceBundle(root)).toThrow(/payload\.policy\.grillMeRequired.*boolean/);
+  });
+
+  it('treats historic task-created events without policy snapshots as legacy', async () => {
+    workspace = await createTempWorkspace('v2-policy-snapshot-absent-');
+    const root = workspace;
+    const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
+    const { createTask } = await import('../../src/core/v2/task.js');
+    const { isGrillMeRequiredForTask } = await import('../../src/core/v2/grill.js');
+    const { loadSourceBundle } = await import('../../src/core/v2/source-store.js');
+
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'historic missing policy snapshot');
+    const taskPath = join(root, '.decision', 'exports', 'markdown', 'tasks', `${task.id}.md`);
+    const source = await readFile(taskPath, 'utf8');
+    await writeFile(
+      taskPath,
+      source.replace(/,\n\s+"policy": \{\n\s+"grillMeRequired": true\n\s+\}/, ''),
+    );
+
+    const bundle = loadSourceBundle(root);
+    expect(isGrillMeRequiredForTask(bundle.events, task.id)).toBe(false);
   });
 
   it('normalizes unquoted YAML timestamp frontmatter to ISO strings', async () => {
@@ -224,7 +295,7 @@ describeIfSqlite('v2 core workflow', () => {
       '---\nid: TASK-bad-ts\ntype: task\nstatus: OPEN\ncreated_at: 123\n---\n# TASK-bad-ts: Bad timestamp\n',
     );
 
-    expect(() => rebuildDecisionCache(root)).toThrow(/created_at.*non-empty string/);
+    expect(() => rebuildDecisionCache(root)).toThrow(/created_at.*non-empty-string/);
   });
 
   it('auto rebuild is deletion-aware and does not resurrect deleted source on write', async () => {
@@ -233,10 +304,12 @@ describeIfSqlite('v2 core workflow', () => {
     const { initDecisionWorkspace } = await import('../../src/core/v2/workspace.js');
     const { createTask } = await import('../../src/core/v2/task.js');
     const { submitDraft } = await import('../../src/core/v2/draft.js');
+    const { recordGrillMeStarted } = await import('../../src/core/v2/grill.js');
     const { recall } = await import('../../src/core/v2/recall.js');
 
     initDecisionWorkspace(root);
     const task = createTask(root, 'delete stale source');
+    recordGrillMeStarted(root);
     submitDraft(
       root,
       JSON.stringify({
@@ -316,11 +389,13 @@ describeIfSqlite('v2 core workflow', () => {
     const { createTask } = await import('../../src/core/v2/task.js');
     const { submitDraft } = await import('../../src/core/v2/draft.js');
     const { confirmBrief } = await import('../../src/core/v2/brief.js');
+    const { recordGrillMeStarted } = await import('../../src/core/v2/grill.js');
     const { createImplementationTrace } = await import('../../src/core/v2/trace.js');
     const { RELEVANCE_REASONS } = await import('../../src/core/v2/relevance.js');
 
     initDecisionWorkspace(workspace);
     const task = createTask(workspace, 'trace relevance');
+    recordGrillMeStarted(workspace);
     submitDraft(
       workspace,
       JSON.stringify({
@@ -426,6 +501,7 @@ describeIfSqlite('v2 core workflow', () => {
     const { createTask } = await import('../../src/core/v2/task.js');
     const { buildContextIndex } = await import('../../src/core/v2/context.js');
     const { submitDraft } = await import('../../src/core/v2/draft.js');
+    const { recordGrillMeStarted } = await import('../../src/core/v2/grill.js');
     const { RELEVANCE_REASONS } = await import('../../src/core/v2/relevance.js');
 
     initDecisionWorkspace(workspace);
@@ -440,6 +516,7 @@ describeIfSqlite('v2 core workflow', () => {
     ).toBe(false);
 
     const task = createTask(workspace, 'description without graph file words');
+    recordGrillMeStarted(workspace);
     submitDraft(
       workspace,
       JSON.stringify({

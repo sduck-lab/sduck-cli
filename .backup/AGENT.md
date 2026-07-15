@@ -120,6 +120,7 @@ Selected agents: Codex, OpenCode
 - plan을 새로 작성하거나 수정한 직후, 반드시 `.sduck/sduck-assets/eval/plan.yml`을 읽고 그 기준으로 자체 평가 점수를 남긴다
 - 모든 Step 완료 후 `spec.md`의 완료 조건 체크리스트를 검증하고, `.sduck/sduck-assets/eval/task.yml`을 읽어 task 평가를 수행한다
 - After implementation is complete, run task evaluation, show the results, and only then move to completion processing.
+
 <!-- sduck:end -->
 
 이 프로젝트는 **Spec-Driven Development(SDD)** 워크플로우를 따릅니다.

@@ -70,10 +70,7 @@ export type AssetTemplateMap = Record<AssetTemplateKey, AssetTemplateDefinition>
 export type AssetActionKind = 'create' | 'keep' | 'overwrite' | 'error';
 
 export type AssetCollisionKind =
-  | 'none'
-  | 'file-directory-mismatch'
-  | 'directory-file-mismatch'
-  | 'unknown';
+  'none' | 'file-directory-mismatch' | 'directory-file-mismatch' | 'unknown';
 
 export interface PlannedAssetAction {
   key: AssetTemplateKey;
@@ -86,14 +83,45 @@ export interface PlannedAssetAction {
 export type InitWarningCode =
   | 'kept-existing-asset'
   | 'kept-existing-rule'
-  | 'type-conflict'
-  | 'force-recommended';
+  | 'kept-existing-non-file-hook'
+  | 'kept-settings-non-object-hooks'
+  | 'kept-settings-non-array-pre-tool-use'
+  | 'kept-invalid-settings'
+  | 'kept-existing-non-file-settings'
+  | 'cannot-create-skills-directory'
+  | 'cannot-copy-skill-non-file'
+  | 'skill-source-not-found'
+  | 'gitignore-update-failed'
+  | 'refresh-assets-recommended'
+  | 'refresh-rules-recommended';
 
 export type InitErrorCode =
   | 'asset-root-conflict'
   | 'workspace-root-conflict'
+  | 'type-conflict'
+  | 'invalid-agent'
   | 'asset-write-failed'
   | 'unknown-fs-error';
+
+export interface InitWarning {
+  code: InitWarningCode;
+  path?: string;
+  detail?: string;
+}
+
+export class InitError extends Error {
+  constructor(
+    readonly code: InitErrorCode,
+    readonly params: { path?: string; detail?: string; agent?: string } = {},
+  ) {
+    super(code);
+    this.name = 'InitError';
+  }
+}
+
+export function isInitError(error: unknown): error is InitError {
+  return error instanceof InitError;
+}
 
 export interface InitSummaryRow {
   path: string;
@@ -106,6 +134,7 @@ export interface InitExecutionSummary {
   kept: string[];
   overwritten: string[];
   warnings: string[];
+  structuredWarnings: InitWarning[];
   errors: string[];
   rows: InitSummaryRow[];
 }
@@ -238,6 +267,7 @@ export function summarizeInitActions(actions: PlannedAssetAction[]): InitExecuti
     kept: [],
     overwritten: [],
     warnings: [],
+    structuredWarnings: [],
     errors: [],
     rows: [],
   };
@@ -252,6 +282,7 @@ export function summarizeInitActions(actions: PlannedAssetAction[]): InitExecuti
     if (action.action === 'keep') {
       summary.kept.push(action.targetPath);
       summary.rows.push({ path: action.targetPath, status: 'kept' });
+      summary.structuredWarnings.push({ code: 'kept-existing-asset', path: action.targetPath });
       summary.warnings.push(`Kept existing asset: ${action.targetPath}`);
       continue;
     }
@@ -266,6 +297,7 @@ export function summarizeInitActions(actions: PlannedAssetAction[]): InitExecuti
   }
 
   if (summary.kept.length > 0) {
+    summary.structuredWarnings.push({ code: 'refresh-assets-recommended' });
     summary.warnings.push('Run `sduck init --force` if you want to regenerate bundled assets.');
   }
 
@@ -328,7 +360,7 @@ async function ensureRootDirectory(
     return 'kept';
   }
 
-  throw new Error(`${errorCode}: expected a directory at ${targetPath}.`);
+  throw new InitError(errorCode, { path: targetPath });
 }
 
 export async function initProject(
@@ -348,6 +380,7 @@ export async function initProject(
     kept: [],
     overwritten: [],
     warnings: [],
+    structuredWarnings: [],
     errors: [],
     rows: [],
   };
@@ -374,16 +407,17 @@ export async function initProject(
   summary.kept.push(...actionSummary.kept);
   summary.overwritten.push(...actionSummary.overwritten);
   summary.warnings.push(...actionSummary.warnings);
+  summary.structuredWarnings.push(...actionSummary.structuredWarnings);
   summary.errors.push(...actionSummary.errors);
   summary.rows.push(...actionSummary.rows);
 
   const conflict = actions.find((action) => action.action === 'error');
 
   if (conflict !== undefined) {
-    throw new Error(
-      `type-conflict: expected a file but found a directory at ${conflict.targetPath}. ` +
-        'Resolve it manually or move the conflicting path before retrying.',
-    );
+    throw new InitError('type-conflict', {
+      path: conflict.targetPath,
+      detail: conflict.collision,
+    });
   }
 
   for (const action of actions) {
@@ -535,6 +569,10 @@ async function installClaudeCodeHook(
   } else {
     summary.kept.push(CLAUDE_CODE_HOOK_SCRIPT_PATH);
     summary.rows.push({ path: CLAUDE_CODE_HOOK_SCRIPT_PATH, status: 'kept' });
+    summary.structuredWarnings.push({
+      code: 'kept-existing-non-file-hook',
+      path: CLAUDE_CODE_HOOK_SCRIPT_PATH,
+    });
     summary.warnings.push(
       `Kept existing non-file Claude Code hook path: ${CLAUDE_CODE_HOOK_SCRIPT_PATH}`,
     );
@@ -553,6 +591,10 @@ async function installClaudeCodeHook(
       if (mode === 'safe' && hooksValue !== undefined && !isRecord(hooksValue)) {
         summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
         summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+        summary.structuredWarnings.push({
+          code: 'kept-settings-non-object-hooks',
+          path: CLAUDE_CODE_HOOK_SETTINGS_PATH,
+        });
         summary.warnings.push(
           `Kept Claude Code settings with non-object hooks: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}. Run \`sduck init --force\` to replace it.`,
         );
@@ -562,6 +604,10 @@ async function installClaudeCodeHook(
       if (mode === 'safe' && preToolUseValue !== undefined && !Array.isArray(preToolUseValue)) {
         summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
         summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+        summary.structuredWarnings.push({
+          code: 'kept-settings-non-array-pre-tool-use',
+          path: CLAUDE_CODE_HOOK_SETTINGS_PATH,
+        });
         summary.warnings.push(
           `Kept Claude Code settings with non-array PreToolUse hooks: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}. Run \`sduck init --force\` to replace it.`,
         );
@@ -590,6 +636,10 @@ async function installClaudeCodeHook(
       } else {
         summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
         summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+        summary.structuredWarnings.push({
+          code: 'kept-invalid-settings',
+          path: CLAUDE_CODE_HOOK_SETTINGS_PATH,
+        });
         summary.warnings.push(
           `Kept invalid Claude Code settings file: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}. Run \`sduck init --force\` to replace it.`,
         );
@@ -607,6 +657,10 @@ async function installClaudeCodeHook(
   } else {
     summary.kept.push(CLAUDE_CODE_HOOK_SETTINGS_PATH);
     summary.rows.push({ path: CLAUDE_CODE_HOOK_SETTINGS_PATH, status: 'kept' });
+    summary.structuredWarnings.push({
+      code: 'kept-existing-non-file-settings',
+      path: CLAUDE_CODE_HOOK_SETTINGS_PATH,
+    });
     summary.warnings.push(
       `Kept existing non-file Claude Code settings path: ${CLAUDE_CODE_HOOK_SETTINGS_PATH}`,
     );
@@ -635,6 +689,7 @@ async function applyAgentRuleActions(
     if (action.mergeMode === 'keep') {
       summary.kept.push(action.outputPath);
       summary.rows.push({ path: action.outputPath, status: 'kept' });
+      summary.structuredWarnings.push({ code: 'kept-existing-rule', path: action.outputPath });
       summary.warnings.push(`Kept existing rule file: ${action.outputPath}`);
       continue;
     }
@@ -663,6 +718,7 @@ async function applyAgentRuleActions(
   }
 
   if (summary.kept.some((path) => path.endsWith('.md') || path.endsWith('.mdc'))) {
+    summary.structuredWarnings.push({ code: 'refresh-rules-recommended' });
     summary.warnings.push(
       'Run `sduck init --force` to refresh managed rule content for selected agents.',
     );
@@ -689,6 +745,10 @@ async function installClaudeCodeSkills(
     summary.kept.push(`${CLAUDE_CODE_SKILLS_PATH}/`);
     summary.rows.push({ path: `${CLAUDE_CODE_SKILLS_PATH}/`, status: 'kept' });
   } else {
+    summary.structuredWarnings.push({
+      code: 'cannot-create-skills-directory',
+      path: CLAUDE_CODE_SKILLS_PATH,
+    });
     summary.warnings.push(
       `Cannot create skills directory: ${CLAUDE_CODE_SKILLS_PATH} exists as non-directory.`,
     );
@@ -727,11 +787,16 @@ async function installClaudeCodeSkills(
         status: 'kept',
       });
     } else {
+      summary.structuredWarnings.push({
+        code: 'cannot-copy-skill-non-file',
+        path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
+      });
       summary.warnings.push(
         `Cannot copy skill: ${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md exists as non-file.`,
       );
     }
   } else {
+    summary.structuredWarnings.push({ code: 'skill-source-not-found', path: skillSourcePath });
     summary.warnings.push(`Skill source not found: ${skillSourcePath}`);
   }
 }

@@ -14,12 +14,7 @@ export function needsClaudeCodeHook(agents: readonly SupportedAgentId[]): boolea
 }
 
 export type SupportedAgentId =
-  | 'claude-code'
-  | 'codex'
-  | 'opencode'
-  | 'gemini-cli'
-  | 'cursor'
-  | 'antigravity';
+  'claude-code' | 'codex' | 'opencode' | 'gemini-cli' | 'cursor' | 'antigravity';
 
 export type AgentRuleTargetKind = 'root-file' | 'managed-file';
 

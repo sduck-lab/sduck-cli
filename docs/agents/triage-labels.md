@@ -1,15 +1,13 @@
 # Triage Labels
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
+Use the repository's issue labels directly. Do not infer labels from an external skill pack or older agent vocabulary.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
-| -------------------------- | -------------------- | ---------------------------------------- |
-| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
-| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
-| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
-| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
-| `wontfix`                  | `wontfix`            | Will not be actioned                     |
+| Role                    | Label             | Meaning                                                      |
+| ----------------------- | ----------------- | ------------------------------------------------------------ |
+| Needs maintainer triage | `needs-triage`    | Maintainer needs to evaluate the issue.                      |
+| Needs reporter input    | `needs-info`      | Waiting on the reporter for more information.                |
+| Ready for coding agent  | `ready-for-agent` | Specified enough for an agent-driven sduck briefing.         |
+| Ready for human         | `ready-for-human` | Requires human implementation or judgment before agent work. |
+| Will not be done        | `wontfix`         | Will not be actioned.                                        |
 
-When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
-
-Edit the right-hand column to match whatever vocabulary you actually use.
+When an agent or doc mentions a role, use the corresponding repository label string from this table.
