@@ -3,19 +3,28 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { getContextPack } from '../../src/core/v2/context.js';
 import {
   DecisionWorkspace,
   recoverInterruptedDecisionWorkspace,
 } from '../../src/core/v2/decision-workspace.js';
 import { submitDraft } from '../../src/core/v2/draft.js';
+import { showGraph } from '../../src/core/v2/graph.js';
 import { recordGrillMeStarted } from '../../src/core/v2/grill.js';
 import { remember } from '../../src/core/v2/remember.js';
-import { loadSourceBundle, sourceFingerprint } from '../../src/core/v2/source-store.js';
+import {
+  loadSourceBundle,
+  sourceFingerprint,
+  validateSourceBundle,
+} from '../../src/core/v2/source-store.js';
+import { readState, setCurrentTaskId } from '../../src/core/v2/state.js';
 import { openDatabase } from '../../src/core/v2/store.js';
-import { createTask } from '../../src/core/v2/task.js';
+import { createTask, setTerminalStatus } from '../../src/core/v2/task.js';
 import { initDecisionWorkspace } from '../../src/core/v2/workspace.js';
 import { runCli } from '../helpers/run-cli.js';
 import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
+
+import type { SourceBundle } from '../../src/core/v2/source-types.js';
 
 describe('DecisionWorkspace', () => {
   let workspace: string | null = null;
@@ -23,6 +32,272 @@ describe('DecisionWorkspace', () => {
   afterEach(async () => {
     if (workspace !== null) await removeTempWorkspace(workspace);
     workspace = null;
+  });
+
+  it('rejects malformed canonical guided and graph invariants', () => {
+    const now = '2026-07-17T00:00:00.000Z';
+    const base = (): SourceBundle => ({
+      tasks: [
+        {
+          id: 'TASK-one',
+          title: 'one',
+          description: 'one',
+          status: 'OPEN',
+          expectedScope: [],
+          avoidScope: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'TASK-two',
+          title: 'two',
+          description: 'two',
+          status: 'CONFIRMED',
+          expectedScope: [],
+          avoidScope: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      decisions: [
+        {
+          id: 'DEC-source',
+          taskId: 'TASK-two',
+          title: 'source',
+          kind: 'EXPLICIT',
+          status: 'CONFIRMED',
+          confidence: 1,
+          summary: 'source',
+          rationale: [],
+          appliesTo: [],
+          avoids: [],
+          sourceRefs: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      questions: [],
+      evidence: [],
+      contextItems: [],
+      briefSnapshots: [],
+      implementationTraces: [
+        {
+          id: 'IMPL-one',
+          taskId: 'TASK-one',
+          decisionIds: [],
+          filesChanged: [],
+          summary: 'trace',
+          decisionToCodeMap: [],
+          createdAt: now,
+        },
+      ],
+      evaluations: [],
+      events: [],
+    });
+    const firstDecision = (bundle: SourceBundle) => {
+      const decision = bundle.decisions[0];
+      if (decision === undefined) throw new Error('missing decision fixture');
+      return decision;
+    };
+    const secondTask = (bundle: SourceBundle) => {
+      const task = bundle.tasks[1];
+      if (task === undefined) throw new Error('missing task fixture');
+      return task;
+    };
+    const firstTrace = (bundle: SourceBundle) => {
+      const trace = bundle.implementationTraces[0];
+      if (trace === undefined) throw new Error('missing trace fixture');
+      return trace;
+    };
+
+    const malformed = [
+      (bundle: SourceBundle) => {
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-carried',
+          taskId: 'TASK-one',
+          kind: 'CARRIED',
+          rationale: [],
+          sourceRefs: ['DEC-source'],
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-carried',
+          taskId: 'TASK-one',
+          kind: 'CARRIED',
+          rationale: ['carry'],
+          sourceRefs: ['DEC-missing'],
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-draft',
+          status: 'DRAFT',
+        });
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-carried',
+          taskId: 'TASK-one',
+          kind: 'CARRIED',
+          rationale: ['carry'],
+          sourceRefs: ['DEC-draft'],
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-same-task-source',
+          taskId: 'TASK-one',
+        });
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-carried',
+          taskId: 'TASK-one',
+          kind: 'CARRIED',
+          rationale: ['carry'],
+          sourceRefs: ['DEC-same-task-source'],
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.tasks[1] = { ...secondTask(bundle), status: 'ABANDONED' };
+        bundle.decisions.push({
+          ...firstDecision(bundle),
+          id: 'DEC-carried',
+          taskId: 'TASK-one',
+          kind: 'CARRIED',
+          rationale: ['carry'],
+          sourceRefs: ['DEC-source'],
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.events.push({
+          id: 'EVT-bad',
+          taskId: 'TASK-one',
+          type: 'GRILL_COMPLETED',
+          payload: { reason: '' },
+          createdAt: now,
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.evaluations.push({
+          id: 'EVAL-bad',
+          taskId: 'TASK-one',
+          traceId: 'IMPL-one',
+          checks: [],
+          createdAt: now,
+        });
+      },
+      (bundle: SourceBundle) => {
+        bundle.implementationTraces.push({
+          ...firstTrace(bundle),
+          id: 'IMPL-two',
+          taskId: 'TASK-two',
+        });
+        bundle.evaluations.push({
+          id: 'EVAL-bad',
+          taskId: 'TASK-one',
+          traceId: 'IMPL-two',
+          checks: [{ name: 'x', outcome: 'y' }],
+          createdAt: now,
+        });
+      },
+    ];
+
+    for (const mutate of malformed) {
+      const bundle = base();
+      mutate(bundle);
+      expect(() => {
+        validateSourceBundle(bundle);
+      }).toThrow();
+    }
+  });
+
+  it('adds graph-derived context at read time without persisting it', async () => {
+    workspace = await createTempWorkspace('decision-workspace-graph-context-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    createTask(root, 'source task');
+    recordGrillMeStarted(root);
+    submitDraft(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        decisions: [
+          {
+            id: 'DEC-prior',
+            title: 'Prior confirmed',
+            kind: 'EXPLICIT',
+            status: 'CONFIRMED',
+            summary: 'Reusable prior decision.',
+          },
+        ],
+      }),
+    );
+    createTask(root, 'carry prior');
+    recordGrillMeStarted(root);
+    submitDraft(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        decisions: [
+          {
+            id: 'DEC-carried-current',
+            title: 'Carry prior',
+            kind: 'CARRIED',
+            status: 'CONFIRMED',
+            summary: 'Carry prior forward.',
+            rationale: ['Prior task already settled it.'],
+            sourceRefs: ['DEC-prior'],
+          },
+        ],
+      }),
+    );
+    const before = sourceFingerprint(root);
+    const pack = getContextPack(root);
+    expect(pack.items.some((item) => item.summary.includes('Graph history'))).toBe(true);
+    expect(sourceFingerprint(root)).toBe(before);
+  });
+
+  it('caps graph show globally and keeps edge endpoints admitted', async () => {
+    workspace = await createTempWorkspace('decision-workspace-graph-caps-');
+    const root = workspace;
+    const db = openDatabase(root);
+    try {
+      db.prepare(`INSERT INTO graph_nodes (id, kind, label) VALUES (?, ?, ?)`).run(
+        'TASK-root',
+        'task',
+        'root',
+      );
+      for (let index = 0; index < 150; index += 1) {
+        const id = `DEC-${String(index).padStart(4, '0')}`;
+        db.prepare(`INSERT INTO graph_nodes (id, kind, label) VALUES (?, ?, ?)`).run(
+          id,
+          'decision',
+          id,
+        );
+        db.prepare(`INSERT INTO graph_edges (id, from_id, to_id, kind) VALUES (?, ?, ?, ?)`).run(
+          `TASK-root|HAS_DECISION|${id}`,
+          'TASK-root',
+          id,
+          'HAS_DECISION',
+        );
+      }
+    } finally {
+      db.close();
+    }
+    const view = showGraph(root, 'TASK-root', 1);
+    expect(view.nodes.length).toBeLessThanOrEqual(100);
+    expect(view.edges.length).toBeLessThanOrEqual(200);
+    expect(view.truncated).toBe(true);
+    const nodeIds = new Set(view.nodes.map((node) => node.id));
+    for (const edge of view.edges) {
+      expect(nodeIds.has(edge.from)).toBe(true);
+      expect(nodeIds.has(edge.to)).toBe(true);
+    }
+    expect(() => showGraph(root, 'TASK-root', Number.NaN)).toThrow(/GRAPH_DEPTH_INVALID/);
   });
 
   it('does not mutate source when a draft contains a broken decision reference', async () => {
@@ -332,6 +607,79 @@ describe('DecisionWorkspace', () => {
     expect(`${result.stdout}\n${result.stderr}`).toMatch(/fix.*source.*rebuild|repair/i);
   });
 
+  it('diagnoses and repairs a stale terminal current task pointer without rewriting source or cache', async () => {
+    workspace = await createTempWorkspace('decision-workspace-terminal-pointer-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'stale terminal pointer');
+    setTerminalStatus(root, 'ABANDONED');
+    setCurrentTaskId(root, task.id);
+    const beforeSourceFingerprint = sourceFingerprint(root);
+    const beforeCacheFingerprint = cacheSourceFingerprint(root);
+
+    const diagnosis = await runCli(['doctor'], { cliRoot: process.cwd(), cwd: root });
+
+    expect(diagnosis.exitCode).toBe(1);
+    expect(`${diagnosis.stdout}\n${diagnosis.stderr}`).toContain('STALE_TERMINAL_TASK_POINTER');
+    expect(`${diagnosis.stdout}\n${diagnosis.stderr}`).toContain(task.id);
+
+    const repair = await runCli(['doctor', '--repair'], { cliRoot: process.cwd(), cwd: root });
+
+    expect(repair.exitCode).toBe(0);
+    expect(repair.stdout).toContain('Cleared stale current task pointer');
+    expect(readState(root).currentTaskId).toBeNull();
+    expect(readState(root).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(sourceFingerprint(root)).toBe(beforeSourceFingerprint);
+    expect(cacheSourceFingerprint(root)).toBe(beforeCacheFingerprint);
+
+    const repeatRepair = await runCli(['doctor', '--repair'], {
+      cliRoot: process.cwd(),
+      cwd: root,
+    });
+    expect(repeatRepair.exitCode).toBe(0);
+    expect(repeatRepair.stdout).toContain('Decision workspace is healthy.');
+
+    const nextTask = createTask(root, 'new task after repair');
+    expect(nextTask.id).not.toBe(task.id);
+    expect(readState(root).currentTaskId).toBe(nextTask.id);
+  });
+
+  it('reports and preserves non-terminal, missing, and malformed state during repair', async () => {
+    workspace = await createTempWorkspace('decision-workspace-terminal-pointer-protected-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    const task = createTask(root, 'open pointer is valid');
+
+    let repair = await runCli(['doctor', '--repair'], { cliRoot: process.cwd(), cwd: root });
+    expect(repair.exitCode).toBe(0);
+    expect(readState(root).currentTaskId).toBe(task.id);
+
+    const beforeMissingSourceFingerprint = sourceFingerprint(root);
+    removeCacheSourceFingerprint(root);
+    const beforeMissingCacheFingerprint = cacheSourceFingerprint(root);
+    setCurrentTaskId(root, 'TASK-missing');
+    repair = await runCli(['doctor', '--repair'], { cliRoot: process.cwd(), cwd: root });
+    expect(repair.exitCode).toBe(1);
+    expect(`${repair.stdout}\n${repair.stderr}`).toContain('MISSING_CURRENT_TASK_POINTER');
+    expect(readState(root).currentTaskId).toBe('TASK-missing');
+    expect(sourceFingerprint(root)).toBe(beforeMissingSourceFingerprint);
+    expect(cacheSourceFingerprint(root)).toBe(beforeMissingCacheFingerprint);
+
+    await writeFile(join(root, '.decision', 'state.json'), '{"currentTaskId": null}\n');
+    repair = await runCli(['doctor', '--repair'], { cliRoot: process.cwd(), cwd: root });
+    expect(repair.exitCode).toBe(1);
+    expect(`${repair.stdout}\n${repair.stderr}`).toContain('INVALID_STATE');
+    await expect(Promise.resolve().then(() => readState(root))).rejects.toThrow(/STATE_INVALID/);
+
+    await writeFile(join(root, '.decision', 'state.json'), '{not-json}\n');
+    repair = await runCli(['doctor', '--repair'], { cliRoot: process.cwd(), cwd: root });
+    expect(repair.exitCode).toBe(1);
+    expect(`${repair.stdout}\n${repair.stderr}`).toContain('INVALID_STATE');
+    await expect(Promise.resolve().then(() => readState(root))).rejects.toThrow(
+      /STATE_JSON_INVALID/,
+    );
+  });
+
   it('rejects malformed state before changing canonical source or cache', async () => {
     workspace = await createTempWorkspace('decision-workspace-state-');
     const root = workspace;
@@ -353,3 +701,24 @@ describe('DecisionWorkspace', () => {
     expect(sourceFingerprint(root)).toBe(beforeFingerprint);
   });
 });
+
+function cacheSourceFingerprint(projectRoot: string): string | null {
+  const db = openDatabase(projectRoot);
+  try {
+    const row = db
+      .prepare(`SELECT value FROM cache_metadata WHERE key = 'source_fingerprint'`)
+      .get() as { value?: unknown } | undefined;
+    return typeof row?.value === 'string' ? row.value : null;
+  } finally {
+    db.close();
+  }
+}
+
+function removeCacheSourceFingerprint(projectRoot: string): void {
+  const db = openDatabase(projectRoot);
+  try {
+    db.prepare(`DELETE FROM cache_metadata WHERE key = 'source_fingerprint'`).run();
+  } finally {
+    db.close();
+  }
+}

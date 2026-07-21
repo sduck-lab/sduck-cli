@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runReopenCommand } from '../../src/commands/reopen.js';
@@ -15,6 +15,7 @@ import { readCurrentWorkId } from '../../src/core/state.js';
 import { markStepCompleted } from '../../src/core/step.js';
 import { updateProject } from '../../src/core/update.js';
 import { writeProjectVersion } from '../../src/core/version-file.js';
+import { runCli } from '../helpers/run-cli.js';
 import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
 
 const TASK_EVAL_LABELS = [
@@ -27,7 +28,7 @@ const TASK_EVAL_LABELS = [
 ] as const;
 
 const CANONICAL_TEMPLATE_SEQUENCE =
-  '`sduck work` → `sduck context` → `sduck grill-me` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck remember`/`sduck recall` → `sduck close`';
+  '`sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck remember`/`sduck recall` → `sduck close`';
 
 const INSTALLED_AGENT_RULE_PATHS: Record<SupportedAgentId, string> = {
   'claude-code': 'CLAUDE.md',
@@ -94,6 +95,17 @@ describe('SDD core regression Interface', () => {
         'agent-rules',
         'skills',
         'sduck-codebase-decisions',
+        'SKILL.md',
+      ),
+    );
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'skills',
+        'sduck-retrospective-capture',
         'SKILL.md',
       ),
     );
@@ -300,12 +312,16 @@ describe('SDD core regression Interface', () => {
     expect(result.didChange).toBe(true);
     const refreshedRules = await readFile(claudeRulesPath, 'utf8');
     expect(refreshedRules).toContain('sduck-codebase-decisions');
+    expect(refreshedRules).toContain('sduck-retrospective-capture');
     expect(refreshedRules).toContain(
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
+    expect(refreshedRules).toContain(
+      '.sduck/sduck-assets/agent-rules/skills/sduck-retrospective-capture/SKILL.md',
+    );
     expect(refreshedRules).toContain('Primary workflow: v2 `.decision` decision briefing');
     expect(refreshedRules).toContain(
-      'work -> context -> grill-me -> submit -> ask/answer -> brief/confirm',
+      'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm',
     );
     expect(refreshedRules).toContain('Legacy SDD gated implementation rules');
   });
@@ -319,7 +335,7 @@ describe('SDD core regression Interface', () => {
       const installedRule = await readFile(join(workspace, installedRulePath), 'utf8');
       expect(installedRule, agent.id).toContain(CANONICAL_TEMPLATE_SEQUENCE);
       expect(installedRule, agent.id).toContain(
-        'New policy-required tasks must run `sduck grill-me` before `submit` or `confirm`, including small work.',
+        'New policy-required tasks must record `sduck grill complete --reason "..."` before `submit` or `confirm`, including small work.',
       );
       expect(installedRule, agent.id).toContain('Installed rules are canonical English');
 
@@ -338,20 +354,63 @@ describe('SDD core regression Interface', () => {
       expectInOrder(installedSkill, [
         'sduck work "Codebase decision inventory"',
         'sduck context',
-        'sduck grill-me',
+        'sduck grill complete --reason',
+        'sduck context add "src/**"',
         'sduck submit --stdin < draft.md',
         'sduck ask',
         'sduck answer QUESTION-1 --option 1',
         'sduck brief',
         'sduck confirm',
         'sduck trace',
+        'sduck evaluate --check',
         'sduck remember',
         'sduck recall "architecture decisions"',
         'sduck close',
       ]);
       expect(installedSkill, agent.id).toContain(
-        'Run `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded.',
+        'Run `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded and evaluated.',
       );
+
+      const retrospectiveSkill = await readFile(
+        join(
+          workspace,
+          '.sduck',
+          'sduck-assets',
+          'agent-rules',
+          'skills',
+          'sduck-retrospective-capture',
+          'SKILL.md',
+        ),
+        'utf8',
+      );
+      expect(retrospectiveSkill, agent.id).toContain('name: sduck-retrospective-capture');
+      expectInOrder(retrospectiveSkill, [
+        'sduck work "Retrospective decision capture"',
+        'sduck context',
+        'sduck grill complete --reason',
+        'sduck submit --stdin < draft.md',
+        'sduck brief',
+        'sduck confirm',
+        'sduck trace --base <base>',
+        'sduck evaluate --check "retrospective review=completed" --limitation "No automated checks were run"',
+        'sduck remember',
+        'sduck close',
+      ]);
+      expect(retrospectiveSkill, agent.id).toContain(
+        'Do not ask users to paste or upload transcripts.',
+      );
+      expect(retrospectiveSkill, agent.id).toContain(
+        'overrides the confirm baseline and records changed files, not proof of rationale',
+      );
+      expect(retrospectiveSkill, agent.id).toContain('an active LLM handoff alone is not enough');
+      expect(retrospectiveSkill, agent.id).toContain(
+        'Evaluation records checks performed and limitations; it does not run commands.',
+      );
+
+      if (agent.id === 'claude-code') {
+        await access(join(workspace, '.claude', 'skills', 'sduck-codebase-decisions.md'));
+        await access(join(workspace, '.claude', 'skills', 'sduck-retrospective-capture.md'));
+      }
 
       await removeTempWorkspace(workspace);
       workspace = null;
@@ -360,8 +419,9 @@ describe('SDD core regression Interface', () => {
     const root = process.cwd();
     const core = await readFile(join(root, '.sduck/sduck-assets/agent-rules/core.md'), 'utf8');
     expect(core).toContain(
-      'work -> context -> grill-me -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> remember/recall -> close',
+      'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> remember/recall -> close',
     );
+    expect(core).toContain('sduck-retrospective-capture');
     for (const command of [
       'sduck start',
       'sduck fast-track',
@@ -395,8 +455,12 @@ describe('SDD core regression Interface', () => {
       expect(content).not.toContain('.decision/locks/');
       expect(content).not.toContain('.decision/exports/graph/');
     }
-    expect(readme).toContain('Run the required grill-me gate for new policy-required tasks.');
-    expect(readmeKo).toContain('새 policy-required task의 필수 grill-me gate');
+    expect(readme).toContain(
+      '`sduck work` automatically records the grill start; agents review context and converse before `sduck grill complete --reason "..."`.',
+    );
+    expect(readmeKo).toContain(
+      '`sduck work`가 grill start를 자동 기록합니다. agent는 context를 검토하고 대화한 뒤 `sduck grill complete --reason "..."`를 기록합니다.',
+    );
 
     const useCases = await readFile(join(root, 'docs/use-cases.md'), 'utf8');
     expect(useCases).toContain('malformed canonical source는 수동으로 수정한다');
@@ -432,7 +496,7 @@ describe('SDD core regression Interface', () => {
     expect(rules).toContain('Selected agents: Codex, OpenCode');
     expect(rules).toContain('Codex Instructions');
     expect(rules).toContain('OpenCode Instructions');
-    expect(rules).toContain('New policy-required tasks must run `sduck grill-me`');
+    expect(rules).toContain('New policy-required tasks must record `sduck grill complete');
     expect(rules).toContain('Installed rules are canonical English');
     await expect(access(join(workspace, 'AGENT.md'))).rejects.toThrow();
   });
@@ -508,6 +572,197 @@ describe('SDD core regression Interface', () => {
         }),
       }),
     ).not.toThrow();
+  });
+
+  it('installs a safe executable Git post-commit marker hook', async () => {
+    workspace = await createTempWorkspace('sdd-post-commit-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Team Member'], { cwd: root });
+    execFileSync('git', ['config', 'user.email', 'team@example.test'], { cwd: root });
+
+    const assetHook = await readFile(
+      join(
+        process.cwd(),
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'hooks',
+        'sduck-retrospective-post-commit.sh',
+      ),
+      'utf8',
+    );
+    expect(assetHook).toContain('sduck-retrospective-pending.json');
+    expect(assetHook).not.toMatch(/(^|[;&|])\s*sduck\s/);
+    expect(assetHook).not.toMatch(/\b(curl|wget|nc|ssh|node|python|osascript)\b/);
+    expect(assetHook).not.toMatch(/\b(LLM|openai|anthropic|claude|gemini)\b/i);
+
+    const enabledInit = await initProject({ agents: [], force: false }, root);
+    expect(enabledInit.summary.created).not.toContain('git-hooks/post-commit');
+    expect(enabledInit.summary.warnings).not.toContain(
+      expect.stringContaining('post-commit hook install'),
+    );
+
+    await mkdir(join(root, '.decision'), { recursive: true });
+    await writeFile(
+      join(root, '.decision', 'policy.json'),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: true, workflowEnabled: false }, null, 2)}\n`,
+    );
+    const init = await initProject({ agents: [], force: false }, root);
+    expect(init.summary.created).toContain('git-hooks/post-commit');
+    const hookPath = execFileSync('git', ['rev-parse', '--git-path', 'hooks/post-commit'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+    const hookAbsolutePath = isAbsolute(hookPath) ? hookPath : join(root, hookPath);
+    expect((await stat(hookAbsolutePath)).mode & 0o111).not.toBe(0);
+    expect(await readFile(hookAbsolutePath, 'utf8')).toContain('sduck-retrospective-pending.json');
+
+    await writeFile(
+      join(root, '.decision', 'policy.json'),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: true, workflowEnabled: true }, null, 2)}\n`,
+    );
+    await writeFile(join(root, 'README.md'), '# temp\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: root });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: root });
+    const markerPath = execFileSync(
+      'git',
+      ['rev-parse', '--git-path', 'sduck-retrospective-pending.json'],
+      { cwd: root, encoding: 'utf8' },
+    ).trim();
+    const markerAbsolutePath = isAbsolute(markerPath) ? markerPath : join(root, markerPath);
+    await expect(access(markerAbsolutePath)).rejects.toThrow();
+
+    await writeFile(
+      join(root, '.decision', 'policy.json'),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: true, workflowEnabled: false }, null, 2)}\n`,
+    );
+    await writeFile(join(root, 'README.md'), '# temp 2\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: root });
+    execFileSync('git', ['commit', '-m', 'change'], { cwd: root });
+    const marker = JSON.parse(await readFile(markerAbsolutePath, 'utf8')) as {
+      commitSha: string;
+      parentSha: string | null;
+      createdAt: string;
+    };
+    expect(marker.commitSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(marker.parentSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(marker.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    await writeFile(hookAbsolutePath, '#!/bin/sh\nexit 0\n');
+    const safeRerun = await initProject({ agents: [], force: false }, root);
+    expect(safeRerun.summary.kept).toContain('git-hooks/post-commit');
+    expect(await readFile(hookAbsolutePath, 'utf8')).toBe('#!/bin/sh\nexit 0\n');
+
+    const forceRerun = await initProject({ agents: [], force: true }, root);
+    expect(forceRerun.summary.kept).toContain('git-hooks/post-commit');
+    expect(await readFile(hookAbsolutePath, 'utf8')).toBe('#!/bin/sh\nexit 0\n');
+
+    await rm(hookAbsolutePath, { recursive: true, force: true });
+    await mkdir(hookAbsolutePath, { recursive: true });
+    const nonFileRerun = await initProject({ agents: [], force: true }, root);
+    expect(nonFileRerun.summary.kept).toContain('git-hooks/post-commit');
+    expect(nonFileRerun.summary.structuredWarnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'kept-existing-non-file-hook' })]),
+    );
+  });
+
+  it('captures the real installed post-commit hook marker through the CLI retrospective path', async () => {
+    workspace = await createTempWorkspace('sdd-post-commit-capture-');
+    const root = workspace;
+    const cliRoot = process.cwd();
+    execFileSync('git', ['init'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Team Member'], { cwd: root });
+    execFileSync('git', ['config', 'user.email', 'team@example.test'], { cwd: root });
+
+    const init = await runCli(['init'], { cliRoot, cwd: root });
+    expect(init.exitCode).toBe(0);
+    const disableForHook = await runCli(['workflow', 'disable'], { cliRoot, cwd: root });
+    expect(disableForHook.exitCode).toBe(0);
+    const hookPath = execFileSync('git', ['rev-parse', '--git-path', 'hooks/post-commit'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+    const hookAbsolutePath = isAbsolute(hookPath) ? hookPath : join(root, hookPath);
+    expect(await readFile(hookAbsolutePath, 'utf8')).toContain('sduck-retrospective-pending.json');
+
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 2;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root });
+    execFileSync('git', ['commit', '-m', 'change'], { cwd: root });
+
+    const markerPath = execFileSync(
+      'git',
+      ['rev-parse', '--git-path', 'sduck-retrospective-pending.json'],
+      { cwd: root, encoding: 'utf8' },
+    ).trim();
+    const markerAbsolutePath = isAbsolute(markerPath) ? markerPath : join(root, markerPath);
+    const marker = JSON.parse(await readFile(markerAbsolutePath, 'utf8')) as {
+      commitSha: string;
+      parentSha: string | null;
+      createdAt: string;
+    };
+    expect(marker.commitSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(marker.parentSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(marker.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const draft = JSON.stringify({
+      schemaVersion: 'v2alpha1',
+      expectedScope: ['tracked.ts'],
+      implementationPlan: ['The commit from the installed post-commit hook already landed.'],
+      verificationPlan: ['Run retrospective capture against the installed hook marker.'],
+      decisions: [
+        {
+          id: 'DEC-installed-hook-marker',
+          title: 'Accept installed hook marker schema',
+          kind: 'INFERRED',
+          summary: 'The real installed post-commit hook marker is compatible with capture.',
+          appliesTo: ['tracked.ts'],
+        },
+      ],
+      evidence: [
+        {
+          id: 'EVD-installed-hook-marker',
+          sourceType: 'CODE',
+          sourceRef: 'tracked.ts',
+          summary: 'The second commit changed tracked.ts and produced the pending marker.',
+        },
+      ],
+    });
+
+    const captured = await runCli(['retrospective', 'capture', '--stdin'], {
+      cliRoot,
+      cwd: root,
+      stdin: draft,
+    });
+
+    expect(captured.exitCode).toBe(0);
+    expect(captured.stdout).toContain('Retrospective capture recorded.');
+    await expect(access(markerAbsolutePath)).rejects.toThrow();
+  });
+
+  it('documents marker-driven retrospective guidance without promising hook-run LLMs', async () => {
+    const root = process.cwd();
+    const core = await readFile(join(root, '.sduck/sduck-assets/agent-rules/core.md'), 'utf8');
+    expect(core).toContain('At the beginning of each response');
+    expect(core).toContain('immediately after any commit you perform');
+    expect(core).toContain('sduck-retrospective-pending.json');
+    expect(core).toContain('never runs sduck, an LLM, or a network request');
+    expect(core).toContain('best-effort basis');
+
+    const skill = await readFile(
+      join(root, '.sduck/sduck-assets/agent-rules/skills/sduck-retrospective-capture/SKILL.md'),
+      'utf8',
+    );
+    expect(skill).toContain('sduck retrospective capture --stdin');
+    expect(skill).toContain('`parent..commit` diff');
+    expect(skill).toContain(
+      'Do not run or mention `sduck work` for this disabled automation path.',
+    );
+    expect(skill).toContain('Never store transcript text');
+    expect(skill).toContain('confirm the marker has been cleared');
   });
 
   it('rejects a non-contiguous legacy plan before changing task metadata', async () => {

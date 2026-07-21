@@ -3,6 +3,7 @@ import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { openDatabase } from '../../src/core/v2/store.js';
 import { runCli } from '../helpers/run-cli.js';
 import { createTempWorkspace, removeTempWorkspace } from '../helpers/temp-workspace.js';
 
@@ -53,6 +54,39 @@ describeIfSqlite('v2 CLI flow', () => {
     workspace = null;
   });
 
+  it('prints the exact package version', async () => {
+    workspace = await createTempWorkspace('v2-cli-version-');
+
+    const version = await runCli(['--version'], { cliRoot, cwd: workspace });
+
+    expect(version.exitCode).toBe(0);
+    expect(version.stdout.trim()).toBe('0.6.0');
+    expect(version.stderr).toBe('');
+  });
+
+  it('keeps deferred CLI boundary commands unavailable', async () => {
+    workspace = await createTempWorkspace('v2-cli-boundary-');
+
+    const candidates = [
+      ['mcp'],
+      ['verify'],
+      ['confirm', '--digest', 'sduck-brief-digest/v1:abc'],
+      ['confirm', '--brief-digest', 'sduck-brief-digest/v1:abc'],
+      ['prepare-confirmation'],
+      ['digest-confirmation'],
+      ['refresh-context'],
+      ['context', 'refresh'],
+    ];
+
+    for (const args of candidates) {
+      const result = await runCli(args, { cliRoot, cwd: workspace });
+      const output = `${result.stdout}\n${result.stderr}`;
+
+      expect(result.exitCode, args.join(' ')).not.toBe(0);
+      expect(output, args.join(' ')).toMatch(/unknown (command|option)|error:/i);
+    }
+  }, 10_000);
+
   it('runs init, work, submit, answer, brief, confirm, trace, remember, recall, close', async () => {
     workspace = await createTempWorkspace('v2-cli-');
     execFileSync('git', ['init'], { cwd: workspace, env: isolatedGitEnv() });
@@ -95,16 +129,34 @@ describeIfSqlite('v2 CLI flow', () => {
     const taskId = (JSON.parse(status.stdout) as { task: { id: string } }).task.id;
     const grill = await runCli(['grill-me'], { cliRoot, cwd: workspace });
     expect(grill.exitCode).toBe(0);
-    expect(grill.stdout).toContain('Grill-me started.');
+    expect(grill.stdout).toContain('Grill-me already started.');
     const grillAgain = await runCli(['grill-me', '--json'], { cliRoot, cwd: workspace });
     expect(grillAgain.exitCode).toBe(0);
     expect(JSON.parse(grillAgain.stdout)).toMatchObject({
       taskId,
       recorded: false,
     });
+    const prematureSubmit = await runCli(['submit', '--stdin'], {
+      cliRoot,
+      cwd: workspace,
+      stdin: JSON.stringify({ schemaVersion: 'v2alpha1', taskId, decisions: [] }),
+    });
+    expect(prematureSubmit.exitCode).toBe(1);
+    expect(`${prematureSubmit.stdout}\n${prematureSubmit.stderr}`).toContain('grill');
+    const grillComplete = await runCli(
+      ['grill', 'complete', '--reason', 'Shared understanding reached'],
+      {
+        cliRoot,
+        cwd: workspace,
+      },
+    );
+    expect(grillComplete.exitCode).toBe(0);
+    expect(grillComplete.stdout).toContain('Grill completed');
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
+      implementationPlan: ['Update tracked retry behavior.'],
+      verificationPlan: ['Run focused CLI workflow assertions.'],
       decisions: [
         {
           id: 'DEC-tracked',
@@ -169,6 +221,63 @@ describeIfSqlite('v2 CLI flow', () => {
       ]),
     );
 
+    const evaluation = await runCli(['evaluate', '--check', 'unit=passed', '--json'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(evaluation.exitCode).toBe(0);
+    expect(JSON.parse(evaluation.stdout)).toMatchObject({ traceId: parsedTrace.trace.id });
+
+    await writeFile(join(workspace, 'tracked.ts'), 'export const tracked = 3;\n');
+    const newerTrace = await runCli(['trace', '--json'], { cliRoot, cwd: workspace });
+    const parsedNewerTrace = JSON.parse(newerTrace.stdout) as { trace: { id: string } };
+    const rememberBeforeEvaluation = await runCli(['remember'], { cliRoot, cwd: workspace });
+    expect(rememberBeforeEvaluation.stdout).toContain('sduck evaluate');
+    const prematureClose = await runCli(['close'], { cliRoot, cwd: workspace });
+    expect(prematureClose.exitCode).toBe(1);
+    expect(`${prematureClose.stdout}\n${prematureClose.stderr}`).toContain(
+      parsedNewerTrace.trace.id,
+    );
+    const newerEvaluation = await runCli(['evaluate', '--check', 'latest=recorded'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(newerEvaluation.exitCode).toBe(0);
+
+    const graph = await runCli(['graph', 'show', taskId, '--depth', '2', '--json'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(graph.exitCode).toBe(0);
+    const parsedGraph = JSON.parse(graph.stdout) as { nodes: { id: string }[]; edges: unknown[] };
+    expect(parsedGraph.nodes.map((node) => node.id)).toEqual(
+      [...parsedGraph.nodes.map((node) => node.id)].sort((a, b) => a.localeCompare(b)),
+    );
+    expect(parsedGraph.edges.length).toBeGreaterThan(0);
+    for (const edge of parsedGraph.edges as { from: string; to: string }[]) {
+      expect(parsedGraph.nodes.some((node) => node.id === edge.from)).toBe(true);
+      expect(parsedGraph.nodes.some((node) => node.id === edge.to)).toBe(true);
+    }
+    const db = openDatabase(workspace);
+    db.prepare(`DELETE FROM cache_metadata WHERE key = 'graph_projection_version'`).run();
+    db.close();
+    const upgradedGraph = await runCli(['graph', 'show', taskId, '--depth', '2', '--json'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(upgradedGraph.exitCode).toBe(0);
+    expect(JSON.parse(upgradedGraph.stdout)).toEqual(parsedGraph);
+    const unknownGraph = await runCli(['graph', 'show', 'TASK-does-not-exist', '--json'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(unknownGraph.exitCode).toBe(1);
+    const invalidDepth = await runCli(['graph', 'show', taskId, '--depth', 'nope'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(invalidDepth.exitCode).toBe(1);
+
     expect((await runCli(['remember'], { cliRoot, cwd: workspace })).stdout).toContain(
       'decision-graph.json',
     );
@@ -198,8 +307,13 @@ describeIfSqlite('v2 CLI flow', () => {
     });
     const statusAfterRebuild = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
     expect(JSON.parse(statusAfterRebuild.stdout)).toMatchObject({
-      indicators: { grillMeRequired: true, grillMeStarted: true },
+      indicators: { grillMeRequired: true, grillMeStarted: true, grillMeCompleted: true },
     });
+    const graphAfterRebuild = await runCli(['graph', 'show', taskId, '--depth', '2', '--json'], {
+      cliRoot,
+      cwd: workspace,
+    });
+    expect(JSON.parse(graphAfterRebuild.stdout)).toEqual(parsedGraph);
 
     await unlink(join(workspace, '.decision', 'db.sqlite'));
     const autoStatus = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
@@ -225,12 +339,13 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(decisionGitStatus).not.toContain('db.sqlite');
     expect(decisionGitStatus).not.toContain('state.json');
     expect(decisionGitStatus).not.toContain('exports/graphify');
-  }, 15_000);
+  }, 60_000);
 
   it('blocks submit and confirm before grill-me in a new required workspace', async () => {
     workspace = await createTempWorkspace('v2-cli-grill-required-');
     const init = await runCli(['init'], { cliRoot, cwd: workspace });
     expect(init.exitCode).toBe(0);
+    await unlink(join(workspace, '.decision', 'policy.json'));
     const work = await runCli(['work', 'required grill gate'], { cliRoot, cwd: workspace });
     expect(work.exitCode).toBe(0);
     const taskId = (
@@ -241,6 +356,8 @@ describeIfSqlite('v2 CLI flow', () => {
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
+      implementationPlan: ['Implement gated path.'],
+      verificationPlan: ['Verify guided gates.'],
       decisions: [{ id: 'DEC-gated', title: 'Gated', kind: 'EXPLICIT', summary: 'Blocked.' }],
     });
 
@@ -254,7 +371,40 @@ describeIfSqlite('v2 CLI flow', () => {
     expect((await runCli(['grill-me'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
     expect(
       (await runCli(['submit', '--stdin'], { cliRoot, cwd: workspace, stdin: draft })).exitCode,
+    ).toBe(1);
+    expect(
+      (await runCli(['grill', 'complete', '--reason', 'Ready'], { cliRoot, cwd: workspace }))
+        .exitCode,
+    ).toBe(0);
+    expect(
+      (await runCli(['submit', '--stdin'], { cliRoot, cwd: workspace, stdin: draft })).exitCode,
     ).toBe(0);
     expect((await runCli(['confirm'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
+  }, 10_000);
+
+  it('manages the retrospective hook through workflow disable without replacing user hooks', async () => {
+    workspace = await createTempWorkspace('v2-cli-workflow-hook-');
+    execFileSync('git', ['init'], { cwd: workspace, env: isolatedGitEnv() });
+    const hookPath = execFileSync('git', ['rev-parse', '--git-path', 'hooks/post-commit'], {
+      cwd: workspace,
+      env: isolatedGitEnv(),
+      encoding: 'utf8',
+    }).trim();
+    const absoluteHookPath = join(workspace, hookPath);
+
+    expect((await runCli(['init'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
+    await expect(readFile(absoluteHookPath, 'utf8')).rejects.toThrow();
+    const disable = await runCli(['workflow', 'disable'], { cliRoot, cwd: workspace });
+    expect(disable.exitCode).toBe(0);
+    expect(await readFile(absoluteHookPath, 'utf8')).toContain(
+      'sduck managed retrospective post-commit hook',
+    );
+    expect((await runCli(['workflow', 'enable'], { cliRoot, cwd: workspace })).exitCode).toBe(0);
+
+    await writeFile(absoluteHookPath, '#!/bin/sh\nexit 0\n');
+    const userHook = await runCli(['workflow', 'disable'], { cliRoot, cwd: workspace });
+    expect(userHook.exitCode).toBe(0);
+    expect(userHook.stdout).toContain('Kept existing Git post-commit hook');
+    expect(await readFile(absoluteHookPath, 'utf8')).toBe('#!/bin/sh\nexit 0\n');
   });
 });

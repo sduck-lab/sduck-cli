@@ -1,5 +1,5 @@
 import { taskNotFound, V2ExpectedError } from './errors.js';
-import { hasGrillMeStarted, isGrillMeRequiredForTask } from './grill.js';
+import { hasGrillMeCompleted, hasGrillMeStarted, isGrillMeRequiredForTask } from './grill.js';
 
 import type { SourceBundle } from './source-types.js';
 import type { Task, TaskStatus } from '../../types/index.js';
@@ -48,6 +48,14 @@ export class TaskLifecycle {
 
   private assertGrillMeSatisfied(command: DecisionTaskCommand): void {
     if (command !== 'submit' && command !== 'confirm') return;
+    if (this.isGuided()) {
+      if (hasGrillMeCompleted(this.bundle.events, this.taskId)) return;
+      throw new V2ExpectedError('GRILL_ME_REQUIRED', {
+        command,
+        taskId: this.taskId,
+        completion: true,
+      });
+    }
     if (!isGrillMeRequiredForTask(this.bundle.events, this.taskId)) return;
     if (hasGrillMeStarted(this.bundle.events, this.taskId)) return;
     throw new V2ExpectedError('GRILL_ME_REQUIRED', { command, taskId: this.taskId });
@@ -99,6 +107,7 @@ export class TaskLifecycle {
 
   setTerminal(status: 'CLOSED' | 'ABANDONED', updatedAt: string): void {
     this.assertAllowed(status === 'CLOSED' ? 'close' : 'abandon');
+    if (status === 'CLOSED' && this.isGuided()) this.assertGuidedCloseReady();
     this.setStatus(status, updatedAt);
   }
 
@@ -122,8 +131,36 @@ export class TaskLifecycle {
     const unresolvedDecision = activeDecisions.some(
       (decision) => decision.kind === 'OPEN' || decision.kind === 'CONFLICT',
     );
-    return !questionsOpen && !unresolvedDecision && activeDecisions.length > 0
+    const planReady =
+      !this.isGuided() ||
+      ((this.task.implementationPlan ?? []).length > 0 &&
+        (this.task.verificationPlan ?? []).length > 0);
+    const grillReady = !this.isGuided() || hasGrillMeCompleted(this.bundle.events, this.taskId);
+    return !questionsOpen &&
+      !unresolvedDecision &&
+      activeDecisions.length > 0 &&
+      planReady &&
+      grillReady
       ? 'BRIEF_READY'
       : 'OPEN';
+  }
+
+  private isGuided(): boolean {
+    return this.task.guided === true;
+  }
+
+  private assertGuidedCloseReady(): void {
+    const traces = this.bundle.implementationTraces.filter((trace) => trace.taskId === this.taskId);
+    const latest = traces.at(-1);
+    if (latest === undefined)
+      throw new V2ExpectedError('CLOSE_REQUIRES_TRACE', { taskId: this.taskId });
+    const evaluated = this.bundle.evaluations.some(
+      (evaluation) => evaluation.taskId === this.taskId && evaluation.traceId === latest.id,
+    );
+    if (!evaluated)
+      throw new V2ExpectedError('CLOSE_REQUIRES_EVALUATION', {
+        taskId: this.taskId,
+        traceId: latest.id,
+      });
   }
 }

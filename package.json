@@ -1,6 +1,6 @@
 {
   "name": "@sduck/sduck-cli",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Terminal-first decision briefing harness for coding agents",
   "repository": {
     "type": "git",
@@ -72,5 +72,12 @@
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.28.0",
     "vitest": "^3.2.7"
-  }
+  },
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": ""
 }

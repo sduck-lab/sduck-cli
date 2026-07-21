@@ -173,4 +173,37 @@ export function ensureSchema(db: DatabaseSyncType): void {
       value TEXT NOT NULL
     );
   `);
+  ensureColumn(db, 'tasks', 'implementation_plan_json', 'TEXT');
+  ensureColumn(db, 'tasks', 'verification_plan_json', 'TEXT');
+  ensureColumn(db, 'tasks', 'guided', 'INTEGER');
+  ensureColumn(db, 'tasks', 'retrospective', 'INTEGER');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS evaluations (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      trace_id TEXT NOT NULL,
+      checks_json TEXT NOT NULL,
+      limitations_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graph_nodes (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graph_edges (
+      id TEXT PRIMARY KEY,
+      from_id TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      kind TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS graph_edges_from_idx ON graph_edges(from_id, kind, to_id);
+    CREATE INDEX IF NOT EXISTS graph_edges_to_idx ON graph_edges(to_id, kind, from_id);
+  `);
+}
+
+function ensureColumn(db: DatabaseSyncType, table: string, column: string, spec: string): void {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (rows.some((row) => row.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${spec}`);
 }

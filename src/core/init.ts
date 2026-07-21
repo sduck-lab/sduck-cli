@@ -1,5 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   type AgentRuleTarget,
@@ -16,7 +19,11 @@ import {
   CLAUDE_CODE_HOOK_SOURCE_PATH,
   CLAUDE_CODE_SKILLS_PATH,
 } from './agent-rules.js';
-import { EVAL_ASSET_RELATIVE_PATHS, getBundledAssetsRoot } from './assets.js';
+import {
+  EVAL_ASSET_RELATIVE_PATHS,
+  getBundledAssetsRoot,
+  listBundledAssetsRootCandidates,
+} from './assets.js';
 import {
   copyFileIntoPlace,
   ensureDirectory,
@@ -34,6 +41,7 @@ import {
   PROJECT_SDUCK_WORKSPACE_RELATIVE_PATH,
   toBundledAssetRelativePath,
 } from './project-paths.js';
+import { readDecisionWorkspacePolicy } from './v2/policy.js';
 import { writeProjectVersion } from './version-file.js';
 
 import type { InitCommandOptions, InitMode, ResolvedInitOptions } from './init-types.js';
@@ -58,7 +66,9 @@ export type AssetTemplateKey =
   | 'agent-rules-cursor'
   | 'agent-rules-antigravity'
   | 'agent-rules-skill-codebase-decisions'
-  | 'agent-rules-hook';
+  | 'agent-rules-skill-retrospective-capture'
+  | 'agent-rules-hook'
+  | 'agent-rules-retrospective-post-commit-hook';
 
 export interface AssetTemplateDefinition {
   key: AssetTemplateKey;
@@ -91,6 +101,9 @@ export type InitWarningCode =
   | 'cannot-create-skills-directory'
   | 'cannot-copy-skill-non-file'
   | 'skill-source-not-found'
+  | 'not-git-repo'
+  | 'kept-existing-post-commit-hook'
+  | 'kept-managed-post-commit-hook'
   | 'gitignore-update-failed'
   | 'refresh-assets-recommended'
   | 'refresh-rules-recommended';
@@ -214,8 +227,25 @@ const ASSET_TEMPLATE_DEFINITIONS = [
     ),
   },
   {
+    key: 'agent-rules-skill-retrospective-capture',
+    relativePath: getProjectRelativeSduckAssetPath(
+      'agent-rules',
+      'skills',
+      'sduck-retrospective-capture',
+      'SKILL.md',
+    ),
+  },
+  {
     key: 'agent-rules-hook',
     relativePath: getProjectRelativeSduckAssetPath('agent-rules', 'hooks', 'sdd-guard.sh'),
+  },
+  {
+    key: 'agent-rules-retrospective-post-commit-hook',
+    relativePath: getProjectRelativeSduckAssetPath(
+      'agent-rules',
+      'hooks',
+      'sduck-retrospective-post-commit.sh',
+    ),
   },
 ] as const satisfies readonly AssetTemplateDefinition[];
 
@@ -460,6 +490,8 @@ export async function initProject(
     await installClaudeCodeSkills(projectRoot, summary, mode);
   }
 
+  installRetrospectivePostCommitHook(projectRoot, summary, mode);
+
   await writeProjectVersion(projectRoot);
 
   return {
@@ -472,6 +504,135 @@ export async function initProject(
 }
 
 const CLAUDE_CODE_HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/sdd-guard.sh';
+const RETROSPECTIVE_POST_COMMIT_HOOK_SOURCE_PATH = join(
+  'hooks',
+  'sduck-retrospective-post-commit.sh',
+);
+const GIT_POST_COMMIT_HOOK_DISPLAY_PATH = 'git-hooks/post-commit';
+
+export function installRetrospectivePostCommitHook(
+  projectRoot: string,
+  summary: InitExecutionSummary,
+  mode: InitMode,
+): void {
+  installRetrospectivePostCommitHookSync(projectRoot, summary, mode);
+}
+
+const MANAGED_RETROSPECTIVE_HOOK_SENTINEL = 'sduck managed retrospective post-commit hook';
+
+function getBundledAssetsRootSync(): string {
+  const currentDirectoryPath = dirname(fileURLToPath(import.meta.url));
+  for (const candidatePath of listBundledAssetsRootCandidates(currentDirectoryPath)) {
+    try {
+      if (fs.statSync(candidatePath).isDirectory()) return candidatePath;
+    } catch {
+      // Try the next bundled asset layout candidate.
+    }
+  }
+  throw new Error('Unable to locate bundled .sduck/sduck-assets directory.');
+}
+
+function getFsEntryKindSync(targetPath: string): FsEntryKind {
+  try {
+    const stats = fs.statSync(targetPath);
+    if (stats.isDirectory()) return 'directory';
+    return 'file';
+  } catch {
+    return 'missing';
+  }
+}
+
+function resolveGitPathSync(projectRoot: string, relativePath: string): string | null {
+  try {
+    const insideWorkTree = execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (insideWorkTree !== 'true') return null;
+    const gitPath = execFileSync('git', ['rev-parse', '--git-path', relativePath], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (gitPath === '') return null;
+    return isAbsolute(gitPath) ? gitPath : join(projectRoot, gitPath);
+  } catch {
+    return null;
+  }
+}
+
+function isWorkflowPolicyDisabled(projectRoot: string): boolean {
+  return readDecisionWorkspacePolicy(projectRoot)?.workflowEnabled === false;
+}
+
+export function installRetrospectivePostCommitHookSync(
+  projectRoot: string,
+  summary: InitExecutionSummary,
+  mode: InitMode,
+): void {
+  if (!isWorkflowPolicyDisabled(projectRoot)) {
+    return;
+  }
+
+  const hookTargetPath = resolveGitPathSync(projectRoot, 'hooks/post-commit');
+
+  if (hookTargetPath === null) {
+    summary.structuredWarnings.push({
+      code: 'not-git-repo',
+      path: GIT_POST_COMMIT_HOOK_DISPLAY_PATH,
+    });
+    summary.warnings.push('Skipped Git post-commit hook install: not inside a Git repository.');
+    return;
+  }
+
+  const hookTargetKind = getFsEntryKindSync(hookTargetPath);
+
+  if (hookTargetKind === 'missing') {
+    const assetRoot = getBundledAssetsRootSync();
+    const hookSourcePath = join(
+      assetRoot,
+      'agent-rules',
+      RETROSPECTIVE_POST_COMMIT_HOOK_SOURCE_PATH,
+    );
+    fs.mkdirSync(dirname(hookTargetPath), { recursive: true });
+    fs.copyFileSync(hookSourcePath, hookTargetPath);
+    fs.chmodSync(hookTargetPath, 0o755);
+
+    summary.created.push(GIT_POST_COMMIT_HOOK_DISPLAY_PATH);
+    summary.rows.push({ path: GIT_POST_COMMIT_HOOK_DISPLAY_PATH, status: 'created' });
+    return;
+  }
+
+  summary.kept.push(GIT_POST_COMMIT_HOOK_DISPLAY_PATH);
+  summary.rows.push({ path: GIT_POST_COMMIT_HOOK_DISPLAY_PATH, status: 'kept' });
+
+  if (hookTargetKind === 'file') {
+    let isManaged = false;
+    try {
+      isManaged = fs
+        .readFileSync(hookTargetPath, 'utf8')
+        .includes(MANAGED_RETROSPECTIVE_HOOK_SENTINEL);
+    } catch {
+      isManaged = false;
+    }
+    summary.structuredWarnings.push({
+      code: isManaged ? 'kept-managed-post-commit-hook' : 'kept-existing-post-commit-hook',
+      path: GIT_POST_COMMIT_HOOK_DISPLAY_PATH,
+    });
+    summary.warnings.push(
+      mode === 'force'
+        ? 'Kept existing Git post-commit hook even under --force; sduck never replaces existing user or managed post-commit hooks automatically.'
+        : 'Kept existing Git post-commit hook; sduck installs the managed retrospective marker hook only when the hook path is absent.',
+    );
+  } else {
+    summary.structuredWarnings.push({
+      code: 'kept-existing-non-file-hook',
+      path: GIT_POST_COMMIT_HOOK_DISPLAY_PATH,
+    });
+    summary.warnings.push(`Kept existing non-file Git post-commit hook path: ${hookTargetPath}`);
+  }
+}
 
 function createClaudeCodeHookEntry(): Record<string, unknown> {
   return {
@@ -755,48 +916,39 @@ async function installClaudeCodeSkills(
     return;
   }
 
-  // sduck-codebase-decisions 스킬 복사
-  const skillSourcePath = join(skillsSourceRoot, 'sduck-codebase-decisions', 'SKILL.md');
-  const skillTargetPath = join(skillsTargetRoot, 'sduck-codebase-decisions.md');
+  for (const skillName of ['sduck-codebase-decisions', 'sduck-retrospective-capture'] as const) {
+    const skillSourcePath = join(skillsSourceRoot, skillName, 'SKILL.md');
+    const skillTargetRelativePath = `${CLAUDE_CODE_SKILLS_PATH}/${skillName}.md`;
+    const skillTargetPath = join(skillsTargetRoot, `${skillName}.md`);
 
-  const skillSourceKind = await getFsEntryKind(skillSourcePath);
+    const skillSourceKind = await getFsEntryKind(skillSourcePath);
 
-  if (skillSourceKind === 'file') {
-    const skillTargetKind = await getFsEntryKind(skillTargetPath);
+    if (skillSourceKind === 'file') {
+      const skillTargetKind = await getFsEntryKind(skillTargetPath);
 
-    if (skillTargetKind === 'missing' || (skillTargetKind === 'file' && mode === 'force')) {
-      await copyFileIntoPlace(skillSourcePath, skillTargetPath);
+      if (skillTargetKind === 'missing' || (skillTargetKind === 'file' && mode === 'force')) {
+        await copyFileIntoPlace(skillSourcePath, skillTargetPath);
 
-      if (skillTargetKind === 'missing') {
-        summary.created.push(`${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`);
-        summary.rows.push({
-          path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
-          status: 'created',
-        });
+        if (skillTargetKind === 'missing') {
+          summary.created.push(skillTargetRelativePath);
+          summary.rows.push({ path: skillTargetRelativePath, status: 'created' });
+        } else {
+          summary.overwritten.push(skillTargetRelativePath);
+          summary.rows.push({ path: skillTargetRelativePath, status: 'overwritten' });
+        }
+      } else if (skillTargetKind === 'file') {
+        summary.kept.push(skillTargetRelativePath);
+        summary.rows.push({ path: skillTargetRelativePath, status: 'kept' });
       } else {
-        summary.overwritten.push(`${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`);
-        summary.rows.push({
-          path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
-          status: 'overwritten',
+        summary.structuredWarnings.push({
+          code: 'cannot-copy-skill-non-file',
+          path: skillTargetRelativePath,
         });
+        summary.warnings.push(`Cannot copy skill: ${skillTargetRelativePath} exists as non-file.`);
       }
-    } else if (skillTargetKind === 'file') {
-      summary.kept.push(`${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`);
-      summary.rows.push({
-        path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
-        status: 'kept',
-      });
     } else {
-      summary.structuredWarnings.push({
-        code: 'cannot-copy-skill-non-file',
-        path: `${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md`,
-      });
-      summary.warnings.push(
-        `Cannot copy skill: ${CLAUDE_CODE_SKILLS_PATH}/sduck-codebase-decisions.md exists as non-file.`,
-      );
+      summary.structuredWarnings.push({ code: 'skill-source-not-found', path: skillSourcePath });
+      summary.warnings.push(`Skill source not found: ${skillSourcePath}`);
     }
-  } else {
-    summary.structuredWarnings.push({ code: 'skill-source-not-found', path: skillSourcePath });
-    summary.warnings.push(`Skill source not found: ${skillSourcePath}`);
   }
 }

@@ -1,24 +1,48 @@
-import { readFileSync } from 'node:fs';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import { isV2CommandError, V2CommandError } from './errors.js';
 import { readGlobalConfig, setGlobalLocale } from '../../config/global-config.js';
+import {
+  installRetrospectivePostCommitHookSync,
+  type InitExecutionSummary,
+} from '../../core/init.js';
 import { confirmBrief, buildBriefView } from '../../core/v2/brief.js';
 import { ensureReadableCache } from '../../core/v2/cache.js';
 import { addContextPath, buildContextIndex, getContextPack } from '../../core/v2/context.js';
 import { doctorDecisionWorkspace } from '../../core/v2/doctor.js';
 import { submitDraft } from '../../core/v2/draft.js';
-import { isV2ExpectedError } from '../../core/v2/errors.js';
-import { recordGrillMeStarted, type GrillMeView } from '../../core/v2/grill.js';
+import { isV2ExpectedError, V2ExpectedError } from '../../core/v2/errors.js';
+import { recordEvaluation } from '../../core/v2/evaluate.js';
+import { showGraph } from '../../core/v2/graph.js';
+import {
+  recordGrillCompleted,
+  recordGrillMeStarted,
+  type GrillMeView,
+} from '../../core/v2/grill.js';
+import { policyPath } from '../../core/v2/paths.js';
+import {
+  DEFAULT_REQUIRED_POLICY,
+  getWorkflowStatus,
+  readDecisionWorkspacePolicy,
+} from '../../core/v2/policy.js';
 import { answerQuestion, getNextOpenQuestion } from '../../core/v2/question.js';
 import { rebuildDecisionCache } from '../../core/v2/rebuild.js';
 import { recall } from '../../core/v2/recall.js';
 import { remember } from '../../core/v2/remember.js';
 import { fail, ok } from '../../core/v2/result.js';
-import { getCurrentTaskId } from '../../core/v2/state.js';
+import {
+  captureRetrospective,
+  hasRetrospectivePendingMarker,
+  withRetrospectiveMarkerPublicationLock,
+} from '../../core/v2/retrospective.js';
+import { loadSourceBundle } from '../../core/v2/source-store.js';
+import { getCurrentTaskId, readState, validateDecisionState } from '../../core/v2/state.js';
 import { buildStatusView } from '../../core/v2/status.js';
 import { openDatabase } from '../../core/v2/store.js';
 import { createTask, resumeTask, setTerminalStatus } from '../../core/v2/task.js';
 import { createImplementationTrace } from '../../core/v2/trace.js';
+import { withDecisionWorkspaceLock } from '../../core/v2/workspace-lock.js';
 import { initDecisionWorkspace } from '../../core/v2/workspace.js';
 import { enV2Messages, getV2Messages } from '../../ui/v2/messages.js';
 import { promptForQuestionAnswer } from '../../ui/v2/prompts.js';
@@ -34,7 +58,6 @@ import {
 } from '../../ui/v2/render.js';
 
 import type { Locale, GlobalConfigWarning } from '../../config/global-config.js';
-import type { V2ExpectedError } from '../../core/v2/errors.js';
 import type { CommandResult } from '../../core/v2/result.js';
 import type { V2MessageCatalog } from '../../ui/v2/messages.js';
 
@@ -93,12 +116,12 @@ export function runWorkCommand(
 ): CommandResult {
   try {
     initDecisionWorkspace(projectRoot);
-    const task = createTask(projectRoot, description);
+    const task = createTask(projectRoot, description, { guided: true });
     const contextItems = buildContextIndex(projectRoot, task);
     const status = buildStatusView(projectRoot);
     const messages = runtime.messages;
     const grillMeStep = status.indicators.grillMeRequired
-      ? `  sduck ${messages.workflow.grillMe}`
+      ? `  sduck grill complete --reason "..."`
       : `  sduck ${messages.workflow.grillMe} (${messages.labels.grillMePermissive})`;
     return ok(
       [
@@ -132,6 +155,79 @@ export function runGrillMeCommand(
   }
 }
 
+export function runGrillCompleteCommand(
+  projectRoot: string,
+  options: { reason?: string; carried?: string[]; changedAssumption?: string },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    if (options.reason === undefined || options.reason.trim() === '')
+      throw new V2CommandError('NO_DRAFT_STDIN');
+    const result = recordGrillCompleted(projectRoot, {
+      reason: options.reason,
+      carried: options.carried ?? [],
+      ...(options.changedAssumption === undefined
+        ? {}
+        : { changedAssumption: options.changedAssumption }),
+    });
+    return ok(
+      `${runtime.messages.commands.grillCompleted}\n${runtime.messages.common.task}: ${result.taskId}\n${runtime.messages.labels.event}: ${result.eventId}`,
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runEvaluateCommand(
+  projectRoot: string,
+  options: { check?: string[]; limitation?: string[]; json?: boolean },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const checks = (options.check ?? []).map((item) => {
+      const [name, ...rest] = item.split('=');
+      return { name: name ?? '', outcome: rest.join('=') };
+    });
+    const evaluation = recordEvaluation(projectRoot, {
+      checks,
+      ...(options.limitation === undefined ? {} : { limitations: options.limitation }),
+    });
+    return ok(
+      options.json === true
+        ? JSON.stringify(evaluation, null, 2)
+        : `${runtime.messages.commands.evaluationRecorded}\n${runtime.messages.labels.evaluation}: ${evaluation.id}\n${runtime.messages.labels.trace}: ${evaluation.traceId}`,
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runGraphShowCommand(
+  projectRoot: string,
+  root: string,
+  options: { depth?: string; json?: boolean },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const depthText = options.depth ?? '1';
+    const depth = /^\d+$/.test(depthText) ? Number.parseInt(depthText, 10) : Number.NaN;
+    const view = showGraph(projectRoot, root, depth);
+    if (options.json === true) return ok(JSON.stringify(view, null, 2));
+    return ok(
+      [
+        runtime.messages.commands.graphFor(view.root),
+        `${runtime.messages.labels.truncated}: ${String(view.truncated)}`,
+        `${runtime.messages.labels.nodes}:`,
+        ...view.nodes.map((node) => `  - ${node.id} [${node.kind}] ${node.label}`),
+        `${runtime.messages.labels.edges}:`,
+        ...view.edges.map((edge) => `  - ${edge.from} -${edge.kind}-> ${edge.to}`),
+      ].join('\n'),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
 export function runStatusCommand(
   projectRoot: string,
   asJson: boolean,
@@ -143,6 +239,161 @@ export function runStatusCommand(
   } catch (error) {
     return fail(formatError(error, runtime));
   }
+}
+
+export function runWorkflowStatusCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const view = getWorkflowStatus(projectRoot);
+    return ok(
+      asJson
+        ? JSON.stringify(view, null, 2)
+        : runtime.messages.commands.workflowStatus(view.enabled),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runWorkflowEnableCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const view = setWorkflowEnabledSafely(projectRoot, true);
+    return ok(asJson ? JSON.stringify(view, null, 2) : runtime.messages.commands.workflowEnabled);
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runWorkflowDisableCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const hookSummary = createHookInstallSummary();
+    const view = setWorkflowEnabledSafely(projectRoot, false);
+    try {
+      installRetrospectivePostCommitHookSync(projectRoot, hookSummary, 'safe');
+    } catch (error) {
+      hookSummary.warnings.push(
+        `Could not install managed retrospective Git post-commit hook after disabling workflow: ${formatUnknownError(error)}`,
+      );
+    }
+    if (asJson) return ok(JSON.stringify({ ...view, hookWarnings: hookSummary.warnings }, null, 2));
+    const warnings = hookSummary.warnings.map((warning) => `Warning: ${warning}`);
+    return ok([runtime.messages.commands.workflowDisabled, ...warnings].join('\n'));
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+interface WorkflowPolicyForWrite {
+  schemaVersion: 'v2alpha1';
+  requireGrillMe: boolean;
+  workflowEnabled: boolean;
+  retrospectiveHookState?: 'enabling';
+}
+
+function setWorkflowEnabledSafely(
+  projectRoot: string,
+  enabled: boolean,
+): ReturnType<typeof getWorkflowStatus> {
+  return withDecisionWorkspaceLock(projectRoot, () => {
+    const policy = readDecisionWorkspacePolicy(projectRoot) ?? DEFAULT_REQUIRED_POLICY;
+    const state = readState(projectRoot);
+    const bundle = loadSourceBundle(projectRoot);
+    validateDecisionState(state, bundle);
+    if (state.currentTaskId !== null) {
+      const task = bundle.tasks.find((item) => item.id === state.currentTaskId);
+      if (
+        task !== undefined &&
+        (task.status === 'OPEN' || task.status === 'BRIEF_READY' || task.status === 'CONFIRMED')
+      ) {
+        throw new V2ExpectedError('WORKFLOW_TOGGLE_ACTIVE_TASK', {
+          taskId: task.id,
+          status: task.status,
+        });
+      }
+    }
+
+    if (enabled) {
+      return withOptionalRetrospectiveMarkerPublicationLock(projectRoot, () => {
+        if (!policy.workflowEnabled) {
+          writeWorkflowPolicy(projectRoot, {
+            ...policy,
+            workflowEnabled: false,
+            retrospectiveHookState: 'enabling',
+          });
+        }
+        if (hasRetrospectivePendingMarker(projectRoot)) {
+          writeWorkflowPolicy(projectRoot, policy);
+          throw new Error(
+            'Cannot enable decision workflow while a retrospective pending marker exists. Run `sduck retrospective capture --stdin` or remove the marker after review.',
+          );
+        }
+        writeWorkflowPolicy(projectRoot, { ...policy, workflowEnabled: true });
+        return getWorkflowStatus(projectRoot);
+      });
+    }
+
+    writeWorkflowPolicy(projectRoot, { ...policy, workflowEnabled: false });
+    return getWorkflowStatus(projectRoot);
+  });
+}
+
+function withOptionalRetrospectiveMarkerPublicationLock<T>(
+  projectRoot: string,
+  operation: () => T,
+): T {
+  try {
+    return withRetrospectiveMarkerPublicationLock(projectRoot, operation);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith('Retrospective marker publication lock is unavailable:')
+    ) {
+      return operation();
+    }
+    throw error;
+  }
+}
+
+function writeWorkflowPolicy(projectRoot: string, policy: WorkflowPolicyForWrite): void {
+  const target = policyPath(projectRoot);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = `${target}.${String(process.pid)}.${String(Date.now())}.tmp`;
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, `${JSON.stringify(policy, null, 2)}\n`);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, target);
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createHookInstallSummary(): InitExecutionSummary {
+  return {
+    created: [],
+    prepended: [],
+    kept: [],
+    overwritten: [],
+    warnings: [],
+    structuredWarnings: [],
+    errors: [],
+    rows: [],
+  };
 }
 
 export function runResumeCommand(
@@ -172,7 +423,9 @@ export function runContextCommand(
     const next =
       status.indicators.grillMeRequired && !status.indicators.grillMeStarted
         ? runtime.messages.workflow.nextGrillMe
-        : runtime.messages.workflow.nextSubmit;
+        : status.indicators.grillMeRequired && !status.indicators.grillMeCompleted
+          ? runtime.messages.workflow.nextGrillComplete
+          : runtime.messages.workflow.nextSubmit;
     return ok(renderContextPack(pack, runtime.messages, next));
   } catch (error) {
     return fail(formatError(error, runtime));
@@ -202,6 +455,22 @@ export function runSubmitCommand(
     const result = submitDraft(projectRoot, stdin);
     return ok(
       `${runtime.messages.commands.draftSubmitted}\n${runtime.messages.labels.decisions}: ${String(result.decisions)}\n${runtime.messages.labels.questions}: ${String(result.questions)}\n${runtime.messages.labels.evidence}: ${String(result.evidence)}\n${runtime.messages.workflow.nextAsk}`,
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runRetrospectiveCaptureCommand(
+  projectRoot: string,
+  stdin: string,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    if (stdin.trim() === '') throw new V2CommandError('NO_DRAFT_STDIN');
+    const result = captureRetrospective(projectRoot, stdin);
+    return ok(
+      `${runtime.messages.commands.retrospectiveCaptured}\n${runtime.messages.common.task}: ${result.taskId}\nCommit: ${result.commit}\n${runtime.messages.labels.decisions}: ${String(result.decisions)}\n${runtime.messages.labels.evidence}: ${String(result.evidence)}${result.duplicate ? '\nDuplicate: true' : ''}`,
     );
   } catch (error) {
     return fail(formatError(error, runtime));
@@ -322,7 +591,7 @@ export function runTraceCommand(
     return ok(
       options.json === true
         ? JSON.stringify(view, null, 2)
-        : `${renderTrace(view, runtime.messages)}\n\n${runtime.messages.workflow.nextRemember}`,
+        : `${renderTrace(view, runtime.messages)}\n\n${runtime.messages.workflow.nextEvaluate}`,
     );
   } catch (error) {
     return fail(formatError(error, runtime));
@@ -421,7 +690,7 @@ export function readStdinIfRequested(
   runtime: V2Runtime = DEFAULT_RUNTIME,
 ): string {
   if (stdin !== true) throw new V2CommandError('USE_STDIN', { locale: runtime.locale });
-  return readFileSync(0, 'utf8');
+  return fs.readFileSync(0, 'utf8');
 }
 
 function formatError(error: unknown, runtime: V2Runtime = DEFAULT_RUNTIME): string {

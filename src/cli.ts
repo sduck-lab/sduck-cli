@@ -31,14 +31,21 @@ import {
   runContextCommand,
   runConfigLocaleCommand,
   runDoctorCommand,
+  runEvaluateCommand,
+  runGraphShowCommand,
+  runGrillCompleteCommand,
   runGrillMeCommand,
   runRecallCommand,
   runRebuildCommand,
   runRememberCommand,
+  runRetrospectiveCaptureCommand,
   runResumeCommand,
   runStatusCommand,
   runSubmitCommand,
   runTraceCommand,
+  runWorkflowDisableCommand,
+  runWorkflowEnableCommand,
+  runWorkflowStatusCommand,
   runWorkCommand,
   renderConfigWarning,
   renderV2CommandError,
@@ -438,6 +445,41 @@ program
     printResult(runResumeCommand(process.cwd(), taskId, v2Runtime));
   });
 
+const workflow = program
+  .command('workflow')
+  .description(v2Text('Manage new work creation mode', '새 작업 생성 모드 관리'));
+
+workflow
+  .command('status')
+  .description(
+    v2Text(
+      'Show whether new decision workflow is enabled',
+      '새 decision workflow 활성화 상태 표시',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runWorkflowStatusCommand(process.cwd(), options.json === true, v2Runtime));
+  });
+
+workflow
+  .command('enable')
+  .description(v2Text('Enable new decision workflow', '새 decision workflow 활성화'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runWorkflowEnableCommand(process.cwd(), options.json === true, v2Runtime));
+  });
+
+workflow
+  .command('disable')
+  .description(
+    v2Text('Disable new decision workflow creation', '새 decision workflow 생성 비활성화'),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runWorkflowDisableCommand(process.cwd(), options.json === true, v2Runtime));
+  });
+
 const context = program
   .command('context')
   .description(v2Text('Show or extend current context pack', '현재 context pack 표시 또는 확장'));
@@ -473,6 +515,20 @@ program
     printResult(runGrillMeCommand(process.cwd(), options.json === true, v2Runtime));
   });
 
+const grill = program
+  .command('grill')
+  .description(v2Text('Guided grilling workflow commands', 'Guided grilling workflow 명령'));
+
+grill
+  .command('complete')
+  .description(v2Text('Record guided grill completion', 'guided grill 완료 기록'))
+  .requiredOption('--reason <reason>', v2Text('Completion rationale', '완료 이유'))
+  .option('--carried <decisionId...>', v2Text('Carried decision ids', '가져온 decision ID'))
+  .option('--changed-assumption <text>', v2Text('Changed assumption', '변경된 가정'))
+  .action((options: { reason?: string; carried?: string[]; changedAssumption?: string }) => {
+    printResult(runGrillCompleteCommand(process.cwd(), options, v2Runtime));
+  });
+
 program
   .command('submit')
   .description(
@@ -486,6 +542,43 @@ program
     try {
       printResult(
         runSubmitCommand(process.cwd(), readStdinIfRequested(options.stdin, v2Runtime), v2Runtime),
+      );
+    } catch (error) {
+      printResult({
+        stdout: '',
+        stderr: isV2CommandError(error)
+          ? renderV2CommandError(error, v2Runtime.messages)
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        exitCode: 1,
+      });
+    }
+  });
+
+const retrospective = program
+  .command('retrospective')
+  .description(
+    v2Text('Retrospective capture workflow commands', 'Retrospective capture workflow 명령'),
+  );
+
+retrospective
+  .command('capture')
+  .description(
+    v2Text(
+      'Capture a retrospective decision draft from stdin while workflow is disabled',
+      'workflow 비활성화 상태에서 stdin으로 retrospective decision draft 기록',
+    ),
+  )
+  .option('--stdin', v2Text('Read draft from stdin', 'stdin에서 draft 읽기'))
+  .action((options: { stdin?: boolean }) => {
+    try {
+      printResult(
+        runRetrospectiveCaptureCommand(
+          process.cwd(),
+          readStdinIfRequested(options.stdin, v2Runtime),
+          v2Runtime,
+        ),
       );
     } catch (error) {
       printResult({
@@ -543,6 +636,36 @@ program
   .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
   .action((options: { base?: string; json?: boolean }) => {
     printResult(runTraceCommand(process.cwd(), options, v2Runtime));
+  });
+
+program
+  .command('evaluate')
+  .description(
+    v2Text(
+      'Record structured evaluation for the latest trace',
+      '최신 trace에 대한 구조화 evaluation 기록',
+    ),
+  )
+  .option('--check <name=outcome...>', v2Text('Structured check outcome', '구조화 check 결과'))
+  .option('--limitation <text...>', v2Text('Evaluation limitation', 'Evaluation 제한사항'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { check?: string[]; limitation?: string[]; json?: boolean }) => {
+    printResult(runEvaluateCommand(process.cwd(), options, v2Runtime));
+  });
+
+const graph = program
+  .command('graph')
+  .description(v2Text('Inspect cache-only decision graph', 'cache-only decision graph 조회'));
+
+graph
+  .command('show <root>')
+  .description(
+    v2Text('Show graph around a TASK-* or DEC-* root', 'TASK-* 또는 DEC-* 주변 graph 표시'),
+  )
+  .option('--depth <n>', v2Text('Traversal depth (max 4)', '탐색 깊이 (최대 4)'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((root: string, options: { depth?: string; json?: boolean }) => {
+    printResult(runGraphShowCommand(process.cwd(), root, options, v2Runtime));
   });
 
 program

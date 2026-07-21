@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -81,6 +82,40 @@ describe('v2 localized CLI presentation', () => {
 
     const missingOptionValue = await runCli(['trace', '--base'], { cliRoot, cwd: workspace });
     expect(missingOptionValue.stderr).toContain("error: option '--base <ref>' argument missing");
+  });
+
+  it('localizes workflow status and disabled work errors', async () => {
+    workspace = await createTempWorkspace('v2-locale-workflow-');
+    configHome = await createTempWorkspace('v2-locale-workflow-config-');
+    const env = { SDUCK_CONFIG_HOME: configHome };
+    await runCli(['config', 'locale', 'ko'], { cliRoot, cwd: workspace, env });
+
+    const statusBeforeInit = await runCli(['workflow', 'status', '--json'], {
+      cliRoot,
+      cwd: workspace,
+      env,
+    });
+    expect(JSON.parse(statusBeforeInit.stdout) as unknown).toMatchObject({
+      enabled: true,
+      initialized: false,
+    });
+
+    const disable = await runCli(['workflow', 'disable'], { cliRoot, cwd: workspace, env });
+    expect(disable.stdout).toContain('Workflow를 비활성화했습니다.');
+
+    const status = await runCli(['workflow', 'status'], { cliRoot, cwd: workspace, env });
+    expect(status.stdout).toContain('Workflow: 비활성화됨');
+
+    const blocked = await runCli(['work', 'blocked'], { cliRoot, cwd: workspace, env });
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.stderr).toContain('Decision workflow가 비활성화되어 있습니다');
+    expect(blocked.stderr).toContain('sduck workflow enable');
+
+    const enable = await runCli(['workflow', 'enable', '--json'], { cliRoot, cwd: workspace, env });
+    expect(JSON.parse(enable.stdout) as unknown).toMatchObject({
+      enabled: true,
+      initialized: true,
+    });
   });
 
   it('renders structured Korean init output without string replacement', async () => {
@@ -199,15 +234,23 @@ describe('v2 localized CLI presentation', () => {
     await runCli(['work', 'context next'], { cliRoot, cwd: workspace, env });
     const context = await runCli(['context'], { cliRoot, cwd: workspace, env });
 
-    expect(context.stdout).toContain('다음: sduck grill-me');
+    expect(context.stdout).toContain('다음: sduck grill complete --reason');
     expect(context.stdout).not.toContain('다음: sduck submit --stdin');
-  });
+  }, 10_000);
 
   it('renders representative Korean v2 typed errors and localized structured outputs', async () => {
     workspace = await createTempWorkspace('v2-locale-phase2b-');
     configHome = await createTempWorkspace('v2-locale-phase2b-config-');
     const env = { SDUCK_CONFIG_HOME: configHome };
     await runCli(['config', 'locale', 'ko'], { cliRoot, cwd: workspace, env });
+    execFileSync('git', ['init'], { cwd: workspace });
+    await writeFile(join(workspace, 'ko.ts'), 'export const ko = 1;\n');
+    execFileSync('git', ['add', 'ko.ts'], { cwd: workspace });
+    execFileSync(
+      'git',
+      ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-m', 'init'],
+      { cwd: workspace },
+    );
 
     const noCurrentRemember = await runCli(['remember'], { cliRoot, cwd: workspace, env });
     expect(noCurrentRemember.exitCode).toBe(1);
@@ -240,15 +283,22 @@ describe('v2 localized CLI presentation', () => {
     expect(badDraft.stderr).not.toContain('Invalid decision kind');
 
     const context = await runCli(['context'], { cliRoot, cwd: workspace, env });
-    expect(context.stdout).toContain('다음: sduck grill-me');
+    expect(context.stdout).toContain('다음: sduck grill complete --reason');
     expect(context.stdout).not.toContain('다음: sduck submit --stdin');
 
-    await runCli(['grill-me'], { cliRoot, cwd: workspace, env });
+    const grillDone = await runCli(['grill', 'complete', '--reason', 'Locale ready'], {
+      cliRoot,
+      cwd: workspace,
+      env,
+    });
+    expect(grillDone.stdout).toContain('Grill을 완료했습니다.');
     const status = await runCli(['status', '--json'], { cliRoot, cwd: workspace, env });
     const taskId = (JSON.parse(status.stdout) as { task: { id: string } }).task.id;
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
+      implementationPlan: ['Keep locale data stable.'],
+      verificationPlan: ['Verify Korean rendering.'],
       decisions: [
         { id: 'DEC-ko', title: 'Korean parity', kind: 'EXPLICIT', summary: 'Same data.' },
       ],
@@ -270,6 +320,23 @@ describe('v2 localized CLI presentation', () => {
     expect(briefKo.stdout).toContain('Q-ko');
     expect(briefKo.stdout).not.toContain('Implementation Brief');
     await runCli(['confirm'], { cliRoot, cwd: workspace, env });
+    const graph = await runCli(['graph', 'show', taskId], { cliRoot, cwd: workspace, env });
+    expect(graph.stdout).toContain(`${taskId} Graph`);
+    expect(graph.stdout).toContain('잘림: false');
+    expect(graph.stdout).toContain('노드:');
+    expect(graph.stdout).toContain('엣지:');
+    await writeFile(join(workspace, 'ko.ts'), 'export const ko = 2;\n');
+    const traceKo = await runCli(['trace', '--base', 'HEAD'], { cliRoot, cwd: workspace, env });
+    expect(traceKo, `${traceKo.stdout}\n${traceKo.stderr}`).toMatchObject({ exitCode: 0 });
+    const statusAfterTrace = await runCli(['status'], { cliRoot, cwd: workspace, env });
+    expect(statusAfterTrace.stdout).toContain('다음: sduck evaluate');
+    const evalKo = await runCli(['evaluate', '--check', 'locale=passed'], {
+      cliRoot,
+      cwd: workspace,
+      env,
+    });
+    expect(evalKo.stdout).toContain('Evaluation을 기록했습니다.');
+    expect(evalKo.stdout).toContain('Evaluation:');
 
     const remember = await runCli(['remember'], { cliRoot, cwd: workspace, env });
     expect(remember.stdout).toContain('메모리를 export했습니다.');
@@ -288,7 +355,7 @@ describe('v2 localized CLI presentation', () => {
     );
     expect(canonical).toContain('Implementation Brief');
     expect(canonical).not.toContain('구현 Brief');
-  });
+  }, 40_000);
 
   it('localizes corrected v2 validation failures without English expected prose', async () => {
     workspace = await createTempWorkspace('v2-locale-validation-');
@@ -335,7 +402,7 @@ describe('v2 localized CLI presentation', () => {
     expect(badSourceOutput).toContain('잘못된 source 파일을 수정한 뒤');
     expect(badSourceOutput).not.toContain('must be');
     expect(badSourceOutput).not.toContain('missing task');
-  });
+  }, 10_000);
 
   it('keeps JSON output locale-neutral while warnings go to stderr', async () => {
     workspace = await createTempWorkspace('v2-locale-json-');
@@ -357,12 +424,18 @@ describe('v2 localized CLI presentation', () => {
 
     await runCli(['init', '--no-agent-rules'], { cliRoot, cwd: workspace, env });
     await runCli(['work', 'locale canonical'], { cliRoot, cwd: workspace, env });
-    await runCli(['grill-me'], { cliRoot, cwd: workspace, env });
+    await runCli(['grill', 'complete', '--reason', 'Canonical ready'], {
+      cliRoot,
+      cwd: workspace,
+      env,
+    });
     const status = await runCli(['status', '--json'], { cliRoot, cwd: workspace, env });
     const taskId = (JSON.parse(status.stdout) as { task: { id: string } }).task.id;
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
+      implementationPlan: ['Keep canonical brief English.'],
+      verificationPlan: ['Confirm under Korean locale.'],
       decisions: [
         {
           id: 'DEC-locale',
@@ -463,7 +536,7 @@ describe('v2 localized CLI presentation', () => {
       await removeTempWorkspace(enWorkspace);
       await removeTempWorkspace(koWorkspace);
     }
-  });
+  }, 10_000);
 
   it('does not print malformed-config warnings for legacy commands', async () => {
     workspace = await createTempWorkspace('v2-locale-v1-warning-');

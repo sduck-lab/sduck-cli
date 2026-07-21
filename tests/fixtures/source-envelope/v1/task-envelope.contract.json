@@ -1,0 +1,38 @@
+{
+  "contract": "sduck-source-envelope/v1",
+  "kind": "task",
+  "runtimeSupport": "phase-1",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "fence": {
+    "infoString": "json sduck-source-envelope/v1",
+    "frontmatter": {
+      "id": "TASK-envelope",
+      "type": "task",
+      "status": "OPEN",
+      "created_at": "2026-07-15T00:00:00.000Z"
+    },
+    "h1": "Fallback task title from markdown"
+  },
+  "envelope": {
+    "schema": "sduck-source-envelope/v1",
+    "kind": "task",
+    "revision": 1,
+    "canonical": {
+      "task": {
+        "id": "TASK-envelope",
+        "title": "Envelope body task title not used by current parser",
+        "description": "Envelope body task description not used by current parser",
+        "status": "OPEN",
+        "expectedScope": ["src/core/v2/operations/**"],
+        "avoidScope": ["src/agent/**"],
+        "createdAt": "2026-07-15T00:00:00.000Z",
+        "updatedAt": "2026-07-15T00:00:00.000Z"
+      },
+      "questions": [],
+      "evidence": [],
+      "contextItems": [],
+      "briefSnapshots": [],
+      "events": []
+    }
+  }
+}

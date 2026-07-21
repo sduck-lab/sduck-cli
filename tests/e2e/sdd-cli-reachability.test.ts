@@ -86,11 +86,34 @@ describeIfSqlite('SDD CLI reachability regression', () => {
         '.sduck',
         'sduck-assets',
         'agent-rules',
+        'hooks',
+        'sduck-retrospective-post-commit.sh',
+      ),
+    );
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
         'skills',
         'sduck-codebase-decisions',
         'SKILL.md',
       ),
     );
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'skills',
+        'sduck-retrospective-capture',
+        'SKILL.md',
+      ),
+    );
+    await access(join(workspace, '.claude', 'skills', 'sduck-codebase-decisions.md'));
+    await access(join(workspace, '.claude', 'skills', 'sduck-retrospective-capture.md'));
     await access(join(workspace, '.claude', 'hooks', 'sdd-guard.sh'));
     await access(join(workspace, '.claude', 'settings.json'));
 
@@ -113,13 +136,23 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     expect(claudeRules).toContain('spec -> approval -> plan -> approval');
     expect(claudeRules).toContain('sduck start');
     expect(claudeRules).toContain('sduck-codebase-decisions');
+    expect(claudeRules).toContain('sduck-retrospective-capture');
+    expect(claudeRules).toContain('sduck-retrospective-pending.json');
+    expect(claudeRules).toContain('reads only `.decision/policy.json`');
+    expect(claudeRules).toContain('never inspects source content');
+    expect(claudeRules).toContain('never runs sduck, an LLM, or a network request');
     expect(claudeRules).toContain(
       '.sduck/sduck-assets/agent-rules/skills/sduck-codebase-decisions/SKILL.md',
     );
+    expect(claudeRules).toContain(
+      '.sduck/sduck-assets/agent-rules/skills/sduck-retrospective-capture/SKILL.md',
+    );
     expect(claudeRules).toContain('Primary workflow: v2 `.decision` decision briefing');
     expect(claudeRules).toContain(
-      'work -> context -> grill-me -> submit -> ask/answer -> brief/confirm',
+      'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm',
     );
-    expect(claudeRules).toContain('New policy-required tasks must pass this gate');
+    expect(claudeRules).toContain('sduck grill complete --reason');
+    expect(claudeRules).toContain('sduck evaluate');
+    expect(claudeRules).toContain('no built-in CI trace verifier');
   }, 15_000);
 });

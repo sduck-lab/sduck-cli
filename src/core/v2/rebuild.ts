@@ -17,6 +17,8 @@ import { withDecisionWorkspaceLock } from './workspace-lock.js';
 import type { SourceBundle } from './source-types.js';
 import type { DatabaseSync } from 'node:sqlite';
 
+export const GRAPH_PROJECTION_VERSION = 'v1';
+
 export interface RebuildResult {
   tasks: number;
   decisions: number;
@@ -25,6 +27,7 @@ export interface RebuildResult {
   contextItems: number;
   briefSnapshots: number;
   implementationTraces: number;
+  evaluations: number;
   events: number;
 }
 
@@ -47,6 +50,7 @@ function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
     try {
       insertBundle(db, bundle);
       setCacheMetadata(db, 'source_fingerprint', sourceFingerprint(projectRoot));
+      setCacheMetadata(db, 'graph_projection_version', GRAPH_PROJECTION_VERSION);
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');
@@ -71,6 +75,7 @@ function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
     contextItems: bundle.contextItems.length,
     briefSnapshots: bundle.briefSnapshots.length,
     implementationTraces: bundle.implementationTraces.length,
+    evaluations: bundle.evaluations.length,
     events: bundle.events.length,
   };
 }
@@ -114,14 +119,15 @@ export function formatRebuildResult(result: RebuildResult): string {
     `Context items: ${String(result.contextItems)}`,
     `Brief snapshots: ${String(result.briefSnapshots)}`,
     `Implementation traces: ${String(result.implementationTraces)}`,
+    `Evaluations: ${String(result.evaluations)}`,
     `Events: ${String(result.events)}`,
   ].join('\n');
 }
 
 function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
   const insertTask = db.prepare(
-    `INSERT INTO tasks (id, title, description, status, expected_scope_json, avoid_scope_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (id, title, description, status, expected_scope_json, avoid_scope_json, implementation_plan_json, verification_plan_json, guided, retrospective, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const task of bundle.tasks) {
     insertTask.run(
@@ -131,6 +137,10 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
       task.status,
       encodeJson(task.expectedScope),
       encodeJson(task.avoidScope),
+      task.implementationPlan === undefined ? null : encodeJson(task.implementationPlan),
+      task.verificationPlan === undefined ? null : encodeJson(task.verificationPlan),
+      task.guided === undefined ? null : task.guided ? 1 : 0,
+      task.retrospective === undefined ? null : task.retrospective ? 1 : 0,
       task.createdAt,
       task.updatedAt,
     );
@@ -251,4 +261,68 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
   for (const event of bundle.events) {
     insertEvent.run(event.id, event.taskId, event.type, encodeJson(event.payload), event.createdAt);
   }
+  const insertEvaluation = db.prepare(
+    `INSERT INTO evaluations (id, task_id, trace_id, checks_json, limitations_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  for (const evaluation of bundle.evaluations) {
+    insertEvaluation.run(
+      evaluation.id,
+      evaluation.taskId,
+      evaluation.traceId,
+      encodeJson(evaluation.checks),
+      encodeJson(evaluation.limitations ?? []),
+      evaluation.createdAt,
+    );
+  }
+  insertGraph(db, bundle);
+}
+
+function insertGraph(db: DatabaseSync, bundle: SourceBundle): void {
+  const nodes = new Map<string, { id: string; kind: string; label: string }>();
+  const edges = new Map<string, { id: string; from: string; to: string; kind: string }>();
+  const addNode = (id: string, kind: string, label = id) => nodes.set(id, { id, kind, label });
+  const addEdge = (from: string, to: string, kind: string) =>
+    edges.set(`${from}|${kind}|${to}`, { id: `${from}|${kind}|${to}`, from, to, kind });
+  for (const task of bundle.tasks) addNode(task.id, 'task', task.title);
+  for (const decision of bundle.decisions) {
+    addNode(decision.id, 'decision', decision.title);
+    addEdge(decision.taskId, decision.id, 'HAS_DECISION');
+    for (const ref of decision.kind === 'CARRIED' ? decision.sourceRefs : [])
+      addEdge(decision.id, ref, 'CARRIED_FROM');
+    for (const file of decision.appliesTo) {
+      addNode(`file:${file}`, 'file', file);
+      addEdge(decision.id, `file:${file}`, 'APPLIES_TO');
+    }
+    for (const file of decision.avoids) {
+      addNode(`file:${file}`, 'file', file);
+      addEdge(decision.id, `file:${file}`, 'AVOIDS');
+    }
+  }
+  for (const evidence of bundle.evidence) {
+    addNode(evidence.id, 'evidence', evidence.summary);
+    addEdge(evidence.taskId, evidence.id, 'HAS_EVIDENCE');
+    if (evidence.decisionId !== null) addEdge(evidence.id, evidence.decisionId, 'SUPPORTED_BY');
+  }
+  for (const trace of bundle.implementationTraces) {
+    addNode(trace.id, 'trace', trace.summary);
+    addEdge(trace.id, trace.taskId, 'TRACE_FOR');
+    for (const decisionId of trace.decisionIds) addEdge(trace.id, decisionId, 'IMPLEMENTS');
+    for (const file of trace.filesChanged) {
+      addNode(`file:${file}`, 'file', file);
+      addEdge(trace.id, `file:${file}`, 'CHANGED_FILE');
+    }
+  }
+  for (const evaluation of bundle.evaluations) {
+    addNode(evaluation.id, 'evaluation', evaluation.id);
+    addEdge(evaluation.taskId, evaluation.id, 'EVALUATED_BY');
+    addEdge(evaluation.id, evaluation.traceId, 'EVALUATES');
+  }
+  const insertNode = db.prepare(`INSERT INTO graph_nodes (id, kind, label) VALUES (?, ?, ?)`);
+  for (const node of [...nodes.values()].sort((a, b) => a.id.localeCompare(b.id)))
+    insertNode.run(node.id, node.kind, node.label);
+  const insertEdge = db.prepare(
+    `INSERT INTO graph_edges (id, from_id, to_id, kind) VALUES (?, ?, ?, ?)`,
+  );
+  for (const edge of [...edges.values()].sort((a, b) => a.id.localeCompare(b.id)))
+    insertEdge.run(edge.id, edge.from, edge.to, edge.kind);
 }

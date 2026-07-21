@@ -82,6 +82,7 @@ export interface V2MessageCatalog {
     questionsOpen: string;
     briefSnapshots: string;
     implementationTraces: string;
+    evaluations: string;
     exports: string;
     progress: string;
     tasks: string;
@@ -119,6 +120,10 @@ export interface V2MessageCatalog {
     draftSchema: string;
     trace: string;
     event: string;
+    evaluation: string;
+    truncated: string;
+    nodes: string;
+    edges: string;
   };
   workflow: {
     work: string;
@@ -134,10 +139,12 @@ export interface V2MessageCatalog {
     nextWork: string;
     nextContext: string;
     nextGrillMe: string;
+    nextGrillComplete: string;
     nextSubmit: string;
     nextAsk: string;
     nextBriefConfirm: string;
     nextImplementTrace: string;
+    nextEvaluate: string;
     nextRemember: string;
     nextRecallClose: string;
   };
@@ -152,9 +159,16 @@ export interface V2MessageCatalog {
     noOpenQuestions: string;
     briefConfirmed: string;
     traceCreated: string;
+    grillCompleted: string;
+    evaluationRecorded: string;
+    graphFor: (root: string) => string;
     remembered: string;
     cacheRebuilt: string;
     contextAdded: (count: number) => string;
+    workflowStatus: (enabled: boolean) => string;
+    workflowEnabled: string;
+    workflowDisabled: string;
+    retrospectiveCaptured: string;
   };
   errors: {
     unexpected: (detail: string) => string;
@@ -274,6 +288,7 @@ export const enV2Messages = {
     questionsOpen: 'Questions open',
     briefSnapshots: 'Brief snapshots',
     implementationTraces: 'Implementation traces',
+    evaluations: 'Evaluations',
     exports: 'Exports',
     progress: 'Progress',
     tasks: 'Tasks',
@@ -311,6 +326,10 @@ export const enV2Messages = {
     draftSchema: 'Draft schema example',
     trace: 'Trace',
     event: 'Event',
+    evaluation: 'Evaluation',
+    truncated: 'Truncated',
+    nodes: 'Nodes',
+    edges: 'Edges',
   },
   workflow: {
     work: 'work',
@@ -326,10 +345,12 @@ export const enV2Messages = {
     nextWork: 'Next: sduck work "<task description>"',
     nextContext: 'Next: sduck context',
     nextGrillMe: 'Next: sduck grill-me',
+    nextGrillComplete: 'Next: sduck grill complete --reason "..."',
     nextSubmit: 'Next: sduck submit --stdin < draft.json',
     nextAsk: 'Next: sduck ask',
     nextBriefConfirm: 'Next: sduck brief && sduck confirm',
     nextImplementTrace: 'Next: implement, then sduck trace',
+    nextEvaluate: 'Next: sduck evaluate --check <name=outcome>',
     nextRemember: 'Next: sduck remember',
     nextRecallClose: 'Next: sduck recall "<query>" or sduck close',
   },
@@ -344,9 +365,16 @@ export const enV2Messages = {
     noOpenQuestions: 'No open questions.',
     briefConfirmed: 'Implementation brief confirmed.',
     traceCreated: 'Implementation trace created.',
+    grillCompleted: 'Grill completed.',
+    evaluationRecorded: 'Evaluation recorded.',
+    graphFor: (root) => `Graph for ${root}`,
     remembered: 'Memory exported.',
     cacheRebuilt: 'Decision cache rebuilt.',
     contextAdded: (count) => `Context item(s) added: ${String(count)}`,
+    workflowStatus: (enabled) => `Workflow: ${enabled ? 'enabled' : 'disabled'}`,
+    workflowEnabled: 'Workflow enabled.',
+    workflowDisabled: 'Workflow disabled.',
+    retrospectiveCaptured: 'Retrospective capture recorded.',
   },
   errors: {
     unexpected: (detail) => `Error: ${detail}`,
@@ -365,6 +393,19 @@ export const enV2Messages = {
     issueMessages: {
       DB_ONLY: () => 'Workspace contains decision data only in the legacy SQLite cache.',
       CACHE_STALE: () => 'Local SQLite cache is missing or does not match canonical source.',
+      INVALID_STATE: (params) =>
+        `Decision state is invalid: ${[
+          params['code'],
+          params['field'],
+          enProblem(params['problemCode'] ?? ''),
+          params['detail'],
+        ]
+          .filter(Boolean)
+          .join(': ')}`,
+      MISSING_CURRENT_TASK_POINTER: (params) =>
+        `State currentTaskId references missing canonical task ${params['taskId'] ?? ''}.`,
+      STALE_TERMINAL_TASK_POINTER: (params) =>
+        `State currentTaskId references terminal canonical task ${params['taskId'] ?? ''}.`,
       MALFORMED_SOURCE: (params) =>
         `Canonical source is malformed: ${[
           params['path'],
@@ -382,6 +423,11 @@ export const enV2Messages = {
     recoveries: {
       DB_ONLY: 'Run `sduck doctor --repair` or `sduck remember` to create canonical source.',
       CACHE_STALE: 'Run `sduck rebuild` or `sduck doctor --repair`.',
+      INVALID_STATE: 'Fix .decision/state.json manually, then rerun `sduck doctor`.',
+      MISSING_CURRENT_TASK_POINTER:
+        'Inspect .decision/state.json and canonical tasks; repair manually before retrying.',
+      STALE_TERMINAL_TASK_POINTER:
+        'Run `sduck doctor --repair` to clear the stale current task pointer.',
       MALFORMED_SOURCE: 'Fix the malformed source file, then run `sduck rebuild`.',
       INTERRUPTED_JOURNAL_RECOVERY_FAILED:
         'Preserve the .commit-*.json journal and rollback directory, then inspect with `sduck doctor`.',
@@ -390,6 +436,8 @@ export const enV2Messages = {
       INTERRUPTED_COMMIT: () => 'Recovered an interrupted DecisionWorkspace commit journal.',
       DB_ONLY_MIGRATED: () => 'Migrated DB-only cache to canonical Markdown source.',
       CACHE_REBUILT: () => 'Rebuilt the local SQLite cache from canonical Markdown source.',
+      TERMINAL_TASK_POINTER_CLEARED: (params) =>
+        `Cleared stale current task pointer to terminal task ${params['taskId'] ?? ''}.`,
     },
   },
   prompt: {
@@ -547,12 +595,28 @@ function renderEnExpectedError(code: V2ExpectedErrorCode, params: V2ExpectedErro
       return `.decision/policy.json JSON is malformed: ${p('detail')}`;
     case 'POLICY_INVALID':
       return `.decision/policy.json ${p('field') ? `${p('field')} ` : ''}${enProblem(p('problemCode'))}`;
+    case 'WORKFLOW_DISABLED':
+      return 'Decision workflow is disabled. Run `sduck workflow enable` to start new work.';
+    case 'WORKFLOW_TOGGLE_ACTIVE_TASK':
+      return `Cannot change workflow mode while task ${p('taskId')} is ${p('status')}. Close or abandon it first.`;
     case 'STATE_JSON_INVALID':
       return `.decision/state.json JSON is malformed: ${p('detail')}`;
     case 'STATE_INVALID':
       return `.decision/state.json ${p('field') ? `${p('field')} ` : ''}${enProblem(p('problemCode'))}${p('taskId') ? `: ${p('taskId')}` : ''}`;
     case 'REMEMBER_NO_RECORDS':
       return 'No decision records to remember. Run `sduck work "..."` first.';
+    case 'CLOSE_REQUIRES_TRACE':
+      return `Cannot close task ${p('taskId')}: record a trace first.`;
+    case 'CLOSE_REQUIRES_EVALUATION':
+      return `Cannot close task ${p('taskId')}: evaluate latest trace ${p('traceId')} first.`;
+    case 'EVALUATION_REQUIRED':
+      return `Evaluation requires ${p('field')}.`;
+    case 'CARRIED_DECISION_INVALID':
+      return `Invalid carried decision ${p('decision')}: ${p('sourceRef') || p('reason')}.`;
+    case 'GRAPH_ROOT_NOT_FOUND':
+      return `Graph root not found: ${p('root')}`;
+    case 'GRAPH_DEPTH_INVALID':
+      return `Graph depth must be an integer from 0 to 4: ${p('depth')}`;
   }
 }
 
@@ -632,12 +696,28 @@ function renderKoExpectedError(code: V2ExpectedErrorCode, params: V2ExpectedErro
       return `.decision/policy.json JSON 형식이 잘못되었습니다: ${p('detail')}`;
     case 'POLICY_INVALID':
       return `.decision/policy.json ${p('field') ? `${p('field')} ` : ''}${koProblem(p('problemCode'))}`;
+    case 'WORKFLOW_DISABLED':
+      return 'Decision workflow가 비활성화되어 있습니다. 새 작업을 시작하려면 `sduck workflow enable`을 실행하세요.';
+    case 'WORKFLOW_TOGGLE_ACTIVE_TASK':
+      return `workflow mode를 변경할 수 없습니다: task ${p('taskId')} 상태는 ${p('status')}입니다. 먼저 close 또는 abandon 하세요.`;
     case 'STATE_JSON_INVALID':
       return `.decision/state.json JSON 형식이 잘못되었습니다: ${p('detail')}`;
     case 'STATE_INVALID':
       return `.decision/state.json ${p('field') ? `${p('field')} ` : ''}${koProblem(p('problemCode'))}${p('taskId') ? `: ${p('taskId')}` : ''}`;
     case 'REMEMBER_NO_RECORDS':
       return '기억할 decision record가 없습니다. 먼저 `sduck work "..."`를 실행하세요.';
+    case 'CLOSE_REQUIRES_TRACE':
+      return `close 불가: task ${p('taskId')}에 trace를 먼저 기록하세요.`;
+    case 'CLOSE_REQUIRES_EVALUATION':
+      return `close 불가: 최신 trace ${p('traceId')} evaluation을 먼저 기록하세요.`;
+    case 'EVALUATION_REQUIRED':
+      return `Evaluation에는 ${p('field')}이(가) 필요합니다.`;
+    case 'CARRIED_DECISION_INVALID':
+      return `잘못된 carried decision ${p('decision')}: ${p('sourceRef') || p('reason')}.`;
+    case 'GRAPH_ROOT_NOT_FOUND':
+      return `Graph root를 찾을 수 없습니다: ${p('root')}`;
+    case 'GRAPH_DEPTH_INVALID':
+      return `Graph depth는 0부터 4까지의 정수여야 합니다: ${p('depth')}`;
   }
 }
 
@@ -760,6 +840,7 @@ export const koV2Messages = {
     questionsOpen: '열린 질문',
     briefSnapshots: 'Brief 스냅샷',
     implementationTraces: '구현 trace',
+    evaluations: 'Evaluation',
     exports: 'Export',
     progress: '진행 상황',
     tasks: '작업',
@@ -797,6 +878,10 @@ export const koV2Messages = {
     draftSchema: 'Draft schema 예시',
     trace: 'Trace',
     event: '이벤트',
+    evaluation: 'Evaluation',
+    truncated: '잘림',
+    nodes: '노드',
+    edges: '엣지',
   },
   workflow: {
     work: 'work',
@@ -812,10 +897,12 @@ export const koV2Messages = {
     nextWork: '다음: sduck work "<작업 설명>"',
     nextContext: '다음: sduck context',
     nextGrillMe: '다음: sduck grill-me',
+    nextGrillComplete: '다음: sduck grill complete --reason "..."',
     nextSubmit: '다음: sduck submit --stdin < draft.json',
     nextAsk: '다음: sduck ask',
     nextBriefConfirm: '다음: sduck brief && sduck confirm',
     nextImplementTrace: '다음: 구현 후 sduck trace',
+    nextEvaluate: '다음: sduck evaluate --check <name=outcome>',
     nextRemember: '다음: sduck remember',
     nextRecallClose: '다음: sduck recall "<query>" 또는 sduck close',
   },
@@ -830,9 +917,16 @@ export const koV2Messages = {
     noOpenQuestions: '열린 질문이 없습니다.',
     briefConfirmed: '구현 brief를 확정했습니다.',
     traceCreated: '구현 trace를 생성했습니다.',
+    grillCompleted: 'Grill을 완료했습니다.',
+    evaluationRecorded: 'Evaluation을 기록했습니다.',
+    graphFor: (root) => `${root} Graph`,
     remembered: '메모리를 export했습니다.',
     cacheRebuilt: 'Decision cache를 재빌드했습니다.',
     contextAdded: (count) => `컨텍스트 항목 추가: ${String(count)}`,
+    workflowStatus: (enabled) => `Workflow: ${enabled ? '활성화됨' : '비활성화됨'}`,
+    workflowEnabled: 'Workflow를 활성화했습니다.',
+    workflowDisabled: 'Workflow를 비활성화했습니다.',
+    retrospectiveCaptured: 'Retrospective capture를 기록했습니다.',
   },
   errors: {
     unexpected: (detail) => `오류: ${detail}`,
@@ -851,6 +945,19 @@ export const koV2Messages = {
     issueMessages: {
       DB_ONLY: () => 'Workspace decision data가 legacy SQLite cache에만 있습니다.',
       CACHE_STALE: () => '로컬 SQLite cache가 없거나 canonical source와 일치하지 않습니다.',
+      INVALID_STATE: (params) =>
+        `Decision state가 잘못되었습니다: ${[
+          params['code'],
+          params['field'],
+          koProblem(params['problemCode'] ?? ''),
+          params['detail'],
+        ]
+          .filter(Boolean)
+          .join(': ')}`,
+      MISSING_CURRENT_TASK_POINTER: (params) =>
+        `State currentTaskId가 없는 canonical task ${params['taskId'] ?? ''}를 참조합니다.`,
+      STALE_TERMINAL_TASK_POINTER: (params) =>
+        `State currentTaskId가 종료된 canonical task ${params['taskId'] ?? ''}를 참조합니다.`,
       MALFORMED_SOURCE: (params) =>
         `Canonical source 형식이 잘못되었습니다: ${[
           params['path'],
@@ -869,6 +976,11 @@ export const koV2Messages = {
       DB_ONLY:
         'canonical source를 만들려면 `sduck doctor --repair` 또는 `sduck remember`를 실행하세요.',
       CACHE_STALE: '`sduck rebuild` 또는 `sduck doctor --repair`를 실행하세요.',
+      INVALID_STATE: '.decision/state.json을 직접 수정한 뒤 `sduck doctor`를 다시 실행하세요.',
+      MISSING_CURRENT_TASK_POINTER:
+        '.decision/state.json과 canonical tasks를 확인하고 직접 복구한 뒤 다시 시도하세요.',
+      STALE_TERMINAL_TASK_POINTER:
+        'stale current task pointer를 지우려면 `sduck doctor --repair`를 실행하세요.',
       MALFORMED_SOURCE: '잘못된 source 파일을 수정한 뒤 `sduck rebuild`를 실행하세요.',
       INTERRUPTED_JOURNAL_RECOVERY_FAILED:
         '.commit-*.json journal과 rollback 디렉터리를 보존한 뒤 `sduck doctor`로 확인하세요.',
@@ -877,6 +989,8 @@ export const koV2Messages = {
       INTERRUPTED_COMMIT: () => '중단된 DecisionWorkspace commit journal을 복구했습니다.',
       DB_ONLY_MIGRATED: () => 'DB-only cache를 canonical Markdown source로 마이그레이션했습니다.',
       CACHE_REBUILT: () => 'canonical Markdown source에서 로컬 SQLite cache를 재빌드했습니다.',
+      TERMINAL_TASK_POINTER_CLEARED: (params) =>
+        `종료된 task ${params['taskId'] ?? ''}에 대한 stale current task pointer를 지웠습니다.`,
     },
   },
   prompt: {

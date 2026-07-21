@@ -40,6 +40,10 @@ export function buildBriefView(projectRoot: string): BriefView {
       evidence: listEvidenceByTask(db, task.id),
       expectedScope: task.expectedScope,
       avoidScope: task.avoidScope,
+      ...(task.implementationPlan === undefined
+        ? {}
+        : { implementationPlan: task.implementationPlan }),
+      ...(task.verificationPlan === undefined ? {} : { verificationPlan: task.verificationPlan }),
       openQuestionCount: questions.filter((question) => !question.answered).length,
     };
   } finally {
@@ -60,6 +64,12 @@ export function renderBriefMarkdown(view: BriefView): string {
   renderDecisionSection(lines, 'C. Carried decisions', view.decisions.CARRIED);
   renderDecisionSection(lines, 'D. Conflicts', view.decisions.CONFLICT);
   renderDecisionSection(lines, 'E. Open decisions', view.decisions.OPEN);
+  lines.push('Problem:');
+  lines.push(`  ${view.task.description}`);
+  lines.push('Implementation plan:');
+  pushList(lines, view.implementationPlan ?? []);
+  lines.push('Verification plan:');
+  pushList(lines, view.verificationPlan ?? []);
   lines.push('Scope expected:');
   pushList(lines, view.expectedScope);
   lines.push('Scope avoided:');
@@ -129,6 +139,10 @@ function buildBriefViewFromBundle(bundle: SourceBundle, taskId: string): BriefVi
     evidence: bundle.evidence.filter((item) => item.taskId === taskId),
     expectedScope: task.expectedScope,
     avoidScope: task.avoidScope,
+    ...(task.implementationPlan === undefined
+      ? {}
+      : { implementationPlan: task.implementationPlan }),
+    ...(task.verificationPlan === undefined ? {} : { verificationPlan: task.verificationPlan }),
     openQuestionCount: questions.filter((question) => !question.answered).length,
   };
 }

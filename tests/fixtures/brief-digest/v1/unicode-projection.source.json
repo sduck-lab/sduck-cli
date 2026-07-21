@@ -1,0 +1,67 @@
+{
+  "schema": "sduck-brief-digest/v1",
+  "task": {
+    "id": "TASK-unicode-contract",
+    "title": "유니코드 승인 뷰 고정",
+    "description": "정확한 답변 문자열과 범위 순서를 보존한다.",
+    "expectedScope": [
+      "docs/design/mcp-control-plane-0.6-contract.md",
+      "tests/fixtures/brief-digest/v1/**"
+    ],
+    "avoidScope": ["src/**", "package.json"]
+  },
+  "decisions": [
+    {
+      "id": "DEC-0001-가",
+      "kind": "EXPLICIT",
+      "status": "CONFIRMED",
+      "title": "정확한 Unicode 답변 보존",
+      "summary": "Approval View V1은 저장된 답변 문자열을 정규화하지 않는다.",
+      "rationale": ["카페 é와 café는 다른 바이트열이다.", "emoji ✅도 UTF-8 그대로 해시한다."],
+      "appliesTo": ["questions[].answer"],
+      "avoids": ["unicode-normalization"]
+    },
+    {
+      "id": "DEC-0002-나",
+      "kind": "INFERRED",
+      "status": "CONFIRMED",
+      "title": "배열 선언 순서 보존",
+      "summary": "Scope와 rationale 배열은 선언 순서대로 projection에 남긴다.",
+      "rationale": ["첫 번째 이유", "두 번째 이유"],
+      "appliesTo": ["task.expectedScope", "decision.rationale"],
+      "avoids": ["array-sorting-except-entities"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q-0001-유니코드",
+      "decisionId": "DEC-0001-가",
+      "text": "답변 문자열을 NFC로 정규화할까?",
+      "answered": true,
+      "answer": "아니오 — 원문 그대로: 카페 é / café / 승인 ✅"
+    },
+    {
+      "id": "Q-0002-범위",
+      "decisionId": "DEC-0002-나",
+      "text": "범위 배열도 정렬할까?",
+      "answered": true,
+      "answer": "아니오, 사용자가 선언한 순서를 유지한다."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "EVD-0001-문서",
+      "decisionId": "DEC-0001-가",
+      "sourceType": "DECISION_DOC",
+      "sourceRef": "docs/design/mcp-control-plane-0.6-contract.md",
+      "summary": "answer는 exact stored string이며 Unicode normalization을 수행하지 않는다."
+    },
+    {
+      "id": "EVD-0002-계획",
+      "decisionId": "DEC-0002-나",
+      "sourceType": "USER_ANSWER",
+      "sourceRef": "Q-0006",
+      "summary": "RFC 8785 projection v1은 entity ID 정렬과 배열 선언 순서 보존을 함께 요구한다."
+    }
+  ]
+}

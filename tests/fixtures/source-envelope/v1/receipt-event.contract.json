@@ -1,0 +1,29 @@
+{
+  "contract": "sduck-operation-receipt/v1",
+  "kind": "operation-receipt",
+  "runtimeSupport": "phase-2",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "receipt": {
+    "schema": "sduck-operation-receipt/v1",
+    "event": {
+      "id": "EVT_01JZ0000000000000000000000",
+      "taskId": "TASK_01JZ0000000000000000000000",
+      "type": "protocol-receipt-recorded",
+      "createdAt": "2026-07-15T00:00:00.000Z",
+      "payload": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-0001",
+          "operation": "record"
+        },
+        "requestHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "resultRefs": [
+          {
+            "type": "decision",
+            "id": "DEC_01JZ0000000000000000000000"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -12,10 +12,12 @@ import {
 } from './paths.js';
 import { appendSourceEvent } from './source-store.js';
 
+import type { SourceBundle } from './source-types.js';
 import type { Decision, Evidence, ImplementationTrace, Task } from '../../types/index.js';
 
 export interface RememberResult {
   created: string[];
+  next?: 'evaluate' | 'recall-close';
 }
 
 export function remember(projectRoot: string): RememberResult {
@@ -55,8 +57,19 @@ export function remember(projectRoot: string): RememberResult {
     );
     const created = [...sourcePaths, reportPath, graphPath];
     appendSourceEvent(bundle, { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } });
-    return { created };
+    return { created, next: guidedNeedsEvaluation(task, bundle) ? 'evaluate' : 'recall-close' };
   });
+}
+
+function guidedNeedsEvaluation(task: Task, bundle: SourceBundle): boolean {
+  if (task.guided !== true) return false;
+  const latestTrace = bundle.implementationTraces
+    .filter((trace) => trace.taskId === task.id)
+    .at(-1);
+  if (latestTrace === undefined) return false;
+  return !bundle.evaluations.some(
+    (evaluation) => evaluation.taskId === task.id && evaluation.traceId === latestTrace.id,
+  );
 }
 
 function renderDecisionReport(

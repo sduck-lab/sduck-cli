@@ -65,6 +65,7 @@ export type V2ProblemCode =
   | 'parse'
   | 'portable-id'
   | 'string'
+  | 'terminal-task'
   | 'unsupported-enum-value'
   | 'wrong-task'
   | 'yaml-frontmatter'
@@ -102,6 +103,7 @@ export function emptySourceBundle(): SourceBundle {
     contextItems: [],
     briefSnapshots: [],
     implementationTraces: [],
+    evaluations: [],
     events: [],
   };
 }
@@ -142,6 +144,7 @@ export function loadSourceBundle(projectRoot: string): SourceBundle {
     bundle.evidence.push(...doc.evidence);
     bundle.contextItems.push(...doc.contextItems);
     bundle.briefSnapshots.push(...doc.briefSnapshots);
+    bundle.evaluations.push(...(doc.evaluations ?? []));
     bundle.events.push(...doc.events);
   }
   for (const file of markdownFiles(sourceDecisionsDir(projectRoot))) {
@@ -199,6 +202,9 @@ export function writeSourceBundle(projectRoot: string, bundle: SourceBundle): So
       evidence: bundle.evidence.filter((item) => item.taskId === task.id),
       contextItems: bundle.contextItems.filter((item) => item.taskId === task.id),
       briefSnapshots: bundle.briefSnapshots.filter((snapshot) => snapshot.taskId === task.id),
+      ...(bundle.evaluations.some((evaluation) => evaluation.taskId === task.id)
+        ? { evaluations: bundle.evaluations.filter((evaluation) => evaluation.taskId === task.id) }
+        : {}),
       events: bundle.events.filter((event) => event.taskId === task.id),
     };
     written.push(
@@ -344,6 +350,7 @@ function parseTaskSource(filePath: string): TaskSourceDocument {
     assertArray(raw['evidence'], filePath, 'evidence');
     assertArray(raw['contextItems'], filePath, 'contextItems');
     assertArray(raw['briefSnapshots'], filePath, 'briefSnapshots');
+    if (raw['evaluations'] !== undefined) assertArray(raw['evaluations'], filePath, 'evaluations');
     assertArray(raw['events'], filePath, 'events');
     raw['questions'].forEach((item, index) => {
       assertQuestion(item, filePath, `questions[${String(index)}]`);
@@ -356,6 +363,9 @@ function parseTaskSource(filePath: string): TaskSourceDocument {
     });
     raw['briefSnapshots'].forEach((item, index) => {
       assertBriefSnapshot(item, filePath, `briefSnapshots[${String(index)}]`);
+    });
+    (raw['evaluations'] ?? []).forEach((item, index) => {
+      assertEvaluation(item, filePath, `evaluations[${String(index)}]`);
     });
     raw['events'].forEach((item, index) => {
       assertEvent(item, filePath, `events[${String(index)}]`);
@@ -498,6 +508,14 @@ function assertTask(value: unknown, filePath: string, field: string): asserts va
   );
   assertStringArray(value['expectedScope'], filePath, `${field}.expectedScope`);
   assertStringArray(value['avoidScope'], filePath, `${field}.avoidScope`);
+  if (value['implementationPlan'] !== undefined)
+    assertStringArray(value['implementationPlan'], filePath, `${field}.implementationPlan`);
+  if (value['verificationPlan'] !== undefined)
+    assertStringArray(value['verificationPlan'], filePath, `${field}.verificationPlan`);
+  if (value['guided'] !== undefined && typeof value['guided'] !== 'boolean')
+    throw new SourceParseError(filePath, `${field}.guided`, 'boolean');
+  if (value['retrospective'] !== undefined && typeof value['retrospective'] !== 'boolean')
+    throw new SourceParseError(filePath, `${field}.retrospective`, 'boolean');
   assertNonEmptyString(value['createdAt'], filePath, `${field}.createdAt`);
   assertNonEmptyString(value['updatedAt'], filePath, `${field}.updatedAt`);
 }
@@ -659,6 +677,14 @@ function assertBriefSnapshot(
   });
   assertStringArray(snapshot['expectedScope'], filePath, `${field}.snapshot.expectedScope`);
   assertStringArray(snapshot['avoidScope'], filePath, `${field}.snapshot.avoidScope`);
+  if (snapshot['implementationPlan'] !== undefined)
+    assertStringArray(
+      snapshot['implementationPlan'],
+      filePath,
+      `${field}.snapshot.implementationPlan`,
+    );
+  if (snapshot['verificationPlan'] !== undefined)
+    assertStringArray(snapshot['verificationPlan'], filePath, `${field}.snapshot.verificationPlan`);
   if (typeof snapshot['openQuestionCount'] !== 'number' || snapshot['openQuestionCount'] < 0) {
     throw new SourceParseError(
       filePath,
@@ -685,6 +711,24 @@ function assertBriefSnapshot(
   }
 }
 
+function assertEvaluation(value: unknown, filePath: string, field: string): void {
+  assertObject(value, filePath, field);
+  assertPortableId(value['id'], filePath, `${field}.id`);
+  assertPortableId(value['taskId'], filePath, `${field}.taskId`);
+  assertPortableId(value['traceId'], filePath, `${field}.traceId`);
+  assertArray(value['checks'], filePath, `${field}.checks`);
+  if (value['checks'].length === 0)
+    throw new SourceParseError(filePath, `${field}.checks`, 'expected-reference');
+  value['checks'].forEach((check, index) => {
+    assertObject(check, filePath, `${field}.checks[${String(index)}]`);
+    assertNonEmptyString(check['name'], filePath, `${field}.checks[${String(index)}].name`);
+    assertNonEmptyString(check['outcome'], filePath, `${field}.checks[${String(index)}].outcome`);
+  });
+  if (value['limitations'] !== undefined)
+    assertStringArray(value['limitations'], filePath, `${field}.limitations`);
+  assertNonEmptyString(value['createdAt'], filePath, `${field}.createdAt`);
+}
+
 function assertEvent(
   value: unknown,
   filePath: string,
@@ -702,11 +746,14 @@ function assertEvent(
       'CONTEXT_INDEXED',
       'CONTEXT_ITEM_ADDED',
       'GRILL_STARTED',
+      'GRILL_COMPLETED',
       'DRAFT_SUBMITTED',
       'QUESTION_ANSWERED',
       'DECISION_CREATED',
       'BRIEF_CONFIRMED',
       'TRACE_CREATED',
+      'EVALUATION_RECORDED',
+      'RETROSPECTIVE_CAPTURED',
       'EXPORT_WRITTEN',
       'TASK_CLOSED',
       'TASK_ABANDONED',
@@ -897,6 +944,9 @@ export function validateSourceBundle(bundle: SourceBundle): void {
   bundle.briefSnapshots.forEach((item, index) => {
     assertBriefSnapshot(item, filePath, `briefSnapshots[${String(index)}]`);
   });
+  bundle.evaluations.forEach((item, index) => {
+    assertEvaluation(item, filePath, `evaluations[${String(index)}]`);
+  });
   bundle.implementationTraces.forEach((item, index) => {
     assertTrace(item, filePath, `implementationTraces[${String(index)}]`);
   });
@@ -912,6 +962,7 @@ export function validateSourceBundle(bundle: SourceBundle): void {
     ['contextItems.id', bundle.contextItems.map((item) => item.id)],
     ['briefSnapshots.id', bundle.briefSnapshots.map((item) => item.id)],
     ['implementationTraces.id', bundle.implementationTraces.map((item) => item.id)],
+    ['evaluations.id', bundle.evaluations.map((item) => item.id)],
     ['events.id', bundle.events.map((item) => item.id)],
   ];
   for (const [field, ids] of idGroups) validateUnique(ids, field);
@@ -922,6 +973,7 @@ export function validateSourceBundle(bundle: SourceBundle): void {
   for (const decision of bundle.decisions) {
     if (!taskIds.has(decision.taskId))
       throw sourceValidation('decision.taskId', 'missing-task', { taskId: decision.taskId });
+    if (decision.kind === 'CARRIED') validateCarriedDecisionInBundle(decision, bundle);
   }
   for (const question of bundle.questions) {
     if (!taskIds.has(question.taskId))
@@ -1027,9 +1079,63 @@ export function validateSourceBundle(bundle: SourceBundle): void {
       }
     }
   }
+  const tracesById = new Map(bundle.implementationTraces.map((trace) => [trace.id, trace]));
   for (const event of bundle.events) {
     if (event.taskId !== null && !taskIds.has(event.taskId)) {
       throw sourceValidation('event.taskId', 'missing-task', { taskId: event.taskId });
+    }
+    if (event.type === 'GRILL_COMPLETED') {
+      const reason = event.payload['reason'];
+      if (typeof reason !== 'string' || reason.trim() === '') {
+        throw sourceValidation('event.payload.reason', 'non-empty-string', { eventId: event.id });
+      }
+    }
+  }
+  for (const evaluation of bundle.evaluations) {
+    if (!taskIds.has(evaluation.taskId))
+      throw sourceValidation('evaluation.taskId', 'missing-task', { taskId: evaluation.taskId });
+    const trace = tracesById.get(evaluation.traceId);
+    if (trace === undefined)
+      throw sourceValidation('evaluation.traceId', 'expected-reference', {
+        traceId: evaluation.traceId,
+      });
+    if (trace.taskId !== evaluation.taskId)
+      throw sourceValidation('evaluation.traceId', 'wrong-task', {
+        traceId: evaluation.traceId,
+        taskId: evaluation.taskId,
+      });
+  }
+}
+
+function validateCarriedDecisionInBundle(decision: Decision, bundle: SourceBundle): void {
+  if (decision.rationale.length === 0 || decision.rationale.some((item) => item.trim() === '')) {
+    throw sourceValidation('decision.rationale', 'non-empty-string', { decisionId: decision.id });
+  }
+  if (decision.sourceRefs.length === 0) {
+    throw sourceValidation('decision.sourceRefs', 'expected-reference', {
+      decisionId: decision.id,
+    });
+  }
+  for (const sourceRef of decision.sourceRefs) {
+    const source = bundle.decisions.find((item) => item.id === sourceRef);
+    const sourceTask = bundle.tasks.find((item) => item.id === source?.taskId);
+    if (source?.status !== 'CONFIRMED') {
+      throw sourceValidation('decision.sourceRefs', 'expected-reference', {
+        decisionId: decision.id,
+        sourceRef,
+      });
+    }
+    if (source.taskId === decision.taskId) {
+      throw sourceValidation('decision.sourceRefs', 'wrong-task', {
+        decisionId: decision.id,
+        sourceRef,
+      });
+    }
+    if (sourceTask?.status === 'ABANDONED') {
+      throw sourceValidation('decision.sourceRefs', 'terminal-task', {
+        decisionId: decision.id,
+        sourceRef,
+      });
     }
   }
 }

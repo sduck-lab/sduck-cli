@@ -37,9 +37,17 @@ const expectedErrorCodes = [
   'SOURCE_VALIDATION',
   'POLICY_JSON_INVALID',
   'POLICY_INVALID',
+  'WORKFLOW_DISABLED',
+  'WORKFLOW_TOGGLE_ACTIVE_TASK',
   'STATE_JSON_INVALID',
   'STATE_INVALID',
   'REMEMBER_NO_RECORDS',
+  'CLOSE_REQUIRES_TRACE',
+  'CLOSE_REQUIRES_EVALUATION',
+  'EVALUATION_REQUIRED',
+  'CARRIED_DECISION_INVALID',
+  'GRAPH_ROOT_NOT_FOUND',
+  'GRAPH_DEPTH_INVALID',
 ] as const satisfies readonly V2ExpectedErrorCode[];
 
 type MissingExpectedErrorCodes = Exclude<V2ExpectedErrorCode, (typeof expectedErrorCodes)[number]>;
@@ -78,6 +86,7 @@ const problemFragments = {
     ko: 'portable single-segment id여야 합니다',
   },
   string: { en: 'must be a string', ko: '문자열이어야 합니다' },
+  'terminal-task': { en: 'references a terminal task', ko: '종료된 task를 참조합니다' },
   'unsupported-enum-value': {
     en: 'must be one of the allowed values',
     ko: '허용된 값 중 하나여야 합니다',
@@ -199,6 +208,9 @@ describe('v2 message catalogs', () => {
     const issueParams = {
       DB_ONLY: {},
       CACHE_STALE: {},
+      INVALID_STATE: { code: 'STATE_INVALID', field: 'updatedAt', problemCode: 'non-empty-string' },
+      MISSING_CURRENT_TASK_POINTER: { taskId: 'TASK-missing', problemCode: 'missing-task' },
+      STALE_TERMINAL_TASK_POINTER: { taskId: 'TASK-closed' },
       MALFORMED_SOURCE: {
         path: '.decision/exports/markdown/tasks/bad.md',
         field: 'task.status',
@@ -217,7 +229,12 @@ describe('v2 message catalogs', () => {
         expect(rendered, `${locale} ${code}`).not.toBe('');
         expect(messages.doctor.recoveries[code], `${locale} recovery ${code}`).not.toBe('');
       }
-      for (const code of ['INTERRUPTED_COMMIT', 'DB_ONLY_MIGRATED', 'CACHE_REBUILT']) {
+      for (const code of [
+        'INTERRUPTED_COMMIT',
+        'DB_ONLY_MIGRATED',
+        'CACHE_REBUILT',
+        'TERMINAL_TASK_POINTER_CLEARED',
+      ]) {
         const rendered = messages.doctor.repairs[code]?.({}) ?? '';
         expect(rendered, `${locale} repair ${code}`).not.toBe('');
       }

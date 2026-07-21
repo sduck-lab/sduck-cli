@@ -9,7 +9,12 @@ import {
 } from './agent-rules.js';
 import { CLI_VERSION } from './command-metadata.js';
 import { getFsEntryKind } from './fs.js';
-import { type InitExecutionResult, initProject } from './init.js';
+import {
+  type InitExecutionResult,
+  initProject,
+  installRetrospectivePostCommitHook,
+  type InitExecutionSummary,
+} from './init.js';
 import { getProjectSduckHomePath } from './project-paths.js';
 import { readProjectVersion, writeProjectVersion } from './version-file.js';
 
@@ -30,6 +35,19 @@ export interface UpdateExecutionResult {
   toVersion: string;
   didChange: boolean;
   summary: UpdateExecutionSummary;
+}
+
+function createUpdateHookSummary(): InitExecutionSummary {
+  return {
+    created: [],
+    prepended: [],
+    kept: [],
+    overwritten: [],
+    warnings: [],
+    structuredWarnings: [],
+    errors: [],
+    rows: [],
+  };
 }
 
 async function readExistingFile(projectRoot: string, relativePath: string): Promise<string | null> {
@@ -96,6 +114,18 @@ export async function updateProject(
   const currentVersion = await readProjectVersion(projectRoot);
 
   if (currentVersion === CLI_VERSION) {
+    if (!options.dryRun) {
+      const hookSummary = createUpdateHookSummary();
+      installRetrospectivePostCommitHook(projectRoot, hookSummary, 'safe');
+
+      return {
+        fromVersion: currentVersion,
+        toVersion: CLI_VERSION,
+        didChange: hookSummary.created.length > 0 || hookSummary.overwritten.length > 0,
+        summary: { rows: hookSummary.rows, warnings: hookSummary.warnings },
+      };
+    }
+
     return {
       fromVersion: currentVersion,
       toVersion: CLI_VERSION,

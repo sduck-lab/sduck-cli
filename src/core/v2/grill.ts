@@ -54,6 +54,10 @@ export function hasGrillMeStarted(events: readonly EventRecord[], taskId: string
   return events.some((event) => event.taskId === taskId && event.type === 'GRILL_STARTED');
 }
 
+export function hasGrillMeCompleted(events: readonly EventRecord[], taskId: string): boolean {
+  return events.some((event) => event.taskId === taskId && event.type === 'GRILL_COMPLETED');
+}
+
 export function recordGrillMeStarted(projectRoot: string): GrillMeView {
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     const taskId = state.currentTaskId;
@@ -78,5 +82,30 @@ export function recordGrillMeStarted(projectRoot: string): GrillMeView {
       checklist: GRILL_ME_CHECKLIST,
       protocol: GRILL_ME_PROTOCOL,
     };
+  });
+}
+
+export function recordGrillCompleted(
+  projectRoot: string,
+  input: { reason: string; carried?: string[]; changedAssumption?: string },
+): { taskId: string; eventId: string } {
+  if (input.reason.trim() === '') throw new Error('grill completion reason is required');
+  return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    const taskId = state.currentTaskId;
+    if (taskId === null) throw noCurrentTask();
+    const task = bundle.tasks.find((item) => item.id === taskId);
+    if (task === undefined) throw taskNotFound(taskId);
+    const event = appendSourceEvent(bundle, {
+      taskId,
+      type: 'GRILL_COMPLETED',
+      payload: {
+        reason: input.reason,
+        carried: input.carried ?? [],
+        ...(input.changedAssumption === undefined
+          ? {}
+          : { changedAssumption: input.changedAssumption }),
+      },
+    });
+    return { taskId, eventId: event.id };
   });
 }

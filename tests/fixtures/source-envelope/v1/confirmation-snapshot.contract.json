@@ -1,0 +1,17 @@
+{
+  "contract": "sduck-confirmation-snapshot/v1",
+  "kind": "confirmation-snapshot",
+  "runtimeSupport": "phase-1",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "snapshot": {
+    "schema": "sduck-confirmation-snapshot/v1",
+    "taskId": "TASK_01JZ0000000000000000000000",
+    "briefDigest": "sduck-brief-digest/v1:d28603306b31895d690eb534a7eee93fab408d12620811d191ba3b3eef71fe37",
+    "approvalViewVersion": "Approval View V1",
+    "provenance": {
+      "channel": "cli",
+      "mechanism": "local-operator-acknowledgement"
+    },
+    "confirmedAt": "2026-07-15T00:00:00.000Z"
+  }
+}

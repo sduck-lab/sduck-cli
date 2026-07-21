@@ -177,9 +177,11 @@ export function getContextPack(projectRoot: string): ContextPack {
     const rows = db
       .prepare(`SELECT * FROM context_items WHERE task_id = ? ORDER BY created_at ASC`)
       .all(taskId) as unknown as ContextRow[];
+    const persistedItems = rows.map(mapContextItem);
+    const graphItems = buildGraphContextItems(db, task);
     return {
       task,
-      items: rows.map(mapContextItem),
+      items: [...persistedItems, ...graphItems],
       evidence: listEvidenceByTask(db, task.id),
       priorDecisions: listPriorDecisions(db, task.id),
       priorTraces: listPriorTraces(db, task.id),
@@ -191,6 +193,48 @@ export function getContextPack(projectRoot: string): ContextPack {
   } finally {
     db.close();
   }
+}
+
+function buildGraphContextItems(db: DatabaseSync, task: Task): ContextItem[] {
+  const rows = db
+    .prepare(
+      `SELECT d.id, d.title, d.kind, d.summary, e.kind AS edge_kind
+       FROM graph_edges e
+       JOIN decisions d ON d.id = e.to_id OR d.id = e.from_id
+       JOIN tasks t ON t.id = d.task_id
+       WHERE (e.from_id = ? OR e.to_id = ?) AND d.task_id != ?
+         AND d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
+       ORDER BY e.kind, d.id
+       LIMIT 10`,
+    )
+    .all(task.id, task.id, task.id) as {
+    id: string;
+    title: string;
+    kind: string;
+    summary: string;
+    edge_kind: string;
+  }[];
+  const carriedRows = db
+    .prepare(
+      `SELECT prior.id, prior.title, prior.kind, prior.summary, e.kind AS edge_kind
+       FROM decisions current
+       JOIN graph_edges e ON e.from_id = current.id AND e.kind = 'CARRIED_FROM'
+       JOIN decisions prior ON prior.id = e.to_id
+       JOIN tasks t ON t.id = prior.task_id
+       WHERE current.task_id = ? AND prior.status = 'CONFIRMED' AND t.status != 'ABANDONED'
+       ORDER BY prior.id
+       LIMIT 10`,
+    )
+    .all(task.id) as typeof rows;
+  return [...rows, ...carriedRows].slice(0, 10).map((row, index) => ({
+    id: `GRAPH-${String(index + 1).padStart(4, '0')}`,
+    taskId: task.id,
+    sourceType: 'MEMORY',
+    sourceRef: row.id,
+    summary: `Graph history (${row.edge_kind}): ${row.title} — ${row.summary}`,
+    metadata: { type: 'graph', kind: row.kind, relation: row.edge_kind, synthetic: true },
+    createdAt: new Date(0).toISOString(),
+  }));
 }
 
 function findMemoryItems(db: DatabaseSync, task: Task): ContextCandidate[] {

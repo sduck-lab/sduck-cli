@@ -2,7 +2,7 @@
 
 ## Canonical source and local cache
 
-`.decision/exports/markdown/{tasks,decisions,implementations}/` is the Git-tracked decision source of truth. New v2 installs also track `.decision/policy.json`, which records project policy such as the required grill-me gate. `db.sqlite`, sidecars, `state.json`, locks, staging directories, and graph exports are local/generated and are added to `.gitignore` by `sduck init`.
+`.decision/exports/markdown/{tasks,decisions,implementations}/` is the Git-tracked decision source of truth. New v2 installs also track `.decision/policy.json`, which records project policy such as the required guided-grill completion gate and whether new `sduck work` creation is enabled. `db.sqlite`, sidecars, `state.json`, locks, staging directories, and graph exports are local/generated and are added to `.gitignore` by `sduck init`.
 
 Every mutation now runs under one writer lock, validates the complete bundle in staging, builds a temporary cache, and commits changed source files with rollback. Unchanged Markdown files are not replaced.
 
@@ -20,9 +20,10 @@ Commit the recovered `.decision/exports/markdown/**` files. Do not commit the DB
 
 ## Lifecycle changes
 
-- The canonical v2 flow is `sduck work` → `sduck context` → `sduck grill-me` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck remember`/`sduck recall` → `sduck close`.
-- Newly initialized v2 workspaces require `sduck grill-me` before `submit` or `confirm`, even for small work. Small work should keep the grill output and draft concise; it should not skip the gate.
+- The canonical v2 flow is `sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck remember`/`sduck recall` → `sduck close`.
+- Newly initialized v2 workspaces require `sduck grill complete --reason "..."` before `submit` or `confirm`, even for small work. `sduck grill-me` remains only as a compatibility prompt/start command. Small work should keep the grill completion reason and draft concise; it should not skip the gate.
 - Existing workspaces or tasks created before `.decision/policy.json` remain permissive/legacy-compatible and are not silently tightened.
+- `workflowEnabled` defaults to true, including older valid policy files where the field is absent. `sduck workflow disable` blocks only new `sduck work`; existing records and read-only commands remain available. Toggle mode only when no non-terminal decision task is active.
 - Draft decisions with no explicit status are promoted to `CONFIRMED` only when `sduck confirm` succeeds.
 - A task reaches `BRIEF_READY` only when it has an active decision and no open question, `OPEN` decision, or `CONFLICT` decision.
 - `confirm`, `trace`, `close`, and `abandon` reject invalid or terminal transitions without changing source.
@@ -33,7 +34,9 @@ Commit the recovered `.decision/exports/markdown/**` files. Do not commit the DB
 
 Codex and OpenCode now share the official `AGENTS.md` file. Managed blocks are replaced in place while content outside `<!-- sduck:begin -->` / `<!-- sduck:end -->` is preserved. Existing manually maintained `AGENT.md` files are not deleted by init; migrate any user-authored content to `AGENTS.md` and remove the obsolete file deliberately.
 
-Generated rules are canonical English and v2-first regardless of the user's CLI locale. Legacy SDD approval rules apply only when `.sduck/sduck-state.yml` has a non-null `current_work_id`. The Claude hook reads that exact task and allows completion-evidence edits; it is advisory because shell commands cannot be completely mediated. CLI and CI gates remain authoritative.
+Generated rules are canonical English and v2-first regardless of the user's CLI locale. Legacy SDD approval rules apply only when `.sduck/sduck-state.yml` has a non-null `current_work_id`. The Claude hook reads that exact task and allows completion-evidence edits; it is advisory because shell commands cannot be completely mediated. The CLI records workflow evidence but has no built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`.
+
+For disabled-workflow retrospective capture, the managed Git post-commit hook is installed only when the hook path is absent. Existing hooks are preserved, including forced init/update. In enabled workflow mode the installed hook no-ops. To decide whether to no-op, it reads only `.decision/policy.json`; it never inspects source content and never runs `sduck`, an LLM, or the network. `sduck workflow enable` rejects a pending retrospective marker until it is handled or cleared. If hook automation is unavailable because an existing hook was preserved, disabled mode remains advisory and retrospective capture requires an explicit Git range.
 
 ## Locale migration notes
 

@@ -35,8 +35,10 @@ export const AGENT_RULE_ASSET_RELATIVE_PATHS = [
   join('agent-rules', 'gemini-cli.md'),
   join('agent-rules', 'cursor.mdc'),
   join('agent-rules', 'antigravity.md'),
-  join('agent-rules', 'skills', 'codebase-decisions', 'SKILL.md'),
+  join('agent-rules', 'skills', 'sduck-codebase-decisions', 'SKILL.md'),
+  join('agent-rules', 'skills', 'sduck-retrospective-capture', 'SKILL.md'),
   join('agent-rules', 'hooks', 'sdd-guard.sh'),
+  join('agent-rules', 'hooks', 'sduck-retrospective-post-commit.sh'),
 ] as const;
 
 export const INIT_ASSET_RELATIVE_PATHS = [

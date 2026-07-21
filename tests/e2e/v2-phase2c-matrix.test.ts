@@ -35,10 +35,38 @@ describe('phase 2c v2 localization matrix', () => {
         ko: '현재 decision briefing 상태',
       },
       { args: ['resume'], en: 'Resume a previous', ko: '이전 decision task 재개' },
+      { args: ['workflow'], en: 'Manage new work creation mode', ko: '새 작업 생성 모드' },
+      {
+        args: ['workflow', 'status'],
+        en: 'Show whether new decision workflow is enabled',
+        ko: 'workflow 활성화 상태',
+      },
+      { args: ['workflow', 'enable'], en: 'Enable new decision workflow', ko: 'workflow 활성화' },
+      {
+        args: ['workflow', 'disable'],
+        en: 'Disable new decision workflow creation',
+        ko: 'workflow 생성 비활성화',
+      },
       { args: ['context'], en: 'Show or extend current context pack', ko: 'context pack' },
       { args: ['context', 'add'], en: 'Add file/path context', ko: '파일/경로 context 추가' },
       { args: ['grill-me'], en: 'Record the required grill-me', ko: '필수 grill-me 기록' },
+      { args: ['grill'], en: 'Guided grilling workflow', ko: 'Guided grilling workflow' },
+      {
+        args: ['grill', 'complete'],
+        en: 'Record guided grill completion',
+        ko: 'guided grill 완료',
+      },
       { args: ['submit'], en: 'Submit agent-generated', ko: 'agent draft' },
+      {
+        args: ['retrospective'],
+        en: 'Retrospective capture workflow',
+        ko: 'Retrospective capture workflow',
+      },
+      {
+        args: ['retrospective', 'capture'],
+        en: 'Capture a retrospective',
+        ko: 'retrospective decision draft',
+      },
       { args: ['ask'], en: 'Ask the next open question', ko: '다음 열린 질문' },
       { args: ['answer'], en: 'Answer a question', ko: '질문에' },
       { args: ['brief'], en: 'Render the current implementation brief', ko: '현재 구현 brief' },
@@ -48,6 +76,9 @@ describe('phase 2c v2 localization matrix', () => {
         ko: '현재 구현 brief 확정',
       },
       { args: ['trace'], en: 'Create implementation trace', ko: '구현 trace 생성' },
+      { args: ['evaluate'], en: 'Record structured evaluation', ko: '구조화 evaluation' },
+      { args: ['graph'], en: 'Inspect cache-only decision graph', ko: 'cache-only decision graph' },
+      { args: ['graph', 'show'], en: 'Show graph around', ko: '주변 graph' },
       { args: ['remember'], en: 'Export markdown', ko: 'Markdown 및 decision graph' },
       {
         args: ['rebuild'],
@@ -98,7 +129,7 @@ describe('phase 2c v2 localization matrix', () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain(expected);
     }
-  }, 20_000);
+  }, 75_000);
 
   it('keeps JSON-capable v2 command data locale-neutral across en and ko', async () => {
     workspace = await createTempWorkspace('v2-phase2c-json-');
@@ -119,10 +150,16 @@ describe('phase 2c v2 localization matrix', () => {
     await runCli(['work', 'json parity'], { cliRoot, cwd: workspace, env });
     const initialStatus = await runCli(['status', '--json'], { cliRoot, cwd: workspace, env });
     const taskId = (JSON.parse(initialStatus.stdout) as { task: { id: string } }).task.id;
-    await runCli(['grill-me', '--json'], { cliRoot, cwd: workspace, env });
+    await runCli(['grill', 'complete', '--reason', 'JSON parity ready'], {
+      cliRoot,
+      cwd: workspace,
+      env,
+    });
     const draft = JSON.stringify({
       schemaVersion: 'v2alpha1',
       taskId,
+      implementationPlan: ['Keep JSON output stable.'],
+      verificationPlan: ['Compare JSON under locales.'],
       decisions: [{ id: 'DEC-json', title: 'JSON', kind: 'EXPLICIT', summary: 'Locale-neutral.' }],
     });
     await runCli(['submit', '--stdin'], { cliRoot, cwd: workspace, env, stdin: draft });
@@ -181,8 +218,12 @@ describe('phase 2c v2 localization matrix', () => {
     const work = await runCli(['work', 'transition matrix'], { cliRoot, cwd: workspace, env });
     expect(work.stdout).toContain('sduck context');
     let context = await runCli(['context'], { cliRoot, cwd: workspace, env });
-    expect(context.stdout).toContain('Next: sduck grill-me');
-    await runCli(['grill-me'], { cliRoot, cwd: workspace, env });
+    expect(context.stdout).toContain('Next: sduck grill complete --reason');
+    await runCli(['grill', 'complete', '--reason', 'Transition ready'], {
+      cliRoot,
+      cwd: workspace,
+      env,
+    });
     context = await runCli(['context'], { cliRoot, cwd: workspace, env });
     expect(context.stdout).toContain('Next: sduck submit --stdin');
     const taskId = (
@@ -197,6 +238,8 @@ describe('phase 2c v2 localization matrix', () => {
       stdin: JSON.stringify({
         schemaVersion: 'v2alpha1',
         taskId,
+        implementationPlan: ['Implement transition flow.'],
+        verificationPlan: ['Exercise next-step transitions.'],
         decisions: [{ id: 'DEC-flow', title: 'Flow', kind: 'EXPLICIT', summary: 'Complete.' }],
         questions: [
           { id: 'Q-one', text: 'First?', recommendedAnswer: 'A', options: ['A'] },
@@ -227,7 +270,8 @@ describe('phase 2c v2 localization matrix', () => {
     expect(confirm.stdout).toContain('Next: implement, then sduck trace');
     await writeFile(join(workspace, 'flow.ts'), 'export const flow = 2;\n');
     const trace = await runCli(['trace'], { cliRoot, cwd: workspace, env });
-    expect(trace.stdout).toContain('Next: sduck remember');
+    expect(trace.stdout).toContain('Next: sduck evaluate');
+    await runCli(['evaluate', '--check', 'workflow=observed'], { cliRoot, cwd: workspace, env });
     const canonicalEn = await readFile(
       join(workspace, '.decision', 'exports', 'markdown', 'tasks', `${taskId}.md`),
       'utf8',
@@ -255,6 +299,32 @@ describe('phase 2c v2 localization matrix', () => {
       });
       await rm(join(legacyWorkspace, '.decision', 'policy.json'));
       await runCli(['work', 'permissive transition'], { cliRoot, cwd: legacyWorkspace, env });
+      const currentStatus = JSON.parse(
+        (await runCli(['status', '--json'], { cliRoot, cwd: legacyWorkspace, env })).stdout,
+      ) as { task: { id: string } };
+      const legacyTaskPath = join(
+        legacyWorkspace,
+        '.decision',
+        'exports',
+        'markdown',
+        'tasks',
+        `${currentStatus.task.id}.md`,
+      );
+      const legacyTaskSource = await readFile(legacyTaskPath, 'utf8');
+      const legacyTaskMatch = /```json sduck-source\n([\s\S]*?)\n```/.exec(legacyTaskSource);
+      if (legacyTaskMatch?.[1] === undefined) throw new Error('missing legacy source block');
+      const legacyTaskJson = JSON.parse(legacyTaskMatch[1]) as {
+        task: { guided?: boolean };
+        events: { type: string }[];
+      };
+      delete legacyTaskJson.task.guided;
+      legacyTaskJson.events = legacyTaskJson.events.filter(
+        (event) => event.type !== 'GRILL_STARTED',
+      );
+      await writeFile(
+        legacyTaskPath,
+        legacyTaskSource.replace(legacyTaskMatch[1], JSON.stringify(legacyTaskJson, null, 2)),
+      );
       const permissive = await runCli(['status'], { cliRoot, cwd: legacyWorkspace, env });
       expect(permissive.stdout).toContain('legacy/permissive');
       const permissiveTaskId = (
@@ -298,7 +368,7 @@ describe('phase 2c v2 localization matrix', () => {
         if (locale === 'ko') await runCli(['config', 'locale', 'ko'], { cliRoot, cwd, env });
         await runCli(['init', '--no-agent-rules'], { cliRoot, cwd, env });
         await runCli(['work', 'complete brief'], { cliRoot, cwd, env });
-        await runCli(['grill-me'], { cliRoot, cwd, env });
+        await runCli(['grill', 'complete', '--reason', 'Brief complete'], { cliRoot, cwd, env });
         const taskId = (
           JSON.parse((await runCli(['status', '--json'], { cliRoot, cwd, env })).stdout) as {
             task: { id: string };
@@ -313,6 +383,8 @@ describe('phase 2c v2 localization matrix', () => {
             taskId,
             expectedScope: ['src/keep.ts'],
             avoidScope: ['src/avoid.ts'],
+            implementationPlan: ['Implement complete brief path.'],
+            verificationPlan: ['Render complete brief fields.'],
             decisions: [
               {
                 id: 'DEC-complete',
@@ -591,5 +663,5 @@ describe('phase 2c v2 localization matrix', () => {
         })
       ).stderr,
     ).toBe('');
-  }, 20_000);
+  }, 45_000);
 });

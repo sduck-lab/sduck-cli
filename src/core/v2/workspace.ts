@@ -12,6 +12,7 @@ import { writeDefaultPolicy } from './policy.js';
 import { sourceFileCount } from './source-store.js';
 import { writeState } from './state.js';
 import { cacheHasRows, openDatabase } from './store.js';
+import { withDecisionWorkspaceLock } from './workspace-lock.js';
 
 export interface InitWorkspaceResult {
   created: string[];
@@ -48,8 +49,14 @@ export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult 
     existing.push(stateFilePath);
   }
   const policyFilePath = policyPath(projectRoot);
-  if (shouldCreatePolicy && !fs.existsSync(policyFilePath)) {
-    created.push(writeDefaultPolicy(projectRoot));
+  if (shouldCreatePolicy) {
+    withDecisionWorkspaceLock(projectRoot, () => {
+      if (fs.existsSync(policyFilePath)) {
+        existing.push(policyFilePath);
+      } else {
+        created.push(writeDefaultPolicy(projectRoot));
+      }
+    });
   } else if (fs.existsSync(policyFilePath)) {
     existing.push(policyFilePath);
   }

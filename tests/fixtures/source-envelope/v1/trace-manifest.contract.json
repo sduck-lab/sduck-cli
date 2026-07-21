@@ -1,0 +1,38 @@
+{
+  "contract": "sduck-trace-manifest/v1",
+  "kind": "trace-manifest",
+  "runtimeSupport": "phase-4",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "manifest": {
+    "schema": "sduck-trace-manifest/v1",
+    "id": "IMPL_01JZ0000000000000000000000",
+    "taskId": "TASK_01JZ0000000000000000000000",
+    "briefDigest": "sduck-brief-digest/v1:d28603306b31895d690eb534a7eee93fab408d12620811d191ba3b3eef71fe37",
+    "baseCommit": "0000000000000000000000000000000000000000",
+    "observedHead": "1111111111111111111111111111111111111111",
+    "files": [
+      {
+        "path": "docs/design/mcp-control-plane-0.6-contract.md",
+        "status": "A",
+        "contentSha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "path": "docs/design/new-name.md",
+        "oldPath": "docs/design/old-name.md",
+        "status": "R",
+        "contentSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      {
+        "path": "obsolete.md",
+        "status": "D",
+        "contentSha256": null
+      },
+      {
+        "path": "tests/unit/v2-contract-fixtures.test.ts",
+        "status": "M",
+        "contentSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    ],
+    "manifestHash": "sduck-trace-manifest/v1:9a2369444bdb09fea48568108d318feff337092e41010f063595ad57868c92f1"
+  }
+}

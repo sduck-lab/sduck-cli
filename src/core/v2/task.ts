@@ -1,7 +1,7 @@
 import { DecisionWorkspace } from './decision-workspace.js';
 import { noCurrentTask, taskNotFound } from './errors.js';
 import { createTaskId, nowIso } from './ids.js';
-import { resolveTaskCreationPolicy } from './policy.js';
+import { assertWorkflowEnabledForTaskCreation, resolveTaskCreationPolicy } from './policy.js';
 import { appendSourceEvent } from './source-store.js';
 import { decodeJson, encodeJson } from './store.js';
 import { TaskLifecycle } from './task-lifecycle.js';
@@ -16,6 +16,10 @@ interface TaskRow {
   status: TaskStatus;
   expected_scope_json: string;
   avoid_scope_json: string;
+  implementation_plan_json?: string | null;
+  verification_plan_json?: string | null;
+  guided?: number | null;
+  retrospective?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +32,14 @@ export function mapTask(row: TaskRow): Task {
     status: row.status,
     expectedScope: decodeJson<string[]>(row.expected_scope_json, []),
     avoidScope: decodeJson<string[]>(row.avoid_scope_json, []),
+    ...(row.implementation_plan_json == null
+      ? {}
+      : { implementationPlan: decodeJson<string[]>(row.implementation_plan_json, []) }),
+    ...(row.verification_plan_json == null
+      ? {}
+      : { verificationPlan: decodeJson<string[]>(row.verification_plan_json, []) }),
+    ...(row.guided == null ? {} : { guided: row.guided === 1 }),
+    ...(row.retrospective == null ? {} : { retrospective: row.retrospective === 1 }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -38,9 +50,14 @@ export function getTaskById(db: DatabaseSync, taskId: string): Task | null {
   return row === undefined ? null : mapTask(row);
 }
 
-export function createTask(projectRoot: string, description: string): Task {
-  const policy = resolveTaskCreationPolicy(projectRoot);
+export function createTask(
+  projectRoot: string,
+  description: string,
+  options: { guided?: boolean } = {},
+): Task {
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
+    assertWorkflowEnabledForTaskCreation(projectRoot);
+    const policy = resolveTaskCreationPolicy(projectRoot);
     let id = createTaskId(description);
     let suffix = 2;
     while (bundle.tasks.some((task) => task.id === id)) {
@@ -48,6 +65,7 @@ export function createTask(projectRoot: string, description: string): Task {
       suffix += 1;
     }
     const createdAt = nowIso();
+    const guided = options.guided === true;
     const task: Task = {
       id,
       title: description,
@@ -55,6 +73,7 @@ export function createTask(projectRoot: string, description: string): Task {
       status: 'OPEN',
       expectedScope: [],
       avoidScope: [],
+      ...(guided ? { guided: true } : {}),
       createdAt,
       updatedAt: createdAt,
     };
@@ -64,6 +83,13 @@ export function createTask(projectRoot: string, description: string): Task {
       type: 'TASK_CREATED',
       payload: { description, policy },
     });
+    if (guided) {
+      appendSourceEvent(bundle, {
+        taskId: task.id,
+        type: 'GRILL_STARTED',
+        payload: { automatic: true },
+      });
+    }
     state.currentTaskId = task.id;
     state.updatedAt = createdAt;
     return task;

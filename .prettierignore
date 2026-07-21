@@ -6,3 +6,4 @@ coverage/
 .sduck/sduck-archive/
 .sduck-worktrees/
 test/workspaces/
+tests/fixtures/brief-digest/v1/unicode-projection.canonical.json

@@ -5,6 +5,7 @@ import type {
   EventRecord,
   Evidence,
   ImplementationTrace,
+  EvaluationRecord,
   Question,
   Task,
 } from '../../types/index.js';
@@ -17,6 +18,7 @@ export interface SourceBundle {
   contextItems: ContextItem[];
   briefSnapshots: BriefSnapshot[];
   implementationTraces: ImplementationTrace[];
+  evaluations: EvaluationRecord[];
   events: EventRecord[];
 }
 
@@ -26,6 +28,7 @@ export interface TaskSourceDocument {
   evidence: Evidence[];
   contextItems: ContextItem[];
   briefSnapshots: BriefSnapshot[];
+  evaluations?: EvaluationRecord[];
   events: EventRecord[];
 }
 

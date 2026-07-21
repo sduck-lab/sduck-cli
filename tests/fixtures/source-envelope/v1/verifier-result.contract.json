@@ -1,0 +1,24 @@
+{
+  "contract": "sduck-verify-result/v1",
+  "kind": "verifier-result",
+  "runtimeSupport": "phase-4",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "result": {
+    "schema": "sduck-verify-result/v1",
+    "ok": false,
+    "exitCode": 20,
+    "code": "TRACE_COVERAGE_MISSING",
+    "base": "main",
+    "mergeBase": "0000000000000000000000000000000000000000",
+    "head": "1111111111111111111111111111111111111111",
+    "checkedDiffMode": "base...HEAD",
+    "unmatchedFiles": [
+      {
+        "path": "src/example.ts",
+        "status": "M",
+        "contentSha256": "5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    ],
+    "matchedTraceManifests": []
+  }
+}

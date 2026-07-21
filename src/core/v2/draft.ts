@@ -53,6 +53,7 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
     const questions = draft.questions ?? [];
     const evidence = draft.evidence ?? [];
     const now = nowIso();
+    validateCarriedDecisions(bundle, taskId, decisions);
     let decisionIds = bundle.decisions.map((item) => item.id);
     let questionIds = bundle.questions.map((item) => item.id);
     let evidenceIds = bundle.evidence.map((item) => item.id);
@@ -115,6 +116,12 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
             ...item,
             expectedScope: draft.expectedScope ?? item.expectedScope,
             avoidScope: draft.avoidScope ?? item.avoidScope,
+            ...(draft.implementationPlan === undefined
+              ? {}
+              : { implementationPlan: draft.implementationPlan }),
+            ...(draft.verificationPlan === undefined
+              ? {}
+              : { verificationPlan: draft.verificationPlan }),
             updatedAt: now,
           }
         : item,
@@ -128,6 +135,8 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
         evidence: evidence.length,
         expectedScope: draft.expectedScope ?? [],
         avoidScope: draft.avoidScope ?? [],
+        implementationPlan: draft.implementationPlan ?? [],
+        verificationPlan: draft.verificationPlan ?? [],
       },
     });
     new TaskLifecycle(bundle, taskId).reconcileBriefReadiness(now);
@@ -140,7 +149,7 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
   });
 }
 
-function validateDraft(draft: unknown): SduckDraft {
+export function validateDraft(draft: unknown): SduckDraft {
   if (typeof draft !== 'object' || draft === null || !('schemaVersion' in draft)) {
     throw new V2ExpectedError('DRAFT_SCHEMA', { problemCode: 'missing-schema-version' });
   }
@@ -154,6 +163,8 @@ function validateDraft(draft: unknown): SduckDraft {
   assertOptionalArray(candidate.evidence, 'evidence');
   assertOptionalStringArray(candidate.expectedScope, 'expectedScope');
   assertOptionalStringArray(candidate.avoidScope, 'avoidScope');
+  assertOptionalStringArray(candidate.implementationPlan, 'implementationPlan');
+  assertOptionalStringArray(candidate.verificationPlan, 'verificationPlan');
   for (const decision of candidate.decisions ?? []) {
     assertString(decision.title, 'decision.title');
     assertString(decision.summary, 'decision.summary');
@@ -183,6 +194,45 @@ function validateDraft(draft: unknown): SduckDraft {
     assertOptionalStringArray(question.options, 'question.options');
   }
   return candidate;
+}
+
+export function validateCarriedDecisions(
+  bundle: { decisions: Decision[]; tasks: { id: string; status: string }[] },
+  taskId: string,
+  decisions: NonNullable<SduckDraft['decisions']>,
+): void {
+  for (const decision of decisions) {
+    if (decision.kind !== 'CARRIED') continue;
+    if (
+      (decision.rationale ?? []).length === 0 ||
+      decision.rationale?.some((item) => item.trim() === '')
+    ) {
+      throw new V2ExpectedError('CARRIED_DECISION_INVALID', {
+        decision: decision.title,
+        reason: 'rationale',
+      });
+    }
+    if ((decision.sourceRefs ?? []).length === 0) {
+      throw new V2ExpectedError('CARRIED_DECISION_INVALID', {
+        decision: decision.title,
+        reason: 'sourceRefs',
+      });
+    }
+    for (const sourceRef of decision.sourceRefs ?? []) {
+      const source = bundle.decisions.find((item) => item.id === sourceRef);
+      const sourceTask = bundle.tasks.find((item) => item.id === source?.taskId);
+      if (
+        source?.status !== 'CONFIRMED' ||
+        source.taskId === taskId ||
+        sourceTask?.status === 'ABANDONED'
+      ) {
+        throw new V2ExpectedError('CARRIED_DECISION_INVALID', {
+          decision: decision.title,
+          sourceRef,
+        });
+      }
+    }
+  }
 }
 
 function assertString(value: unknown, field: string): asserts value is string {

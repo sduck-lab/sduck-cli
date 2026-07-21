@@ -30,6 +30,7 @@ export function renderStatus(view: StatusView, messages: V2MessageCatalog = enV2
     `  ${messages.labels.questionsOpen}: ${String(view.indicators.questionsOpen)}`,
     `  ${messages.labels.briefSnapshots}: ${String(view.indicators.briefSnapshots)}`,
     `  ${messages.labels.implementationTraces}: ${String(view.indicators.implementationTraces)}`,
+    `  ${messages.labels.evaluations}: ${String(view.indicators.evaluations)}`,
     `  ${messages.labels.exports}: ${String(view.indicators.exports)}`,
     '',
     `${messages.labels.decisions}:`,
@@ -269,7 +270,7 @@ export function renderRememberResult(
     messages.commands.remembered,
     `${messages.common.created}:`,
     ...result.created.map((item) => `  - ${item}`),
-    messages.workflow.nextRecallClose,
+    result.next === 'evaluate' ? messages.workflow.nextEvaluate : messages.workflow.nextRecallClose,
   ].join('\n');
 }
 
@@ -319,17 +320,23 @@ function renderDoctorRepair(
 function nextAction(view: StatusView, messages: V2MessageCatalog): string {
   if (view.indicators.grillMeRequired && !view.indicators.grillMeStarted)
     return messages.workflow.nextGrillMe;
+  if (view.indicators.grillMeRequired && !view.indicators.grillMeCompleted)
+    return messages.workflow.nextGrillComplete;
   if (view.indicators.questionsOpen > 0) return messages.workflow.nextAsk;
-  if (view.task?.status === 'CONFIRMED') return messages.workflow.nextImplementTrace;
+  if (view.task?.status === 'CONFIRMED' && view.indicators.implementationTraces === 0)
+    return messages.workflow.nextImplementTrace;
+  if (view.task?.status === 'CONFIRMED' && !view.indicators.latestTraceEvaluated)
+    return messages.workflow.nextEvaluate;
+  if (view.task?.status === 'CONFIRMED') return messages.workflow.nextRemember;
   if (view.task?.status === 'BRIEF_READY') return messages.workflow.nextBriefConfirm;
   return `${messages.workflow.nextContext} / ${messages.workflow.nextSubmit}`;
 }
 
 function formatGrillMe(view: StatusView, messages: V2MessageCatalog): string {
   if (!view.indicators.grillMeRequired) return messages.labels.grillMePermissive;
-  return view.indicators.grillMeStarted
-    ? messages.labels.grillMeStarted
-    : messages.workflow.nextGrillMe;
+  if (view.indicators.grillMeCompleted) return messages.labels.grillMeStarted;
+  if (view.indicators.grillMeStarted) return messages.workflow.nextGrillComplete;
+  return messages.workflow.nextGrillMe;
 }
 
 function formatItemRelevance(

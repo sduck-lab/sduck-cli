@@ -1,17 +1,30 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runWorkCommand } from '../../src/commands/v2/index.js';
+import {
+  runStatusCommand,
+  runRetrospectiveCaptureCommand,
+  runWorkflowDisableCommand,
+  runWorkflowEnableCommand,
+  runWorkflowStatusCommand,
+  runWorkCommand,
+} from '../../src/commands/v2/index.js';
 import { confirmBrief } from '../../src/core/v2/brief.js';
 import { buildContextIndex, getContextPack } from '../../src/core/v2/context.js';
 import { submitDraft } from '../../src/core/v2/draft.js';
 import { recordGrillMeStarted } from '../../src/core/v2/grill.js';
 import { policyPath } from '../../src/core/v2/paths.js';
+import { getWorkflowStatus, readDecisionWorkspacePolicy } from '../../src/core/v2/policy.js';
 import { recall } from '../../src/core/v2/recall.js';
-import { sourceFingerprint } from '../../src/core/v2/source-store.js';
+import {
+  retrospectiveMarkerPublicationLockPath,
+  retrospectivePendingMarkerPath,
+} from '../../src/core/v2/retrospective.js';
+import { loadSourceBundle, sourceFingerprint } from '../../src/core/v2/source-store.js';
 import { getCurrentTaskId } from '../../src/core/v2/state.js';
 import { buildStatusView } from '../../src/core/v2/status.js';
 import { createTask, setTerminalStatus } from '../../src/core/v2/task.js';
@@ -33,6 +46,46 @@ function isolatedGitEnv(): NodeJS.ProcessEnv {
   delete env['GIT_INDEX_FILE'];
   delete env['GIT_PREFIX'];
   return env;
+}
+
+const execFileAsync = promisify(execFile);
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function commitSha(root: string, ref = 'HEAD'): string {
+  return execFileSync('git', ['rev-parse', ref], {
+    cwd: root,
+    env: isolatedGitEnv(),
+    encoding: 'utf8',
+  }).trim();
+}
+
+function firstParentSha(root: string, commit = commitSha(root)): string | null {
+  const output = execFileSync('git', ['rev-list', '--parents', '-n', '1', commit], {
+    cwd: root,
+    env: isolatedGitEnv(),
+    encoding: 'utf8',
+  }).trim();
+  return output.split(/\s+/)[1] ?? null;
+}
+
+async function writeRetrospectiveMarker(
+  root: string,
+  commitShaValue = commitSha(root),
+  parentShaValue: string | null = firstParentSha(root, commitShaValue),
+): Promise<string> {
+  const markerPath = retrospectivePendingMarkerPath(root);
+  await writeFile(
+    markerPath,
+    `${JSON.stringify(
+      { commitSha: commitShaValue, parentSha: parentShaValue, createdAt: new Date().toISOString() },
+      null,
+      2,
+    )}\n`,
+  );
+  return markerPath;
 }
 
 describe('v2 decision task lifecycle', () => {
@@ -122,13 +175,554 @@ describe('v2 decision task lifecycle', () => {
 
     initDecisionWorkspace(root);
     expect(existsSync(policyPath(root))).toBe(true);
+    expect(readDecisionWorkspacePolicy(root)).toMatchObject({ workflowEnabled: true });
 
     await unlink(policyPath(root));
     initDecisionWorkspace(root);
     expect(existsSync(policyPath(root))).toBe(true);
   });
 
-  it('uses the task-created policy snapshot even if workspace policy changes later', async () => {
+  it('defaults missing workflow policy to enabled and rejects malformed values', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-policy-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+
+    await writeFile(
+      policyPath(root),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: true }, null, 2)}\n`,
+    );
+    expect(getWorkflowStatus(root)).toMatchObject({ enabled: true, initialized: true });
+
+    await writeFile(
+      policyPath(root),
+      `${JSON.stringify(
+        { schemaVersion: 'v2alpha1', requireGrillMe: true, workflowEnabled: 'no' },
+        null,
+        2,
+      )}\n`,
+    );
+    expect(() => readDecisionWorkspacePolicy(root)).toThrow(/POLICY_INVALID/);
+  });
+
+  it('reports workflow status before init and toggles new work creation only', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-toggle-');
+    const root = workspace;
+
+    expect(runWorkflowStatusCommand(root, false).stdout).toContain('Workflow: enabled');
+    expect(JSON.parse(runWorkflowStatusCommand(root, true).stdout) as unknown).toMatchObject({
+      enabled: true,
+      initialized: false,
+    });
+
+    expect(runWorkflowDisableCommand(root, false).stdout).toContain('Workflow disabled.');
+    expect(JSON.parse(runWorkflowStatusCommand(root, true).stdout) as unknown).toMatchObject({
+      enabled: false,
+      initialized: true,
+    });
+    const blocked = runWorkCommand(root, 'blocked while disabled');
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.stderr).toContain('Decision workflow is disabled');
+    expect(blocked.stderr).toContain('sduck workflow enable');
+    expect(runStatusCommand(root, false).exitCode).toBe(0);
+
+    expect(runWorkflowEnableCommand(root, false).stdout).toContain('Workflow enabled.');
+    const started = runWorkCommand(root, 'allowed after enable');
+    expect(started.exitCode).toBe(0);
+  });
+
+  it('installs the retrospective hook only on disabled workflow and preserves existing hooks', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-hook-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    const hookPath = execFileSync('git', ['rev-parse', '--git-path', 'hooks/post-commit'], {
+      cwd: root,
+      env: isolatedGitEnv(),
+      encoding: 'utf8',
+    }).trim();
+    const absoluteHookPath = join(root, hookPath);
+
+    expect(existsSync(absoluteHookPath)).toBe(false);
+    const disabled = runWorkflowDisableCommand(root, false);
+    expect(disabled.exitCode).toBe(0);
+    expect(disabled.stdout).toContain('Workflow disabled.');
+    expect(disabled.stdout).not.toContain('Kept existing Git post-commit hook');
+    expect(await readFile(absoluteHookPath, 'utf8')).toContain(
+      'sduck managed retrospective post-commit hook',
+    );
+
+    expect(runWorkflowEnableCommand(root, false).exitCode).toBe(0);
+    expect(runWorkflowDisableCommand(root, false).stdout).toContain(
+      'Kept existing Git post-commit hook',
+    );
+    expect(runWorkflowEnableCommand(root, false).exitCode).toBe(0);
+    await writeFile(absoluteHookPath, '#!/bin/sh\nexit 0\n');
+    const userHookDisable = runWorkflowDisableCommand(root, false);
+    expect(userHookDisable.exitCode).toBe(0);
+    expect(userHookDisable.stdout).toContain(
+      'Kept existing Git post-commit hook; sduck installs the managed retrospective marker hook only when the hook path is absent.',
+    );
+    expect(await readFile(absoluteHookPath, 'utf8')).toBe('#!/bin/sh\nexit 0\n');
+  });
+
+  it('rejects workflow enable while a retrospective marker is pending', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-pending-enable-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    await writeRetrospectiveMarker(root);
+
+    const enabled = runWorkflowEnableCommand(root, false);
+
+    expect(enabled.exitCode).toBe(1);
+    expect(enabled.stderr).toContain('Cannot enable decision workflow');
+    expect(getWorkflowStatus(root)).toMatchObject({ enabled: false });
+  });
+
+  it('keeps the managed hook quiet during the policy enable transition barrier', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-enable-barrier-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const hookPath = execFileSync('git', ['rev-parse', '--git-path', 'hooks/post-commit'], {
+      cwd: root,
+      env: isolatedGitEnv(),
+      encoding: 'utf8',
+    }).trim();
+    const absoluteHookPath = join(root, hookPath);
+    await writeFile(
+      policyPath(root),
+      `${JSON.stringify(
+        {
+          schemaVersion: 'v2alpha1',
+          requireGrillMe: true,
+          workflowEnabled: false,
+          retrospectiveHookState: 'enabling',
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    execFileSync('sh', [absoluteHookPath], { cwd: root, env: isolatedGitEnv() });
+
+    expect(existsSync(retrospectivePendingMarkerPath(root))).toBe(false);
+    const enabled = runWorkflowEnableCommand(root, false);
+    expect(enabled.exitCode).toBe(0);
+    expect(JSON.parse(await readFile(policyPath(root), 'utf8'))).not.toHaveProperty(
+      'retrospectiveHookState',
+    );
+  });
+
+  it('makes an in-flight hook re-read enabled policy under the shared marker lock', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-hook-lock-reread-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const hookPath = execFileSync('git', ['rev-parse', '--git-path', 'hooks/post-commit'], {
+      cwd: root,
+      env: isolatedGitEnv(),
+      encoding: 'utf8',
+    }).trim();
+    const absoluteHookPath = join(root, hookPath);
+    const lockPath = retrospectiveMarkerPublicationLockPath(root);
+    await mkdir(lockPath, { recursive: false });
+    await writeFile(
+      join(lockPath, 'owner.json'),
+      `${JSON.stringify({ pid: process.pid, token: 'test-held-publication-lock' })}\n`,
+    );
+
+    const hook = execFileAsync('sh', [absoluteHookPath], { cwd: root, env: isolatedGitEnv() });
+    await delay(250);
+    await writeFile(
+      policyPath(root),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: true, workflowEnabled: true }, null, 2)}\n`,
+    );
+    await rm(lockPath, { recursive: true, force: true });
+    await hook;
+
+    expect(existsSync(retrospectivePendingMarkerPath(root))).toBe(false);
+    expect(getWorkflowStatus(root)).toMatchObject({ enabled: true });
+  });
+
+  it('rejects enable when a locked in-flight publication lands before the transition', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-lock-published-marker-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const lockPath = retrospectiveMarkerPublicationLockPath(root);
+    await mkdir(lockPath, { recursive: false });
+    await writeFile(
+      join(lockPath, 'owner.json'),
+      `${JSON.stringify({ pid: process.pid, token: 'test-held-publication-lock' })}\n`,
+    );
+
+    const enable = runCli(['workflow', 'enable'], { cliRoot: process.cwd(), cwd: root });
+    await delay(250);
+    await writeRetrospectiveMarker(root);
+    await rm(lockPath, { recursive: true, force: true });
+    const enabled = await enable;
+
+    expect(enabled.exitCode).toBe(1);
+    expect(`${enabled.stdout}\n${enabled.stderr}`).toContain('Cannot enable decision workflow');
+    expect(getWorkflowStatus(root)).toMatchObject({ enabled: false });
+    expect(existsSync(retrospectivePendingMarkerPath(root))).toBe(true);
+  });
+
+  it('clears a stale shared marker lock before enabling workflow', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-stale-marker-lock-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const lockPath = retrospectiveMarkerPublicationLockPath(root);
+    await mkdir(lockPath, { recursive: false });
+    await writeFile(
+      join(lockPath, 'owner.json'),
+      `${JSON.stringify({ pid: 999_999_999, token: 'stale-owner' })}\n`,
+    );
+
+    const enabled = runWorkflowEnableCommand(root, false);
+
+    expect(enabled.exitCode).toBe(0);
+    expect(enabled.stdout).toContain('Workflow enabled.');
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('disables workflow with an advisory when safe hook installation cannot complete', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-hook-fail-advisory-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    await rm(join(root, '.git', 'hooks'), { recursive: true, force: true });
+    await writeFile(join(root, '.git', 'hooks'), 'not a directory\n');
+
+    const disabled = runWorkflowDisableCommand(root, false);
+
+    expect(disabled.exitCode).toBe(0);
+    expect(disabled.stdout).toContain('Workflow disabled.');
+    expect(disabled.stdout).toContain(
+      'Could not install managed retrospective Git post-commit hook after disabling workflow',
+    );
+    expect(getWorkflowStatus(root)).toMatchObject({ enabled: false });
+  });
+
+  it('rejects workflow toggle while OPEN, BRIEF_READY, or CONFIRMED tasks are active', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-active-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+
+    const openTask = createTask(root, 'open active');
+    const openToggle = runWorkflowDisableCommand(root, false);
+    expect(openToggle.exitCode).toBe(1);
+    expect(openToggle.stderr).toContain('Cannot change workflow mode');
+    expect(openToggle.stderr).toContain(openTask.id);
+    setTerminalStatus(root, 'ABANDONED');
+
+    const briefReadyTask = createTask(root, 'brief ready active');
+    recordGrillMeStarted(root);
+    submitDraft(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        taskId: briefReadyTask.id,
+        decisions: [{ id: 'DEC-ready', title: 'Ready', kind: 'EXPLICIT', summary: 'Ready.' }],
+      }),
+    );
+    expect(buildStatusView(root).task?.status).toBe('BRIEF_READY');
+    expect(runWorkflowDisableCommand(root, false).stderr).toContain('Cannot change workflow mode');
+    setTerminalStatus(root, 'ABANDONED');
+
+    const confirmedTask = createTask(root, 'confirmed active');
+    recordGrillMeStarted(root);
+    submitDraft(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        taskId: confirmedTask.id,
+        decisions: [
+          { id: 'DEC-confirmed', title: 'Confirmed', kind: 'EXPLICIT', summary: 'Confirmed.' },
+        ],
+      }),
+    );
+    confirmBrief(root);
+    expect(buildStatusView(root).task?.status).toBe('CONFIRMED');
+    expect(runWorkflowDisableCommand(root, false).stderr).toContain('Cannot change workflow mode');
+    setTerminalStatus(root, 'ABANDONED');
+
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    expect(runStatusCommand(root, false).exitCode).toBe(0);
+  });
+
+  it('preserves disabled workflow policy across init', async () => {
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-preserve-');
+    const root = workspace;
+
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    initDecisionWorkspace(root);
+    expect(getWorkflowStatus(root)).toMatchObject({ enabled: false, initialized: true });
+  });
+
+  it('serializes concurrent init/work and workflow disable without enabled overwrite', async () => {
+    const cliRoot = process.cwd();
+    workspace = await createTempWorkspace('v2-lifecycle-workflow-race-');
+    const root = workspace;
+    const lockPath = join(root, '.decision', 'workspace.lock');
+    await mkdir(lockPath, { recursive: true });
+    await writeFile(
+      join(lockPath, 'owner.json'),
+      `${JSON.stringify({ pid: process.pid, token: 'test-held-lock' })}\n`,
+      'utf8',
+    );
+
+    const workPromise = runCli(['work', 'race'], { cliRoot, cwd: root });
+    const disablePromise = runCli(['workflow', 'disable'], { cliRoot, cwd: root });
+    await delay(250);
+
+    for (let observation = 0; observation < 5; observation += 1) {
+      if (existsSync(policyPath(root))) {
+        const policyDuringContent = await readFile(policyPath(root), 'utf8');
+        expect(() => JSON.parse(policyDuringContent) as unknown).not.toThrow();
+      }
+      await delay(20);
+    }
+
+    await rm(lockPath, { force: true, recursive: true });
+    const [work, disable] = await Promise.all([workPromise, disablePromise]);
+    const policy = JSON.parse(await readFile(policyPath(root), 'utf8')) as {
+      workflowEnabled?: boolean;
+    };
+    const status = await runCli(['status', '--json'], { cliRoot, cwd: root });
+    const statusView = JSON.parse(status.stdout) as {
+      task: { id: string; status: string } | null;
+    };
+
+    if (disable.exitCode === 0) {
+      expect(work.exitCode, `${work.stdout}\n${work.stderr}`).toBe(1);
+      expect(work.stderr).toContain('Decision workflow is disabled');
+      expect(policy.workflowEnabled).toBe(false);
+      expect(statusView.task).toBeNull();
+    } else {
+      expect(work.exitCode, `${work.stdout}\n${work.stderr}`).toBe(0);
+      expect(disable.stderr).toContain('Cannot change workflow mode');
+      expect(policy.workflowEnabled).toBe(true);
+      expect(statusView.task).toMatchObject({ status: 'OPEN' });
+    }
+  }, 15_000);
+
+  it('captures a retrospective draft only while disabled and leaves ordinary work blocked', async () => {
+    workspace = await createTempWorkspace('v2-retrospective-capture-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 2;\n');
+    execFileSync('git', ['commit', '-am', 'change'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    const markerPath = await writeRetrospectiveMarker(root);
+    const draft = JSON.stringify({
+      schemaVersion: 'v2alpha1',
+      implementationPlan: ['Implementation already landed.'],
+      verificationPlan: ['Captured retrospectively.'],
+      expectedScope: ['tracked.ts'],
+      decisions: [
+        {
+          id: 'DEC-retro',
+          title: 'Retrospective decision',
+          kind: 'EXPLICIT',
+          status: 'CONFIRMED',
+          summary: 'Keep the tracked change.',
+          appliesTo: ['tracked.ts'],
+        },
+      ],
+      evidence: [
+        { id: 'EVD-retro', sourceType: 'CODE', sourceRef: 'tracked.ts', summary: 'Diff.' },
+      ],
+    });
+
+    const enabled = runRetrospectiveCaptureCommand(root, draft);
+    expect(enabled.exitCode).toBe(1);
+    expect(enabled.stderr).toContain('requires workflow to be disabled');
+    expect(existsSync(markerPath)).toBe(true);
+
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const work = runWorkCommand(root, 'ordinary work remains blocked');
+    expect(work.exitCode).toBe(1);
+    expect(work.stderr).toContain('Decision workflow is disabled');
+
+    const captured = runRetrospectiveCaptureCommand(root, draft);
+    expect(captured.exitCode).toBe(0);
+    expect(captured.stdout).toContain('Retrospective capture recorded.');
+    expect(existsSync(markerPath)).toBe(false);
+    expect(getCurrentTaskId(root)).toBeNull();
+    const bundle = loadSourceBundle(root);
+    const task = bundle.tasks.find((item) => item.retrospective === true);
+    expect(task).toMatchObject({ status: 'CLOSED', expectedScope: ['tracked.ts'] });
+    expect(bundle.decisions.find((item) => item.id === 'DEC-retro')).toMatchObject({
+      status: 'DRAFT',
+      taskId: task?.id,
+    });
+    expect(bundle.evidence.some((item) => item.sourceRef === `git:${commitSha(root)}`)).toBe(true);
+    expect(bundle.events.map((item) => item.type)).toEqual(
+      expect.arrayContaining([
+        'TASK_CREATED',
+        'DRAFT_SUBMITTED',
+        'RETROSPECTIVE_CAPTURED',
+        'TASK_CLOSED',
+      ]),
+    );
+    const event = bundle.events.find((item) => item.type === 'RETROSPECTIVE_CAPTURED');
+    expect(event?.payload).toMatchObject({ commitSha: commitSha(root) });
+  });
+
+  it('rejects retrospective capture with active tasks or submitted questions', async () => {
+    workspace = await createTempWorkspace('v2-retrospective-reject-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 2;\n');
+    execFileSync('git', ['commit', '-am', 'change'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    const active = createTask(root, 'active despite disabled via core');
+    await writeFile(
+      policyPath(root),
+      `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: true, workflowEnabled: false }, null, 2)}\n`,
+    );
+    const markerPath = await writeRetrospectiveMarker(root);
+    const activeResult = runRetrospectiveCaptureCommand(
+      root,
+      JSON.stringify({ schemaVersion: 'v2alpha1', decisions: [] }),
+    );
+    expect(activeResult.exitCode).toBe(1);
+    expect(activeResult.stderr).toContain(active.id);
+    expect(existsSync(markerPath)).toBe(true);
+    setTerminalStatus(root, 'ABANDONED');
+
+    const withQuestion = runRetrospectiveCaptureCommand(
+      root,
+      JSON.stringify({
+        schemaVersion: 'v2alpha1',
+        questions: [{ id: 'Q-retro', text: 'No?', recommendedAnswer: 'No' }],
+      }),
+    );
+    expect(withQuestion.exitCode).toBe(1);
+    expect(withQuestion.stderr).toContain('does not accept submitted questions');
+    expect(existsSync(markerPath)).toBe(true);
+  });
+
+  it('validates retrospective marker schema and Git identity before mutation', async () => {
+    workspace = await createTempWorkspace('v2-retrospective-git-identity-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'root'], { cwd: root, env: isolatedGitEnv() });
+    const rootCommit = commitSha(root);
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 2;\n');
+    execFileSync('git', ['commit', '-am', 'second'], { cwd: root, env: isolatedGitEnv() });
+    const secondCommit = commitSha(root);
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 3;\n');
+    execFileSync('git', ['commit', '-am', 'third'], { cwd: root, env: isolatedGitEnv() });
+    const thirdCommit = commitSha(root);
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const draft = JSON.stringify({ schemaVersion: 'v2alpha1', decisions: [] });
+    const markerPath = retrospectivePendingMarkerPath(root);
+
+    await writeFile(
+      markerPath,
+      `${JSON.stringify({ commit: thirdCommit, parent: secondCommit, timestamp: new Date().toISOString() })}\n`,
+    );
+    const oldSchema = runRetrospectiveCaptureCommand(root, draft);
+    expect(oldSchema.exitCode).toBe(1);
+    expect(oldSchema.stderr).toContain('expected commitSha,parentSha,createdAt');
+    expect(existsSync(markerPath)).toBe(true);
+
+    await writeRetrospectiveMarker(root, 'a'.repeat(40), null);
+    const missingCommit = runRetrospectiveCaptureCommand(root, draft);
+    expect(missingCommit.exitCode).toBe(1);
+    expect(missingCommit.stderr).toContain('commitSha does not exist');
+    expect(existsSync(markerPath)).toBe(true);
+
+    await writeRetrospectiveMarker(root, thirdCommit, 'b'.repeat(40));
+    const missingParent = runRetrospectiveCaptureCommand(root, draft);
+    expect(missingParent.exitCode).toBe(1);
+    expect(missingParent.stderr).toContain('parentSha does not exist');
+    expect(existsSync(markerPath)).toBe(true);
+
+    await writeRetrospectiveMarker(root, thirdCommit, rootCommit);
+    const wrongParent = runRetrospectiveCaptureCommand(root, draft);
+    expect(wrongParent.exitCode).toBe(1);
+    expect(wrongParent.stderr).toContain('not the first parent');
+    expect(existsSync(markerPath)).toBe(true);
+
+    await writeRetrospectiveMarker(root, thirdCommit, null);
+    const missingParentForNonRoot = runRetrospectiveCaptureCommand(root, draft);
+    expect(missingParentForNonRoot.exitCode).toBe(1);
+    expect(missingParentForNonRoot.stderr).toContain('parentSha is required');
+    expect(existsSync(markerPath)).toBe(true);
+
+    await writeRetrospectiveMarker(root, rootCommit, null);
+    const rootCapture = runRetrospectiveCaptureCommand(root, draft);
+    expect(rootCapture.exitCode).toBe(0);
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
+  it('returns existing retrospective capture for duplicate marker commits and clears marker', async () => {
+    workspace = await createTempWorkspace('v2-retrospective-duplicate-');
+    const root = workspace;
+    execFileSync('git', ['init'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 1;\n');
+    execFileSync('git', ['add', 'tracked.ts'], { cwd: root, env: isolatedGitEnv() });
+    execFileSync('git', ['commit', '-m', 'baseline'], { cwd: root, env: isolatedGitEnv() });
+    await writeFile(join(root, 'tracked.ts'), 'export const tracked = 2;\n');
+    execFileSync('git', ['commit', '-am', 'change'], { cwd: root, env: isolatedGitEnv() });
+    initDecisionWorkspace(root);
+    expect(runWorkflowDisableCommand(root, false).exitCode).toBe(0);
+    const markerPath = await writeRetrospectiveMarker(root);
+    const draft = JSON.stringify({
+      schemaVersion: 'v2alpha1',
+      decisions: [{ id: 'DEC-once', title: 'Once', kind: 'EXPLICIT', summary: 'Once.' }],
+    });
+    const first = runRetrospectiveCaptureCommand(root, draft);
+    expect(first.exitCode).toBe(0);
+    const firstEventCount = loadSourceBundle(root).events.filter(
+      (item) => item.type === 'RETROSPECTIVE_CAPTURED',
+    ).length;
+    await writeRetrospectiveMarker(root);
+
+    const second = runRetrospectiveCaptureCommand(root, draft);
+
+    expect(second.exitCode).toBe(0);
+    expect(second.stdout).toContain('Duplicate: true');
+    expect(existsSync(markerPath)).toBe(false);
+    const bundle = loadSourceBundle(root);
+    expect(bundle.events.filter((item) => item.type === 'RETROSPECTIVE_CAPTURED')).toHaveLength(
+      firstEventCount,
+    );
+    expect(bundle.decisions.filter((item) => item.id === 'DEC-once')).toHaveLength(1);
+  });
+
+  it('keeps no-marker policy-required tasks on legacy started gate', async () => {
     workspace = await createTempWorkspace('v2-lifecycle-policy-snapshot-');
     const root = workspace;
     initDecisionWorkspace(root);
@@ -138,7 +732,6 @@ describe('v2 decision task lifecycle', () => {
       `${JSON.stringify({ schemaVersion: 'v2alpha1', requireGrillMe: false }, null, 2)}\n`,
     );
     await unlink(policyPath(root));
-
     expect(() =>
       submitDraft(
         root,
@@ -156,8 +749,8 @@ describe('v2 decision task lifecycle', () => {
         }),
       ),
     ).toThrow(/GRILL_ME_REQUIRED/);
-
     recordGrillMeStarted(root);
+
     expect(
       submitDraft(
         root,
@@ -177,18 +770,29 @@ describe('v2 decision task lifecycle', () => {
     ).toBe(1);
   });
 
-  it('keeps a durable pre-existing no-policy workspace legacy and renders work accordingly', async () => {
+  it('keeps stored no-marker tasks legacy but makes new CLI work guided without policy', async () => {
     workspace = await createTempWorkspace('v2-lifecycle-legacy-work-');
     const root = workspace;
     initDecisionWorkspace(root);
-    createTask(root, 'historical source before policy deletion');
+    const historical = createTask(root, 'historical source before policy deletion');
+    const historicalPath = join(
+      root,
+      '.decision',
+      'exports',
+      'markdown',
+      'tasks',
+      `${historical.id}.md`,
+    );
+    const historicalBefore = await readFile(historicalPath, 'utf8');
     await unlink(policyPath(root));
+    expect(buildStatusView(root).indicators.grillMeRequired).toBe(false);
 
     const result = runWorkCommand(root, 'new work in legacy workspace');
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('sduck grill-me (legacy/permissive)');
-    expect(buildStatusView(root).indicators.grillMeRequired).toBe(false);
+    expect(result.stdout).toContain('sduck grill complete --reason');
+    expect(buildStatusView(root).indicators.grillMeRequired).toBe(true);
+    expect(await readFile(historicalPath, 'utf8')).toBe(historicalBefore);
   });
 
   it('rejects confirm with an open question without changing canonical source', async () => {

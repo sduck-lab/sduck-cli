@@ -1,0 +1,31 @@
+{
+  "contract": "sduck-source-envelope/v1",
+  "kind": "decision",
+  "runtimeSupport": "phase-1",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "fence": {
+    "infoString": "json sduck-source-envelope/v1"
+  },
+  "envelope": {
+    "schema": "sduck-source-envelope/v1",
+    "kind": "decision",
+    "revision": 1,
+    "canonical": {
+      "decision": {
+        "id": "DEC_01JZ0000000000000000000000",
+        "taskId": "TASK_01JZ0000000000000000000000",
+        "title": "Use local digest confirmation",
+        "kind": "EXPLICIT",
+        "status": "CONFIRMED",
+        "confidence": 1,
+        "summary": "MCP prepares confirmation; local CLI confirms by digest.",
+        "rationale": ["Client permission prompts are not approval proof."],
+        "appliesTo": ["confirmation"],
+        "avoids": ["mcp-confirm"],
+        "sourceRefs": ["DEC-0024"],
+        "createdAt": "2026-07-15T00:00:00.000Z",
+        "updatedAt": "2026-07-15T00:00:00.000Z"
+      }
+    }
+  }
+}

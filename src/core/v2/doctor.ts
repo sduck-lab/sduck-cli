@@ -1,20 +1,31 @@
 import * as fs from 'node:fs';
 
 import { DecisionWorkspace, recoverInterruptedDecisionWorkspace } from './decision-workspace.js';
+import { V2ExpectedError } from './errors.js';
 import { dbPath } from './paths.js';
 import { rebuildDecisionCache } from './rebuild.js';
 import { loadSourceBundle, sourceFileCount, sourceFingerprint } from './source-store.js';
+import { readState, setCurrentTaskId, validateDecisionState } from './state.js';
 import { cacheHasRows, getCacheMetadata, openDatabase } from './store.js';
+import { withDecisionWorkspaceLock } from './workspace-lock.js';
 
 export interface DoctorIssue {
-  code: 'CACHE_STALE' | 'DB_ONLY' | 'INTERRUPTED_JOURNAL_RECOVERY_FAILED' | 'MALFORMED_SOURCE';
+  code:
+    | 'CACHE_STALE'
+    | 'DB_ONLY'
+    | 'INVALID_STATE'
+    | 'INTERRUPTED_JOURNAL_RECOVERY_FAILED'
+    | 'MALFORMED_SOURCE'
+    | 'MISSING_CURRENT_TASK_POINTER'
+    | 'STALE_TERMINAL_TASK_POINTER';
   message: string;
   recovery: string;
   params: Record<string, string>;
 }
 
 export interface DoctorRepair {
-  code: 'INTERRUPTED_COMMIT' | 'DB_ONLY_MIGRATED' | 'CACHE_REBUILT';
+  code:
+    'INTERRUPTED_COMMIT' | 'DB_ONLY_MIGRATED' | 'CACHE_REBUILT' | 'TERMINAL_TASK_POINTER_CLEARED';
   params: Record<string, string>;
 }
 
@@ -62,7 +73,27 @@ export function doctorDecisionWorkspace(
   }
 
   try {
-    loadSourceBundle(projectRoot);
+    const bundle = loadSourceBundle(projectRoot);
+    const stateIssue = diagnoseState(projectRoot, bundle);
+    if (stateIssue !== null) {
+      if (options.repair === true) {
+        if (
+          stateIssue.code === 'STALE_TERMINAL_TASK_POINTER' &&
+          clearTerminalTaskPointer(projectRoot)
+        ) {
+          repaired.push({
+            code: 'TERMINAL_TASK_POINTER_CLEARED',
+            params: { taskId: stateIssue.params['taskId'] ?? '' },
+          });
+        } else {
+          issues.push(stateIssue);
+          return { healthy: false, issues, repaired };
+        }
+      } else {
+        issues.push(stateIssue);
+        return { healthy: false, issues, repaired };
+      }
+    }
   } catch (error) {
     issues.push({
       code: 'MALFORMED_SOURCE',
@@ -88,6 +119,73 @@ export function doctorDecisionWorkspace(
   }
 
   return { healthy: issues.length === 0, issues, repaired };
+}
+
+function diagnoseState(
+  projectRoot: string,
+  bundle = loadSourceBundle(projectRoot),
+): DoctorIssue | null {
+  let state: ReturnType<typeof readState>;
+  try {
+    state = readState(projectRoot);
+    validateDecisionState(state, bundle);
+  } catch (error) {
+    return stateIssue(error);
+  }
+  return null;
+}
+
+function clearTerminalTaskPointer(projectRoot: string): boolean {
+  return withDecisionWorkspaceLock(projectRoot, () => {
+    const issue = diagnoseState(projectRoot);
+    if (issue?.code !== 'STALE_TERMINAL_TASK_POINTER') return false;
+    setCurrentTaskId(projectRoot, null);
+    return true;
+  });
+}
+
+function stateIssue(error: unknown): DoctorIssue {
+  const params = expectedErrorParams(error);
+  if (error instanceof V2ExpectedError && error.code === 'STATE_INVALID') {
+    if (params['problemCode'] === 'terminal-task') {
+      const taskId = params['taskId'] ?? '';
+      return {
+        code: 'STALE_TERMINAL_TASK_POINTER',
+        message: `State currentTaskId references terminal canonical task ${taskId}.`,
+        recovery: 'Run `sduck doctor --repair` to clear the stale current task pointer.',
+        params,
+      };
+    }
+    if (params['problemCode'] === 'missing-task') {
+      const taskId = params['taskId'] ?? '';
+      return {
+        code: 'MISSING_CURRENT_TASK_POINTER',
+        message: `State currentTaskId references missing canonical task ${taskId}.`,
+        recovery:
+          'Inspect .decision/state.json and canonical tasks; repair manually before retrying.',
+        params,
+      };
+    }
+  }
+  return {
+    code: 'INVALID_STATE',
+    message: `Decision state is invalid: ${error instanceof Error ? error.message : String(error)}.`,
+    recovery: 'Fix .decision/state.json manually, then rerun `sduck doctor`.',
+    params: {
+      ...params,
+      detail: error instanceof Error ? error.message : String(error),
+      code: error instanceof V2ExpectedError ? error.code : 'UNKNOWN',
+    },
+  };
+}
+
+function expectedErrorParams(error: unknown): Record<string, string> {
+  if (!(error instanceof V2ExpectedError)) {
+    return { detail: error instanceof Error ? error.message : String(error) };
+  }
+  return Object.fromEntries(
+    Object.entries(error.params).map(([key, value]) => [key, String(value)]),
+  );
 }
 
 function sourceIssueParams(error: unknown): Record<string, string> {

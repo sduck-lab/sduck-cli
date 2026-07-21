@@ -21,11 +21,14 @@ export type EventType =
   | 'CONTEXT_INDEXED'
   | 'CONTEXT_ITEM_ADDED'
   | 'GRILL_STARTED'
+  | 'GRILL_COMPLETED'
   | 'DRAFT_SUBMITTED'
   | 'QUESTION_ANSWERED'
   | 'DECISION_CREATED'
   | 'BRIEF_CONFIRMED'
   | 'TRACE_CREATED'
+  | 'EVALUATION_RECORDED'
+  | 'RETROSPECTIVE_CAPTURED'
   | 'EXPORT_WRITTEN'
   | 'TASK_CLOSED'
   | 'TASK_ABANDONED';
@@ -37,6 +40,10 @@ export interface Task {
   status: TaskStatus;
   expectedScope: string[];
   avoidScope: string[];
+  implementationPlan?: string[];
+  verificationPlan?: string[];
+  guided?: boolean;
+  retrospective?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -119,6 +126,20 @@ export interface ImplementationTrace {
   createdAt: string;
 }
 
+export interface EvaluationCheck {
+  name: string;
+  outcome: string;
+}
+
+export interface EvaluationRecord {
+  id: string;
+  taskId: string;
+  traceId: string;
+  checks: EvaluationCheck[];
+  limitations?: string[];
+  createdAt: string;
+}
+
 export interface BriefView {
   task: Task;
   decisions: Record<DecisionKind, Decision[]>;
@@ -126,6 +147,8 @@ export interface BriefView {
   evidence: Evidence[];
   expectedScope: string[];
   avoidScope: string[];
+  implementationPlan?: string[];
+  verificationPlan?: string[];
   openQuestionCount: number;
 }
 
@@ -158,11 +181,14 @@ export interface StatusView {
     draftSubmissions: number;
     grillMeRequired: boolean;
     grillMeStarted: boolean;
+    grillMeCompleted: boolean;
     questionsOpen: number;
     questionsAnswered: number;
     decisionsByKind: Record<DecisionKind, number>;
     briefSnapshots: number;
     implementationTraces: number;
+    evaluations: number;
+    latestTraceEvaluated: boolean;
     exports: number;
   };
 }
@@ -218,6 +244,8 @@ export interface SduckDraft {
   evidence?: DraftEvidence[];
   expectedScope?: string[];
   avoidScope?: string[];
+  implementationPlan?: string[];
+  verificationPlan?: string[];
 }
 
 export interface TraceView {

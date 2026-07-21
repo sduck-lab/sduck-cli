@@ -1,0 +1,336 @@
+{
+  "contract": "sduck-mcp-tools/v1",
+  "kind": "mcp-tools",
+  "runtimeSupport": "phase-5",
+  "note": "Contract fixture only; runtime parser support begins in Phase 1 and current 0.5 parser is not expected to load this envelope.",
+  "tools": [
+    {
+      "name": "status",
+      "mode": "read",
+      "input": {},
+      "result": {
+        "schema": "sduck-status-result/v1",
+        "taskId": "TASK_01JZ0000000000000000000000"
+      }
+    },
+    {
+      "name": "get_context",
+      "mode": "read",
+      "input": {
+        "taskId": "TASK_01JZ0000000000000000000000"
+      },
+      "result": {
+        "schema": "sduck-context-result/v1",
+        "items": [
+          {
+            "sourceType": "FILE",
+            "sourceRef": "docs/design/mcp-control-plane-0.6-contract.md",
+            "summary": "Contract document reference only; content is not embedded automatically.",
+            "metadata": {
+              "path": "docs/design/mcp-control-plane-0.6-contract.md",
+              "range": {
+                "startLine": 1,
+                "endLine": 20
+              },
+              "contentSha256": "6666666666666666666666666666666666666666666666666666666666666666"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "brief",
+      "mode": "read",
+      "input": {
+        "taskId": "TASK_01JZ0000000000000000000000"
+      },
+      "result": {
+        "schema": "sduck-brief-result/v1",
+        "diagnosticOnly": true
+      }
+    },
+    {
+      "name": "recall",
+      "mode": "read",
+      "input": {
+        "query": "digest confirmation"
+      },
+      "result": {
+        "schema": "sduck-recall-result/v1",
+        "matches": [
+          {
+            "id": "DEC-0024",
+            "type": "decision",
+            "summary": "Omit MCP confirm in 0.6.",
+            "score": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "name": "prepare_confirmation",
+      "mode": "read",
+      "input": {
+        "taskId": "TASK-unicode-contract"
+      },
+      "result": {
+        "schema": "sduck-prepare-confirmation-result/v1",
+        "approvalViewVersion": "Approval View V1",
+        "digest": "sduck-brief-digest/v1:0f74bac6885884c18343d95b688801484985d79ea6f5d29b32398cc181385045",
+        "approvalView": {
+          "schema": "sduck-approval-view/v1",
+          "task": {
+            "id": "TASK-unicode-contract",
+            "title": "유니코드 승인 뷰 고정",
+            "description": "정확한 답변 문자열과 범위 순서를 보존한다.",
+            "expectedScope": [
+              "docs/design/mcp-control-plane-0.6-contract.md",
+              "tests/fixtures/brief-digest/v1/**"
+            ],
+            "avoidScope": ["src/**", "package.json"]
+          },
+          "decisions": [
+            {
+              "id": "DEC-0001-가",
+              "kind": "EXPLICIT",
+              "status": "CONFIRMED",
+              "title": "정확한 Unicode 답변 보존",
+              "summary": "Approval View V1은 저장된 답변 문자열을 정규화하지 않는다.",
+              "rationale": [
+                "카페 é와 café는 다른 바이트열이다.",
+                "emoji ✅도 UTF-8 그대로 해시한다."
+              ],
+              "appliesTo": ["questions[].answer"],
+              "avoids": ["unicode-normalization"]
+            },
+            {
+              "id": "DEC-0002-나",
+              "kind": "INFERRED",
+              "status": "CONFIRMED",
+              "title": "배열 선언 순서 보존",
+              "summary": "Scope와 rationale 배열은 선언 순서대로 projection에 남긴다.",
+              "rationale": ["첫 번째 이유", "두 번째 이유"],
+              "appliesTo": ["task.expectedScope", "decision.rationale"],
+              "avoids": ["array-sorting-except-entities"]
+            }
+          ],
+          "questions": [
+            {
+              "id": "Q-0001-유니코드",
+              "decisionId": "DEC-0001-가",
+              "text": "답변 문자열을 NFC로 정규화할까?",
+              "answered": true,
+              "answer": "아니오 — 원문 그대로: 카페 é / café / 승인 ✅"
+            },
+            {
+              "id": "Q-0002-범위",
+              "decisionId": "DEC-0002-나",
+              "text": "범위 배열도 정렬할까?",
+              "answered": true,
+              "answer": "아니오, 사용자가 선언한 순서를 유지한다."
+            }
+          ],
+          "evidence": [
+            {
+              "id": "EVD-0001-문서",
+              "decisionId": "DEC-0001-가",
+              "sourceType": "DECISION_DOC",
+              "sourceRef": "docs/design/mcp-control-plane-0.6-contract.md",
+              "summary": "answer는 exact stored string이며 Unicode normalization을 수행하지 않는다."
+            },
+            {
+              "id": "EVD-0002-계획",
+              "decisionId": "DEC-0002-나",
+              "sourceType": "USER_ANSWER",
+              "sourceRef": "Q-0006",
+              "summary": "RFC 8785 projection v1은 entity ID 정렬과 배열 선언 순서 보존을 함께 요구한다."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "start_task",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-start",
+          "operation": "start_task"
+        },
+        "description": "Start task"
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000000"
+      }
+    },
+    {
+      "name": "record",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-record",
+          "operation": "record"
+        },
+        "decisions": [
+          {
+            "id": "DEC_01JZ0000000000000000000000",
+            "kind": "EXPLICIT",
+            "title": "Use local digest confirmation",
+            "summary": "MCP prepares confirmation and local CLI confirms by digest.",
+            "rationale": ["Client permission prompts are not approval proof."],
+            "appliesTo": ["confirmation"],
+            "avoids": ["mcp-confirm"]
+          }
+        ],
+        "evidence": [
+          {
+            "id": "EVD_01JZ0000000000000000000000",
+            "decisionId": "DEC_01JZ0000000000000000000000",
+            "sourceType": "DECISION_DOC",
+            "sourceRef": "docs/design/mcp-control-plane-0.6-contract.md",
+            "summary": "0.6 omits state-changing MCP confirmation."
+          }
+        ],
+        "expectedScope": ["docs/design/mcp-control-plane-0.6-contract.md"],
+        "avoidScope": ["src/**"]
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000001"
+      }
+    },
+    {
+      "name": "raise_question",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-question",
+          "operation": "raise_question"
+        },
+        "questions": [
+          {
+            "id": "Q_01JZ0000000000000000000000",
+            "decisionId": "DEC_01JZ0000000000000000000000",
+            "text": "Should 0.6 expose MCP confirm?",
+            "recommendedAnswer": "No, use local digest confirmation.",
+            "rationale": ["MCP permission prompts are not approval proof."],
+            "options": ["Omit MCP confirm", "Allow MCP confirm"]
+          }
+        ]
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000002"
+      }
+    },
+    {
+      "name": "record_answer",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-answer",
+          "operation": "record_answer"
+        },
+        "questionId": "Q_01JZ0000000000000000000000",
+        "answer": "yes"
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000003"
+      }
+    },
+    {
+      "name": "refresh_context",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-refresh",
+          "operation": "refresh_context"
+        }
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000004"
+      }
+    },
+    {
+      "name": "add_context",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-context",
+          "operation": "add_context"
+        },
+        "refs": [
+          {
+            "sourceType": "FILE",
+            "sourceRef": "docs/design/mcp-control-plane-0.6-contract.md",
+            "summary": "Curated contract summary for MCP control-plane Phase 0.",
+            "metadata": {
+              "path": "docs/design/mcp-control-plane-0.6-contract.md",
+              "contentSha256": "6666666666666666666666666666666666666666666666666666666666666666"
+            }
+          }
+        ]
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000005"
+      }
+    },
+    {
+      "name": "trace",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-trace",
+          "operation": "trace"
+        },
+        "briefDigest": "sduck-brief-digest/v1:d28603306b31895d690eb534a7eee93fab408d12620811d191ba3b3eef71fe37"
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000006"
+      }
+    },
+    {
+      "name": "close_task",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-close",
+          "operation": "close_task"
+        }
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000007"
+      }
+    },
+    {
+      "name": "abandon_task",
+      "mode": "mutation",
+      "input": {
+        "identity": {
+          "clientId": "fixture-client",
+          "clientRequestId": "request-abandon",
+          "operation": "abandon_task"
+        },
+        "reason": "fixture"
+      },
+      "result": {
+        "schema": "sduck-mutation-result/v1",
+        "receiptId": "EVT_01JZ0000000000000000000008"
+      }
+    }
+  ]
+}

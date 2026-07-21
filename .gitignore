@@ -19,3 +19,4 @@ coverage/
 .decision/exports/graphify/
 test/workspaces/
 .slim/deepwork/
+.decision/.commit-*.json
