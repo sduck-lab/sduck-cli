@@ -148,6 +148,11 @@ describeIfSqlite('SDD CLI reachability regression', () => {
       '.sduck/sduck-assets/agent-rules/skills/sduck-retrospective-capture/SKILL.md',
     );
     expect(claudeRules).toContain('Primary workflow: v2 `.decision` decision briefing');
+    expect(claudeRules).toContain('## User-facing interaction model');
+    expect(claudeRules).toContain(
+      'Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, and `sduck remember` as internal agent operations',
+    );
+    expect(claudeRules).toContain('Implement this direction?');
     expect(claudeRules).toContain(
       'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm',
     );

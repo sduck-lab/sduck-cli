@@ -35,6 +35,22 @@ For a small, obvious change, use one concise decision and no unnecessary questio
 
 Canonical records are `.decision/exports/markdown/**` plus the tracked `.decision/policy.json` for new workspaces. `.decision/db.sqlite` is a local, ignored cache. User-global locale config is outside the repository and does not change these artifacts. Installed agent rules are canonical English regardless of user locale. The CLI records workflow evidence but does not include a built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`. Agent hooks are convenience checks, not a security boundary and cannot block arbitrary editor or shell writes.
 
+## User-facing interaction model
+
+`sduck` is an internal decision-recording tool for coding agents. Users normally should not be asked to run lifecycle commands themselves. Agents use the commands internally to record decisions, evidence, traces, and reusable memory, then explain outcomes in plain language.
+
+Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, and `sduck remember` as internal agent operations unless the user explicitly asks for command details.
+
+Plain-language scenario:
+
+1. Restate the user's request and expected outcome.
+2. Internally inspect relevant code, documentation, and prior decisions with the sduck workflow.
+3. Ask only blocking questions, one at a time. Each question should include a recommended answer and rationale.
+4. Before implementation, list what will change, what will not change, the key decision, and how verification will be performed.
+5. Ask for plain-language approval, for example: “Implement this direction?”
+6. Implement only after approval.
+7. Report what changed and the verification results.
+
 ## Best-effort retrospective marker
 
 At the beginning of each response, and immediately after any commit you perform, check Git's local `sduck-retrospective-pending.json` path with `git rev-parse --git-path sduck-retrospective-pending.json`. If the marker exists, read `.sduck/sduck-assets/agent-rules/skills/sduck-retrospective-capture/SKILL.md` before continuing.

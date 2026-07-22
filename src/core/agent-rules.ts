@@ -132,7 +132,7 @@ export function replaceManagedBlock(existingContent: string, blockContent: strin
 }
 
 function renderManagedBlock(lines: string[]): string {
-  return [SDD_RULES_BEGIN, ...lines, SDD_RULES_END].join('\n');
+  return [SDD_RULES_BEGIN, '', ...lines, SDD_RULES_END].join('\n');
 }
 
 async function getAgentRulesAssetRoot(): Promise<string> {
@@ -158,12 +158,16 @@ function buildRootFileLines(
     (agent) => agent.label,
   );
 
+  const contentSections = agentSpecificContent.flatMap((section, index) =>
+    index === 0 ? [section] : ['', section],
+  );
+
   return [
     '# sduck managed rules',
     '',
     `Selected agents: ${labels.join(', ')}`,
     '',
-    ...agentSpecificContent,
+    ...contentSections,
   ];
 }
 

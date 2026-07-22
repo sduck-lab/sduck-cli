@@ -60,7 +60,7 @@ describeIfSqlite('v2 CLI flow', () => {
     const version = await runCli(['--version'], { cliRoot, cwd: workspace });
 
     expect(version.exitCode).toBe(0);
-    expect(version.stdout.trim()).toBe('0.6.0');
+    expect(version.stdout.trim()).toBe('0.6.1');
     expect(version.stderr).toBe('');
   });
 

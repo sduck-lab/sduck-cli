@@ -92,6 +92,10 @@ sduck close
 
 Here “implement” means the development activity after `sduck confirm`; it is not the legacy `sduck implement` command.
 
+## User-facing interaction model
+
+Most users interact with sduck through their coding agent, not by running lifecycle commands themselves. The agent uses `sduck work`, `context`, `grill complete`, `submit`, `brief`, `confirm`, `trace`, `evaluate`, and `remember` internally to record decisions and evidence, then speaks in plain language: restate the request, inspect code and prior decisions, ask only blocking questions with a recommended answer and rationale, summarize what will and will not change plus verification, ask “Implement this direction?”, implement after approval, and report verification.
+
 ## Workflow contract and gates
 
 Canonical v2 sequence:

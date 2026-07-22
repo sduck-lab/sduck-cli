@@ -30,6 +30,11 @@ const TASK_EVAL_LABELS = [
 const CANONICAL_TEMPLATE_SEQUENCE =
   '`sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck remember`/`sduck recall` → `sduck close`';
 
+const USER_INTERACTION_MODEL_MARKER = '## User-facing interaction model';
+
+const INTERNAL_COMMANDS_MARKER =
+  'Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, and `sduck remember` as internal agent operations';
+
 const INSTALLED_AGENT_RULE_PATHS: Record<SupportedAgentId, string> = {
   'claude-code': 'CLAUDE.md',
   codex: 'AGENTS.md',
@@ -324,6 +329,8 @@ describe('SDD core regression Interface', () => {
       'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm',
     );
     expect(refreshedRules).toContain('Legacy SDD gated implementation rules');
+    expect(refreshedRules).toContain(USER_INTERACTION_MODEL_MARKER);
+    expect(refreshedRules).toContain(INTERNAL_COMMANDS_MARKER);
   });
 
   it('installs every supported agent rule and decision inventory skill with the canonical v2 gate sequence', async () => {
@@ -334,6 +341,12 @@ describe('SDD core regression Interface', () => {
       const installedRulePath = INSTALLED_AGENT_RULE_PATHS[agent.id];
       const installedRule = await readFile(join(workspace, installedRulePath), 'utf8');
       expect(installedRule, agent.id).toContain(CANONICAL_TEMPLATE_SEQUENCE);
+      expect(installedRule, agent.id).toContain(USER_INTERACTION_MODEL_MARKER);
+      expect(installedRule, agent.id).toContain(INTERNAL_COMMANDS_MARKER);
+      expect(installedRule, agent.id).toContain(
+        'Users normally should not be asked to run lifecycle commands themselves.',
+      );
+      expect(installedRule, agent.id).toContain('Implement this direction?');
       expect(installedRule, agent.id).toContain(
         'New policy-required tasks must record `sduck grill complete --reason "..."` before `submit` or `confirm`, including small work.',
       );
@@ -421,7 +434,16 @@ describe('SDD core regression Interface', () => {
     expect(core).toContain(
       'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> remember/recall -> close',
     );
+    expect(core).toContain(USER_INTERACTION_MODEL_MARKER);
+    expect(core).toContain(INTERNAL_COMMANDS_MARKER);
     expect(core).toContain('sduck-retrospective-capture');
+
+    const agents = await readFile(join(root, 'AGENTS.md'), 'utf8');
+    const claude = await readFile(join(root, 'CLAUDE.md'), 'utf8');
+    expect(agents).toContain(USER_INTERACTION_MODEL_MARKER);
+    expect(agents).toContain(INTERNAL_COMMANDS_MARKER);
+    expect(claude).toContain(USER_INTERACTION_MODEL_MARKER);
+    expect(claude).toContain(INTERNAL_COMMANDS_MARKER);
     for (const command of [
       'sduck start',
       'sduck fast-track',
@@ -458,6 +480,12 @@ describe('SDD core regression Interface', () => {
     expect(readme).toContain(
       '`sduck work` automatically records the grill start; agents review context and converse before `sduck grill complete --reason "..."`.',
     );
+    expect(readme).toContain('Most users interact with sduck through their coding agent');
+    expect(readme).toContain('ask “Implement this direction?”');
+    expect(readmeKo).toContain(
+      '대부분의 사용자는 lifecycle command를 직접 실행하기보다 coding agent를 통해 sduck을 사용합니다.',
+    );
+    expect(readmeKo).toContain('“이 방향으로 구현할까요?”');
     expect(readmeKo).toContain(
       '`sduck work`가 grill start를 자동 기록합니다. agent는 context를 검토하고 대화한 뒤 `sduck grill complete --reason "..."`를 기록합니다.',
     );

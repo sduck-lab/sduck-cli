@@ -93,6 +93,10 @@ sduck close
 
 여기서 “구현”은 `sduck confirm` 이후의 개발 활동을 뜻합니다. legacy `sduck implement` 명령을 실행하라는 의미가 아닙니다.
 
+## 사용자 상호작용 모델
+
+대부분의 사용자는 lifecycle command를 직접 실행하기보다 coding agent를 통해 sduck을 사용합니다. Agent는 `sduck work`, `context`, `grill complete`, `submit`, `brief`, `confirm`, `trace`, `evaluate`, `remember`를 내부적으로 사용해 decision과 evidence를 기록하고, 사용자에게는 plain language로 요청을 다시 말하고, code와 prior decision을 확인하며, blocking question만 recommended answer와 rationale을 붙여 하나씩 묻고, 구현 전에는 변경/비변경 범위와 핵심 결정 및 검증 방법을 요약한 뒤 “이 방향으로 구현할까요?”라고 승인받고, 승인 후 구현하고 verification 결과를 보고합니다.
+
 ## Workflow contract와 gate
 
 Canonical v2 순서:
