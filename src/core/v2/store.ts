@@ -177,6 +177,7 @@ export function ensureSchema(db: DatabaseSyncType): void {
   ensureColumn(db, 'tasks', 'verification_plan_json', 'TEXT');
   ensureColumn(db, 'tasks', 'guided', 'INTEGER');
   ensureColumn(db, 'tasks', 'retrospective', 'INTEGER');
+  ensureColumn(db, 'tasks', 'record_depth', 'TEXT');
   db.exec(`
     CREATE TABLE IF NOT EXISTS evaluations (
       id TEXT PRIMARY KEY,

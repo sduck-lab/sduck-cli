@@ -59,6 +59,7 @@ import {
 
 import type { Locale, GlobalConfigWarning } from '../../config/global-config.js';
 import type { CommandResult } from '../../core/v2/result.js';
+import type { RecordDepth } from '../../types/index.js';
 import type { V2MessageCatalog } from '../../ui/v2/messages.js';
 
 export interface V2Runtime {
@@ -112,11 +113,15 @@ export function runInitCommand(
 export function runWorkCommand(
   projectRoot: string,
   description: string,
+  options: { recordDepth?: RecordDepth } = {},
   runtime: V2Runtime = DEFAULT_RUNTIME,
 ): CommandResult {
   try {
     initDecisionWorkspace(projectRoot);
-    const task = createTask(projectRoot, description, { guided: true });
+    const task = createTask(projectRoot, description, {
+      guided: true,
+      recordDepth: options.recordDepth ?? 'FULL',
+    });
     const contextItems = buildContextIndex(projectRoot, task);
     const status = buildStatusView(projectRoot);
     const messages = runtime.messages;

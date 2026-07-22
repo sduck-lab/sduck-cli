@@ -58,9 +58,13 @@ describeIfSqlite('v2 CLI flow', () => {
     workspace = await createTempWorkspace('v2-cli-version-');
 
     const version = await runCli(['--version'], { cliRoot, cwd: workspace });
+    const packageJson = JSON.parse(await readFile(join(cliRoot, 'package.json'), 'utf8')) as {
+      version: string;
+    };
 
     expect(version.exitCode).toBe(0);
-    expect(version.stdout.trim()).toBe('0.6.1');
+    expect(packageJson.version).toBe('0.6.2');
+    expect(version.stdout.trim()).toBe(packageJson.version);
     expect(version.stderr).toBe('');
   });
 
@@ -108,7 +112,10 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(agentRules).toContain('Codex Instructions');
     expect(agentRules).toContain('OpenCode Instructions');
     expect(await readFile(join(workspace, 'GEMINI.md'), 'utf8')).toContain('<!-- sduck:begin -->');
-    const work = await runCli(['work', 'payment retry 추가'], { cliRoot, cwd: workspace });
+    const work = await runCli(['work', '--record-depth', 'LIGHTWEIGHT', 'payment retry 추가'], {
+      cliRoot,
+      cwd: workspace,
+    });
     expect(work.stdout).toContain('Decision task started.');
 
     const context = await runCli(['context'], { cliRoot, cwd: workspace });
@@ -126,7 +133,13 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(Array.isArray(parsedContext.grillMeChecklist)).toBe(true);
 
     const status = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
-    const taskId = (JSON.parse(status.stdout) as { task: { id: string } }).task.id;
+    const task = (
+      JSON.parse(status.stdout) as {
+        task: { id: string; recordDepth: 'FULL' | 'LIGHTWEIGHT' };
+      }
+    ).task;
+    const taskId = task.id;
+    expect(task.recordDepth).toBe('LIGHTWEIGHT');
     const grill = await runCli(['grill-me'], { cliRoot, cwd: workspace });
     expect(grill.exitCode).toBe(0);
     expect(grill.stdout).toContain('Grill-me already started.');
@@ -190,6 +203,9 @@ describeIfSqlite('v2 CLI flow', () => {
       'Implementation Brief',
     );
     const briefBeforeRebuild = await runCli(['brief', '--json'], { cliRoot, cwd: workspace });
+    expect(JSON.parse(briefBeforeRebuild.stdout)).toMatchObject({
+      task: { id: taskId, recordDepth: 'LIGHTWEIGHT' },
+    });
     expect((await runCli(['confirm'], { cliRoot, cwd: workspace })).stdout).toContain('confirmed');
 
     await writeFile(join(workspace, 'tracked.ts'), 'export const tracked = 2;\n');
@@ -302,7 +318,7 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(rebuild.stdout).toContain('Questions: 1');
     const briefAfterRebuild = await runCli(['brief', '--json'], { cliRoot, cwd: workspace });
     expect(JSON.parse(briefAfterRebuild.stdout)).toMatchObject({
-      task: { id: taskId },
+      task: { id: taskId, recordDepth: 'LIGHTWEIGHT' },
       openQuestionCount: parseBriefJson(briefBeforeRebuild.stdout).openQuestionCount,
     });
     const statusAfterRebuild = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
@@ -340,6 +356,23 @@ describeIfSqlite('v2 CLI flow', () => {
     expect(decisionGitStatus).not.toContain('state.json');
     expect(decisionGitStatus).not.toContain('exports/graphify');
   }, 60_000);
+
+  it('rejects invalid work record depth without creating a task', async () => {
+    workspace = await createTempWorkspace('v2-cli-record-depth-invalid-');
+
+    const invalid = await runCli(['work', '--record-depth', 'PARTIAL', 'invalid depth'], {
+      cliRoot,
+      cwd: workspace,
+    });
+
+    expect(invalid.exitCode).not.toBe(0);
+    expect(`${invalid.stdout}\n${invalid.stderr}`).toContain(
+      '--record-depth must be FULL or LIGHTWEIGHT',
+    );
+    const status = await runCli(['status', '--json'], { cliRoot, cwd: workspace });
+    expect(status.exitCode).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({ task: null });
+  });
 
   it('blocks submit and confirm before grill-me in a new required workspace', async () => {
     workspace = await createTempWorkspace('v2-cli-grill-required-');

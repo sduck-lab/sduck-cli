@@ -126,8 +126,8 @@ export function formatRebuildResult(result: RebuildResult): string {
 
 function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
   const insertTask = db.prepare(
-    `INSERT INTO tasks (id, title, description, status, expected_scope_json, avoid_scope_json, implementation_plan_json, verification_plan_json, guided, retrospective, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (id, title, description, status, expected_scope_json, avoid_scope_json, implementation_plan_json, verification_plan_json, guided, retrospective, record_depth, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const task of bundle.tasks) {
     insertTask.run(
@@ -141,6 +141,7 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
       task.verificationPlan === undefined ? null : encodeJson(task.verificationPlan),
       task.guided === undefined ? null : task.guided ? 1 : 0,
       task.retrospective === undefined ? null : task.retrospective ? 1 : 0,
+      task.recordDepth ?? 'FULL',
       task.createdAt,
       task.updatedAt,
     );

@@ -30,6 +30,7 @@ import type {
   Evidence,
   ImplementationTrace,
   Question,
+  RecordDepth,
   Task,
   TaskStatus,
 } from '../../types/index.js';
@@ -264,6 +265,7 @@ function renderTaskSource(doc: TaskSourceDocument): string {
       type: 'task',
       status: task.status,
       title: task.title,
+      record_depth: task.recordDepth ?? 'FULL',
       created_at: task.createdAt,
       updated_at: task.updatedAt,
     },
@@ -370,7 +372,12 @@ function parseTaskSource(filePath: string): TaskSourceDocument {
     raw['events'].forEach((item, index) => {
       assertEvent(item, filePath, `events[${String(index)}]`);
     });
-    return raw as unknown as TaskSourceDocument;
+    const doc = raw as unknown as TaskSourceDocument;
+    normalizeTaskRecordDepth(doc.task);
+    doc.briefSnapshots.forEach((snapshot) => {
+      normalizeTaskRecordDepth(snapshot.snapshot.task);
+    });
+    return doc;
   }
   const { frontmatter, body } = parseFrontmatter(filePath);
   const id = assertFrontmatterString(frontmatter, filePath, 'id');
@@ -385,6 +392,7 @@ function parseTaskSource(filePath: string): TaskSourceDocument {
       status,
       expectedScope: [],
       avoidScope: [],
+      recordDepth: recordDepthField(frontmatter['record_depth'], filePath, 'record_depth', 'FULL'),
       createdAt,
       updatedAt: stringField(frontmatter['updated_at'], createdAt),
     },
@@ -516,6 +524,8 @@ function assertTask(value: unknown, filePath: string, field: string): asserts va
     throw new SourceParseError(filePath, `${field}.guided`, 'boolean');
   if (value['retrospective'] !== undefined && typeof value['retrospective'] !== 'boolean')
     throw new SourceParseError(filePath, `${field}.retrospective`, 'boolean');
+  if (value['recordDepth'] !== undefined)
+    assertEnum(value['recordDepth'], ['FULL', 'LIGHTWEIGHT'], filePath, `${field}.recordDepth`);
   assertNonEmptyString(value['createdAt'], filePath, `${field}.createdAt`);
   assertNonEmptyString(value['updatedAt'], filePath, `${field}.updatedAt`);
 }
@@ -1165,6 +1175,21 @@ function stringField(value: unknown, fallback: string): string {
 
 function numberField(value: unknown, fallback: number): number {
   return typeof value === 'number' ? value : Number(value ?? fallback);
+}
+
+function recordDepthField(
+  value: unknown,
+  filePath: string,
+  field: string,
+  fallback: RecordDepth,
+): RecordDepth {
+  if (value === undefined) return fallback;
+  assertEnum(value, ['FULL', 'LIGHTWEIGHT'], filePath, field);
+  return value as RecordDepth;
+}
+
+function normalizeTaskRecordDepth(task: Task): void {
+  task.recordDepth = task.recordDepth ?? 'FULL';
 }
 
 function extractTitle(body: string, id: string): string {

@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { loadLegacyCacheBundle } from '../../src/core/v2/cache-bundle.js';
 import { getContextPack } from '../../src/core/v2/context.js';
 import {
   DecisionWorkspace,
@@ -589,6 +590,89 @@ describe('DecisionWorkspace', () => {
     const migrated = loadSourceBundle(root);
     expect(migrated.decisions.map((decision) => decision.id)).toContain('DEC-legacy-cache');
     expect(migrated.tasks).toHaveLength(1);
+  });
+
+  it('round-trips record depth through canonical source and rebuilt cache', async () => {
+    workspace = await createTempWorkspace('decision-workspace-record-depth-roundtrip-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+
+    const task = createTask(root, 'lightweight canonical task', { recordDepth: 'LIGHTWEIGHT' });
+    const taskPath = join(root, '.decision', 'exports', 'markdown', 'tasks', `${task.id}.md`);
+    const taskSource = await readFile(taskPath, 'utf8');
+
+    expect(task.recordDepth).toBe('LIGHTWEIGHT');
+    expect(taskSource).toContain('record_depth: LIGHTWEIGHT');
+    expect(taskSource).toContain('"recordDepth": "LIGHTWEIGHT"');
+    expect(loadSourceBundle(root).tasks[0]).toMatchObject({
+      id: task.id,
+      recordDepth: 'LIGHTWEIGHT',
+    });
+
+    await rm(join(root, '.decision', 'db.sqlite'), { force: true });
+    const rebuild = await runCli(['rebuild'], { cliRoot: process.cwd(), cwd: root });
+    expect(rebuild.exitCode).toBe(0);
+
+    const db = openDatabase(root);
+    try {
+      const row = db.prepare(`SELECT record_depth FROM tasks WHERE id = ?`).get(task.id) as
+        { record_depth?: unknown } | undefined;
+      expect(row?.record_depth).toBe('LIGHTWEIGHT');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('resolves missing legacy Markdown and cache record depth to FULL', async () => {
+    workspace = await createTempWorkspace('decision-workspace-record-depth-legacy-');
+    const root = workspace;
+    initDecisionWorkspace(root);
+    const tasksDir = join(root, '.decision', 'exports', 'markdown', 'tasks');
+    await writeFile(
+      join(tasksDir, 'TASK-legacy-markdown.md'),
+      [
+        '---',
+        'id: TASK-legacy-markdown',
+        'type: task',
+        'status: OPEN',
+        'title: Legacy markdown',
+        "created_at: '2026-07-22T00:00:00.000Z'",
+        "updated_at: '2026-07-22T00:00:00.000Z'",
+        '---',
+        '# TASK-legacy-markdown: Legacy markdown',
+        '',
+      ].join('\n'),
+    );
+
+    expect(loadSourceBundle(root).tasks[0]).toMatchObject({
+      id: 'TASK-legacy-markdown',
+      recordDepth: 'FULL',
+    });
+
+    await rm(join(root, '.decision', 'exports', 'markdown'), { recursive: true, force: true });
+    const db = openDatabase(root);
+    try {
+      db.prepare(
+        `INSERT INTO tasks (id, title, description, status, expected_scope_json, avoid_scope_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        'TASK-legacy-cache',
+        'Legacy cache',
+        'Legacy cache',
+        'OPEN',
+        '[]',
+        '[]',
+        '2026-07-22T00:00:00.000Z',
+        '2026-07-22T00:00:00.000Z',
+      );
+    } finally {
+      db.close();
+    }
+
+    expect(loadLegacyCacheBundle(root).tasks[0]).toMatchObject({
+      id: 'TASK-legacy-cache',
+      recordDepth: 'FULL',
+    });
   });
 
   it('diagnoses malformed canonical source with a concrete recovery path', async () => {

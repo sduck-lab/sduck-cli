@@ -22,7 +22,7 @@ New policy-required tasks must record `sduck grill complete --reason "..."` befo
 
 Use v2 unless `.sduck/sduck-state.yml` names an active legacy task.
 
-1. Run `sduck work`, then `sduck context` before implementation.
+1. Run `sduck work` (optionally `sduck work --record-depth FULL|LIGHTWEIGHT`), then `sduck context` before implementation.
 2. Follow the printed interview protocol and record completion with `sduck grill complete --reason "..."` before submitting the draft. New policy-required tasks must pass this gate before `submit` or `confirm`, including small work. `sduck grill-me` is only a compatibility prompt/start command.
 3. Record decisions/questions/evidence/scope with `sduck submit --stdin`; resolve questions with `sduck ask` and `sduck answer`.
 4. Render and confirm the brief with `sduck brief` and `sduck confirm`.
@@ -32,6 +32,8 @@ Use v2 unless `.sduck/sduck-state.yml` names an active legacy task.
 
 The contract is `work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> remember/recall -> close`.
 For a small, obvious change, use one concise decision and no unnecessary questions. For a complex or ambiguous change, provide the full decision brief and explicit scope boundaries.
+
+`--record-depth FULL` is the default and preserves the current/legacy behavior: the full decision briefing lifecycle remains required. `--record-depth LIGHTWEIGHT` is documented for Stage 1 compatibility only and is a behavioral no-op in this release; it does not shorten, skip, or otherwise change any lifecycle command or gate.
 
 Canonical records are `.decision/exports/markdown/**` plus the tracked `.decision/policy.json` for new workspaces. `.decision/db.sqlite` is a local, ignored cache. User-global locale config is outside the repository and does not change these artifacts. Installed agent rules are canonical English regardless of user locale. The CLI records workflow evidence but does not include a built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`. Agent hooks are convenience checks, not a security boundary and cannot block arbitrary editor or shell writes.
 

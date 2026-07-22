@@ -58,6 +58,10 @@ sduck init --agents claude-code,codex,opencode
 # 2. Start a decision task.
 sduck work "add payment retry support"
 
+# Optional Stage 1 syntax; FULL is the default and LIGHTWEIGHT is currently a no-op.
+sduck work --record-depth FULL "add payment retry support"
+sduck work --record-depth LIGHTWEIGHT "add payment retry support"
+
 # 3. Give the agent the context pack.
 sduck context
 
@@ -107,7 +111,7 @@ init → work → context/conversation → grill complete → submit → ask/ans
 The practical contract is:
 
 1. `sduck init` creates `.decision/`, `.decision/policy.json`, compatibility `.sduck` assets, `.gitignore` entries, and managed agent rules unless disabled.
-2. `sduck work "..."` starts the current guided decision task and automatically records `GRILL_STARTED`.
+2. `sduck work "..."` starts the current guided decision task and automatically records `GRILL_STARTED`. `--record-depth FULL` is the default and preserves the current full lifecycle. `--record-depth LIGHTWEIGHT` is accepted/documented for Stage 1 only and is a behavioral no-op; the same lifecycle and gates still apply.
 3. `sduck context` prints relevant files, prior decisions/traces, the grill-me protocol, and the draft schema.
 4. The agent reviews context, converses with the user as needed, then records completion with `sduck grill complete --reason "..." [--carried DEC-...]`.
 5. `sduck submit --stdin` accepts the agent draft only after grill completion for guided tasks. Guided drafts must include non-empty `implementationPlan` and `verificationPlan`.
@@ -188,27 +192,27 @@ This user-global config is separate from tracked `.decision/policy.json`.
 
 ### Decision task flow
 
-| Command                                                        | Purpose                                                                           |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `sduck work <description...>`                                  | Start a guided decision briefing task, auto-start grill, and index context.       |
-| `sduck resume <taskId>`                                        | Resume a previous non-terminal task.                                              |
-| `sduck context [--json]`                                       | Show the current context pack.                                                    |
-| `sduck context add <pathOrGlob>`                               | Add project-local context.                                                        |
-| `sduck grill-me [--json]`                                      | Compatibility command: print/record the grill start prompt/protocol.              |
-| `sduck grill complete --reason <text> [--carried <DEC-ID>...]` | Record guided grill completion so submit/confirm can proceed.                     |
-| `sduck submit --stdin`                                         | Read a JSON or Markdown draft from stdin.                                         |
-| `sduck ask`                                                    | Show the next open question.                                                      |
-| `sduck answer <questionId> --option <n>`                       | Answer with a 1-based option number.                                              |
-| `sduck answer <questionId> --text <answer>`                    | Answer with free text.                                                            |
-| `sduck brief [--json]`                                         | Render the implementation brief.                                                  |
-| `sduck confirm`                                                | Confirm a ready brief and capture the baseline.                                   |
-| `sduck trace [--base <ref>] [--json]`                          | Record implementation files changed since confirmation.                           |
-| `sduck evaluate --check "name=outcome"`                        | Record evaluation evidence for the latest trace; does not execute commands.       |
-| `sduck graph show <TASK-*\|DEC-*> [--depth N] [--json]`        | Inspect bounded relationships from the rebuildable local SQLite graph projection. |
-| `sduck remember`                                               | Export Markdown-derived graph artifacts for reuse.                                |
-| `sduck recall <query...>`                                      | Search prior confirmed decisions and traces.                                      |
-| `sduck close`                                                  | Mark the current task closed after guided trace evaluation.                       |
-| `sduck abandon`                                                | Abandon the current v2 task.                                                      |
+| Command                                                          | Purpose                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sduck work [--record-depth FULL\|LIGHTWEIGHT] <description...>` | Start a guided decision briefing task, auto-start grill, and index context. `FULL` is the default/current behavior; `LIGHTWEIGHT` is a Stage 1 no-op and does not change lifecycle gates. |
+| `sduck resume <taskId>`                                          | Resume a previous non-terminal task.                                                                                                                                                      |
+| `sduck context [--json]`                                         | Show the current context pack.                                                                                                                                                            |
+| `sduck context add <pathOrGlob>`                                 | Add project-local context.                                                                                                                                                                |
+| `sduck grill-me [--json]`                                        | Compatibility command: print/record the grill start prompt/protocol.                                                                                                                      |
+| `sduck grill complete --reason <text> [--carried <DEC-ID>...]`   | Record guided grill completion so submit/confirm can proceed.                                                                                                                             |
+| `sduck submit --stdin`                                           | Read a JSON or Markdown draft from stdin.                                                                                                                                                 |
+| `sduck ask`                                                      | Show the next open question.                                                                                                                                                              |
+| `sduck answer <questionId> --option <n>`                         | Answer with a 1-based option number.                                                                                                                                                      |
+| `sduck answer <questionId> --text <answer>`                      | Answer with free text.                                                                                                                                                                    |
+| `sduck brief [--json]`                                           | Render the implementation brief.                                                                                                                                                          |
+| `sduck confirm`                                                  | Confirm a ready brief and capture the baseline.                                                                                                                                           |
+| `sduck trace [--base <ref>] [--json]`                            | Record implementation files changed since confirmation.                                                                                                                                   |
+| `sduck evaluate --check "name=outcome"`                          | Record evaluation evidence for the latest trace; does not execute commands.                                                                                                               |
+| `sduck graph show <TASK-*\|DEC-*> [--depth N] [--json]`          | Inspect bounded relationships from the rebuildable local SQLite graph projection.                                                                                                         |
+| `sduck remember`                                                 | Export Markdown-derived graph artifacts for reuse.                                                                                                                                        |
+| `sduck recall <query...>`                                        | Search prior confirmed decisions and traces.                                                                                                                                              |
+| `sduck close`                                                    | Mark the current task closed after guided trace evaluation.                                                                                                                               |
+| `sduck abandon`                                                  | Abandon the current v2 task.                                                                                                                                                              |
 
 ### Legacy compatibility commands
 

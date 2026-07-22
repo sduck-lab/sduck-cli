@@ -9,6 +9,7 @@ import type {
   EventRecord,
   ImplementationTrace,
   Question,
+  RecordDepth,
   Task,
 } from '../../types/index.js';
 
@@ -65,6 +66,7 @@ interface TaskRow {
   status: Task['status'];
   expected_scope_json: string;
   avoid_scope_json: string;
+  record_depth?: RecordDepth | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +79,7 @@ function mapTask(row: TaskRow): Task {
     status: row.status,
     expectedScope: decodeJson(row.expected_scope_json, []),
     avoidScope: decodeJson(row.avoid_scope_json, []),
+    recordDepth: row.record_depth ?? 'FULL',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

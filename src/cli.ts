@@ -79,6 +79,11 @@ function parseInteger(value: string, label: string, minimum: number): number {
   return parsedValue;
 }
 
+function parseRecordDepth(value: string): 'FULL' | 'LIGHTWEIGHT' {
+  if (value === 'FULL' || value === 'LIGHTWEIGHT') return value;
+  throw new InvalidArgumentError('--record-depth must be FULL or LIGHTWEIGHT.');
+}
+
 function toStartOptions(options: { git?: boolean }): { noGit?: boolean } | undefined {
   return options.git === false ? { noGit: true } : undefined;
 }
@@ -421,8 +426,16 @@ program
       'Decision briefing task를 시작하고 context를 색인',
     ),
   )
-  .action((descriptionParts: string[]) => {
-    printResult(runWorkCommand(process.cwd(), descriptionParts.join(' '), v2Runtime));
+  .option('--record-depth <depth>', 'Record depth: FULL or LIGHTWEIGHT', parseRecordDepth)
+  .action((descriptionParts: string[], options: { recordDepth?: 'FULL' | 'LIGHTWEIGHT' }) => {
+    printResult(
+      runWorkCommand(
+        process.cwd(),
+        descriptionParts.join(' '),
+        { recordDepth: options.recordDepth ?? 'FULL' },
+        v2Runtime,
+      ),
+    );
   });
 
 program

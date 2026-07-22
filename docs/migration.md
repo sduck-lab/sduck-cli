@@ -21,6 +21,7 @@ Commit the recovered `.decision/exports/markdown/**` files. Do not commit the DB
 ## Lifecycle changes
 
 - The canonical v2 flow is `sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck remember`/`sduck recall` → `sduck close`.
+- `sduck work --record-depth FULL|LIGHTWEIGHT` documents the upcoming record-depth option. `FULL` is the default and matches the current/legacy full-lifecycle behavior. In Stage 1, `LIGHTWEIGHT` is a behavioral no-op: it does not skip grill completion, draft submission, brief confirmation, trace, evaluation, memory, or close.
 - Newly initialized v2 workspaces require `sduck grill complete --reason "..."` before `submit` or `confirm`, even for small work. `sduck grill-me` remains only as a compatibility prompt/start command. Small work should keep the grill completion reason and draft concise; it should not skip the gate.
 - Existing workspaces or tasks created before `.decision/policy.json` remain permissive/legacy-compatible and are not silently tightened.
 - `workflowEnabled` defaults to true, including older valid policy files where the field is absent. `sduck workflow disable` blocks only new `sduck work`; existing records and read-only commands remain available. Toggle mode only when no non-terminal decision task is active.

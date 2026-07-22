@@ -6,7 +6,7 @@ import { appendSourceEvent } from './source-store.js';
 import { decodeJson, encodeJson } from './store.js';
 import { TaskLifecycle } from './task-lifecycle.js';
 
-import type { Task, TaskStatus } from '../../types/index.js';
+import type { RecordDepth, Task, TaskStatus } from '../../types/index.js';
 import type { DatabaseSync } from 'node:sqlite';
 
 interface TaskRow {
@@ -20,6 +20,7 @@ interface TaskRow {
   verification_plan_json?: string | null;
   guided?: number | null;
   retrospective?: number | null;
+  record_depth?: RecordDepth | null;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +41,7 @@ export function mapTask(row: TaskRow): Task {
       : { verificationPlan: decodeJson<string[]>(row.verification_plan_json, []) }),
     ...(row.guided == null ? {} : { guided: row.guided === 1 }),
     ...(row.retrospective == null ? {} : { retrospective: row.retrospective === 1 }),
+    recordDepth: row.record_depth ?? 'FULL',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -53,7 +55,7 @@ export function getTaskById(db: DatabaseSync, taskId: string): Task | null {
 export function createTask(
   projectRoot: string,
   description: string,
-  options: { guided?: boolean } = {},
+  options: { guided?: boolean; recordDepth?: RecordDepth } = {},
 ): Task {
   return new DecisionWorkspace(projectRoot).mutate(({ bundle, state }) => {
     assertWorkflowEnabledForTaskCreation(projectRoot);
@@ -74,6 +76,7 @@ export function createTask(
       expectedScope: [],
       avoidScope: [],
       ...(guided ? { guided: true } : {}),
+      recordDepth: options.recordDepth ?? 'FULL',
       createdAt,
       updatedAt: createdAt,
     };

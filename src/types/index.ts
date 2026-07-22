@@ -1,5 +1,7 @@
 export type TaskStatus = 'OPEN' | 'BRIEF_READY' | 'CONFIRMED' | 'CLOSED' | 'ABANDONED';
 
+export type RecordDepth = 'FULL' | 'LIGHTWEIGHT';
+
 export type DecisionKind = 'EXPLICIT' | 'INFERRED' | 'CARRIED' | 'CONFLICT' | 'OPEN';
 
 export type DecisionStatus = 'DRAFT' | 'CONFIRMED' | 'REJECTED' | 'SUPERSEDED';
@@ -44,6 +46,7 @@ export interface Task {
   verificationPlan?: string[];
   guided?: boolean;
   retrospective?: boolean;
+  recordDepth?: RecordDepth;
   createdAt: string;
   updatedAt: string;
 }

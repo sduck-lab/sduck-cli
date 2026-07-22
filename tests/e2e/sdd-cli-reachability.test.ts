@@ -30,7 +30,7 @@ describeIfSqlite('SDD CLI reachability regression', () => {
 
     const help = await runCli(['--help'], { cliRoot, cwd: workspace });
     expect(help.exitCode).toBe(0);
-    expect(help.stdout).toContain('work <description...>');
+    expect(help.stdout).toContain('work [options] <description...>');
     expect(help.stdout).toContain('start [options] <type> <slug>');
     expect(help.stdout).toContain('fast-track [options] <type> <slug>');
     expect(help.stdout).toContain('done [target]');
