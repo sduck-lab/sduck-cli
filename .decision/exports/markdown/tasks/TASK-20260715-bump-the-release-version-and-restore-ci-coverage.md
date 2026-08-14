@@ -3,6 +3,7 @@ id: TASK-20260715-bump-the-release-version-and-restore-ci-coverage
 type: task
 status: CLOSED
 title: Bump the release version and restore CI coverage compliance
+record_depth: FULL
 created_at: '2026-07-15T00:39:56.417Z'
 updated_at: '2026-07-15T00:48:47.975Z'
 ---
@@ -30,7 +31,8 @@ Bump the release version and restore CI coverage compliance
       "Unrelated refactors"
     ],
     "createdAt": "2026-07-15T00:39:56.417Z",
-    "updatedAt": "2026-07-15T00:48:47.975Z"
+    "updatedAt": "2026-07-15T00:48:47.975Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -533,7 +535,8 @@ Bump the release version and restore CI coverage compliance
             "Unrelated refactors"
           ],
           "createdAt": "2026-07-15T00:39:56.417Z",
-          "updatedAt": "2026-07-15T00:40:56.604Z"
+          "updatedAt": "2026-07-15T00:40:56.604Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

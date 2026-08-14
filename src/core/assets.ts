@@ -37,6 +37,8 @@ export const AGENT_RULE_ASSET_RELATIVE_PATHS = [
   join('agent-rules', 'antigravity.md'),
   join('agent-rules', 'skills', 'sduck-codebase-decisions', 'SKILL.md'),
   join('agent-rules', 'skills', 'sduck-retrospective-capture', 'SKILL.md'),
+  join('agent-rules', 'skills', 'sd-build-wiki', 'SKILL.md'),
+  join('agent-rules', 'skills', 'sd-sync-wiki', 'SKILL.md'),
   join('agent-rules', 'hooks', 'sdd-guard.sh'),
   join('agent-rules', 'hooks', 'sduck-retrospective-post-commit.sh'),
 ] as const;

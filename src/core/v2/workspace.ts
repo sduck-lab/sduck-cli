@@ -5,6 +5,7 @@ import {
   graphifyExportDir,
   markdownDecisionsDir,
   markdownImplementationsDir,
+  markdownMemoriesDir,
   markdownTasksDir,
   policyPath,
 } from './paths.js';
@@ -27,6 +28,7 @@ export function initDecisionWorkspace(projectRoot: string): InitWorkspaceResult 
     markdownTasksDir(projectRoot),
     markdownDecisionsDir(projectRoot),
     markdownImplementationsDir(projectRoot),
+    markdownMemoriesDir(projectRoot),
     graphifyExportDir(projectRoot),
   ];
   const created: string[] = [];

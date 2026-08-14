@@ -3,6 +3,7 @@ id: TASK-20260715-implement-phase-1-canonical-foundation
 type: task
 status: ABANDONED
 title: Implement Phase 1 canonical foundation
+record_depth: FULL
 created_at: '2026-07-15T10:46:10.328Z'
 updated_at: '2026-07-16T06:05:05.255Z'
 ---
@@ -35,7 +36,8 @@ Implement Phase 1 canonical foundation
       "runtime agent implementation"
     ],
     "createdAt": "2026-07-15T10:46:10.328Z",
-    "updatedAt": "2026-07-16T06:05:05.255Z"
+    "updatedAt": "2026-07-16T06:05:05.255Z",
+    "recordDepth": "FULL"
   },
   "questions": [
     {

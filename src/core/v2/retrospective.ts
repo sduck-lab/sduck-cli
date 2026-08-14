@@ -165,6 +165,7 @@ export function captureRetrospective(
           ? {}
           : { verificationPlan: draft.verificationPlan }),
         retrospective: true,
+        recordDepth: 'FULL',
         createdAt: now,
         updatedAt: now,
       };

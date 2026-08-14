@@ -58,6 +58,7 @@ export function cacheHasRows(projectRoot: string): boolean {
       'context_items',
       'brief_snapshots',
       'implementation_traces',
+      'memory_capsules',
       'events',
     ]) {
       const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
@@ -159,6 +160,20 @@ export function ensureSchema(db: DatabaseSyncType): void {
       decision_to_code_map_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS memory_capsules (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      topics_json TEXT NOT NULL,
+      claims_json TEXT NOT NULL,
+      source_digest TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS memory_capsules_task_idx ON memory_capsules(task_id);
 
     CREATE TABLE IF NOT EXISTS events (
       id TEXT PRIMARY KEY,

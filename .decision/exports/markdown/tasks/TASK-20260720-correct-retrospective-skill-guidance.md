@@ -3,6 +3,7 @@ id: TASK-20260720-correct-retrospective-skill-guidance
 type: task
 status: CLOSED
 title: Correct retrospective skill guidance
+record_depth: FULL
 created_at: '2026-07-20T02:16:20.842Z'
 updated_at: '2026-07-20T02:23:38.296Z'
 ---
@@ -42,7 +43,8 @@ Correct retrospective skill guidance
       "Run the skill asset regression tests and locale E2E test.",
       "Run the full suite to verify the timeout is stable.",
       "Review the final skill text against evaluate help and classification rule."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -543,7 +545,8 @@ Correct retrospective skill guidance
             "Run the skill asset regression tests and locale E2E test.",
             "Run the full suite to verify the timeout is stable.",
             "Review the final skill text against evaluate help and classification rule."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

@@ -3,6 +3,7 @@ id: TASK-20260715-correct-phase-0-contract-fixtures-and-trace
 type: task
 status: CLOSED
 title: Correct Phase 0 contract fixtures and trace
+record_depth: FULL
 created_at: '2026-07-15T09:49:04.512Z'
 updated_at: '2026-07-15T10:32:28.640Z'
 ---
@@ -31,7 +32,8 @@ Correct Phase 0 contract fixtures and trace
       "unrelated decision records"
     ],
     "createdAt": "2026-07-15T09:49:04.512Z",
-    "updatedAt": "2026-07-15T10:32:28.640Z"
+    "updatedAt": "2026-07-15T10:32:28.640Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -727,7 +729,8 @@ Correct Phase 0 contract fixtures and trace
             "unrelated decision records"
           ],
           "createdAt": "2026-07-15T09:49:04.512Z",
-          "updatedAt": "2026-07-15T10:05:47.579Z"
+          "updatedAt": "2026-07-15T10:05:47.579Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [],

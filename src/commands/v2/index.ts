@@ -20,6 +20,7 @@ import {
   recordGrillMeStarted,
   type GrillMeView,
 } from '../../core/v2/grill.js';
+import { distillMemory, getMemoryStatus } from '../../core/v2/memory.js';
 import { policyPath } from '../../core/v2/paths.js';
 import {
   DEFAULT_REQUIRED_POLICY,
@@ -42,6 +43,15 @@ import { buildStatusView } from '../../core/v2/status.js';
 import { openDatabase } from '../../core/v2/store.js';
 import { createTask, resumeTask, setTerminalStatus } from '../../core/v2/task.js';
 import { createImplementationTrace } from '../../core/v2/trace.js';
+import {
+  buildWiki,
+  getWikiStatus,
+  lintWiki,
+  syncWiki,
+  type WikiLintResult,
+  type WikiStatus,
+  type WikiWriteResult,
+} from '../../core/v2/wiki.js';
 import { withDecisionWorkspaceLock } from '../../core/v2/workspace-lock.js';
 import { initDecisionWorkspace } from '../../core/v2/workspace.js';
 import { enV2Messages, getV2Messages } from '../../ui/v2/messages.js';
@@ -50,6 +60,8 @@ import {
   renderBriefTerminal,
   renderDoctorResult,
   renderContextPack,
+  renderMemoryDistillResult,
+  renderMemoryStatus,
   renderRecallLocalized,
   renderRebuildResult,
   renderRememberResult,
@@ -603,6 +615,65 @@ export function runTraceCommand(
   }
 }
 
+export function runWikiBuildCommand(
+  projectRoot: string,
+  content: string,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    return ok(renderWikiWrite(buildWiki(projectRoot, content), projectRoot, 'build', runtime));
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runWikiStatusCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const status = getWikiStatus(projectRoot);
+    return ok(asJson ? JSON.stringify(status, null, 2) : renderWikiStatus(status, runtime));
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runWikiSyncCommand(
+  projectRoot: string,
+  content: string,
+  options: { force?: boolean },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    return ok(
+      renderWikiWrite(
+        syncWiki(projectRoot, content, { force: options.force === true }),
+        projectRoot,
+        'sync',
+        runtime,
+      ),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runWikiLintCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const result = lintWiki(projectRoot);
+    const output = asJson ? JSON.stringify(result, null, 2) : renderWikiLint(result, runtime);
+    return result.ok ? ok(output) : fail(output);
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
 export function runRememberCommand(
   projectRoot: string,
   runtime: V2Runtime = DEFAULT_RUNTIME,
@@ -610,6 +681,41 @@ export function runRememberCommand(
   try {
     const result = remember(projectRoot);
     return ok(renderRememberResult(result, runtime.messages));
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runMemoryDistillCommand(
+  projectRoot: string,
+  content: string,
+  options: { asJson: boolean; taskId?: string },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const result = distillMemory(projectRoot, content, {
+      ...(options.taskId === undefined ? {} : { taskId: options.taskId }),
+    });
+    return ok(
+      options.asJson
+        ? JSON.stringify(result, null, 2)
+        : renderMemoryDistillResult(result, runtime.messages),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runMemoryStatusCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const status = getMemoryStatus(projectRoot);
+    return ok(
+      asJson ? JSON.stringify(status, null, 2) : renderMemoryStatus(status, runtime.messages),
+    );
   } catch (error) {
     return fail(formatError(error, runtime));
   }
@@ -658,7 +764,25 @@ export function runCloseCommand(
 ): CommandResult {
   try {
     const task = setTerminalStatus(projectRoot, 'CLOSED');
-    return ok(runtime.messages.task.closed(task.id));
+    const lines = [runtime.messages.task.closed(task.id)];
+    try {
+      const wikiStatus = getWikiStatus(projectRoot);
+      if (wikiStatus.enabled && wikiStatus.dirtyCount > 0) {
+        lines.push(
+          runtime.locale === 'ko'
+            ? `Wiki 안내: dirty 페이지 ${String(wikiStatus.dirtyCount)}개, stale 페이지 ${String(wikiStatus.staleCount)}개. .sduck/sduck-assets/agent-rules/skills/sd-sync-wiki/SKILL.md 절차를 수행하세요.`
+            : `Wiki advisory: ${String(wikiStatus.dirtyCount)} dirty page(s), ${String(wikiStatus.staleCount)} stale page(s). Follow .sduck/sduck-assets/agent-rules/skills/sd-sync-wiki/SKILL.md.`,
+        );
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      lines.push(
+        runtime.locale === 'ko'
+          ? `Wiki 안내: 상태 확인 실패; Wiki는 stale로 취급하세요. ${detail}`
+          : `Wiki advisory: status check failed; treat the Wiki as stale. ${detail}`,
+      );
+    }
+    return ok(lines.join('\n'));
   } catch (error) {
     return fail(formatError(error, runtime));
   }
@@ -703,6 +827,87 @@ function formatError(error: unknown, runtime: V2Runtime = DEFAULT_RUNTIME): stri
   if (isV2ExpectedError(error)) return renderV2ExpectedError(error, runtime.messages);
   const detail = error instanceof Error ? error.message : String(error);
   return runtime.messages.errors.unexpected(detail);
+}
+
+function renderWikiWrite(
+  result: WikiWriteResult,
+  projectRoot: string,
+  operation: 'build' | 'sync',
+  runtime: V2Runtime,
+): string {
+  const isKorean = runtime.locale === 'ko';
+  const heading = renderWikiOperationHeading(operation, isKorean);
+  const written = result.written.map((item) => path.relative(projectRoot, item) || '.');
+  const unchanged = result.unchanged.map((item) => path.relative(projectRoot, item) || '.');
+  return [
+    heading,
+    `${isKorean ? '변경됨' : 'Written'}: ${renderWikiPathList(written, isKorean)}`,
+    `${isKorean ? '변경 없음' : 'Unchanged'}: ${renderWikiPathList(unchanged, isKorean)}`,
+  ].join('\n');
+}
+
+function renderWikiOperationHeading(operation: 'build' | 'sync', isKorean: boolean): string {
+  if (operation === 'build') return isKorean ? 'Wiki 빌드 완료.' : 'Wiki built.';
+  return isKorean ? 'Wiki 동기화 완료.' : 'Wiki synced.';
+}
+
+function renderWikiPathList(paths: string[], isKorean: boolean): string {
+  if (paths.length > 0) return paths.join(', ');
+  return isKorean ? '없음' : 'none';
+}
+
+function renderWikiStatus(status: WikiStatus, runtime: V2Runtime): string {
+  const ko = runtime.locale === 'ko';
+  if (!status.enabled) {
+    return ko
+      ? 'Wiki: 비활성화됨\n기존 workspace에서 Wiki를 도입하려면 `sduck update`를 실행하세요.'
+      : 'Wiki: disabled\nRun `sduck update` to enable Wiki for this existing workspace.';
+  }
+  const lines = [
+    ko ? 'Wiki: 활성화됨' : 'Wiki: enabled',
+    `${ko ? 'Dirty 페이지' : 'Dirty pages'}: ${String(status.dirtyCount)}`,
+    `${ko ? 'Stale 페이지' : 'Stale pages'}: ${String(status.staleCount)}`,
+    `${ko ? '충돌' : 'Conflicts'}: ${String(status.conflictCount)}`,
+  ];
+  for (const page of status.pages) {
+    const state = wikiPageStateLabel(page, ko);
+    lines.push(
+      `  - ${page.slug}: ${state}${page.reasons.length > 0 ? ` (${page.reasons.join(', ')})` : ''}`,
+    );
+  }
+  if (status.externalChangedFiles.length > 0) {
+    lines.push(
+      `${ko ? '마지막 동기화 이후 변경 파일' : 'Files changed since last sync'}: ${status.externalChangedFiles.join(', ')}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+function wikiPageStateLabel(page: WikiStatus['pages'][number], isKorean: boolean): string {
+  if (page.conflict) return isKorean ? '충돌' : 'conflict';
+  if (page.stale) return 'stale';
+  if (page.dirty) return 'dirty';
+  return 'clean';
+}
+
+function renderWikiLint(result: WikiLintResult, runtime: V2Runtime): string {
+  const ko = runtime.locale === 'ko';
+  const heading = renderWikiLintHeading(result, ko);
+  return [
+    heading,
+    ...result.issues.map(
+      (issue) =>
+        `  - [${issue.severity}] ${issue.code}${issue.page === undefined ? '' : ` ${issue.page}`}: ${issue.detail}`,
+    ),
+  ].join('\n');
+}
+
+function renderWikiLintHeading(result: WikiLintResult, isKorean: boolean): string {
+  if (result.ok) return isKorean ? 'Wiki lint 통과.' : 'Wiki lint passed.';
+  if (isKorean) {
+    return `Wiki lint 실패: 오류 ${String(result.errors)}개, 경고 ${String(result.warnings)}개.`;
+  }
+  return `Wiki lint found ${String(result.errors)} error(s) and ${String(result.warnings)} warning(s).`;
 }
 
 export function renderV2ExpectedError(error: V2ExpectedError, messages: V2MessageCatalog): string {

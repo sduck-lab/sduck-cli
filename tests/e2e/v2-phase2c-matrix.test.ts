@@ -77,6 +77,21 @@ describe('phase 2c v2 localization matrix', () => {
       },
       { args: ['trace'], en: 'Create implementation trace', ko: '구현 trace 생성' },
       { args: ['evaluate'], en: 'Record structured evaluation', ko: '구조화 evaluation' },
+      {
+        args: ['memory'],
+        en: 'Distill and inspect source-backed memory capsules',
+        ko: '출처 기반 Memory Capsule',
+      },
+      {
+        args: ['memory', 'distill'],
+        en: 'Validate and upsert an agent-authored memory capsule',
+        ko: 'agent 작성 Memory Capsule',
+      },
+      {
+        args: ['memory', 'status'],
+        en: 'Show missing, current, and stale memory capsules',
+        ko: '누락, 최신, stale Memory Capsule',
+      },
       { args: ['graph'], en: 'Inspect cache-only decision graph', ko: 'cache-only decision graph' },
       { args: ['graph', 'show'], en: 'Show graph around', ko: '주변 graph' },
       { args: ['remember'], en: 'Export markdown', ko: 'Markdown 및 decision graph' },
@@ -86,7 +101,7 @@ describe('phase 2c v2 localization matrix', () => {
         ko: '로컬 decision DB cache 재빌드',
       },
       { args: ['doctor'], en: 'Diagnose malformed source', ko: '잘못된 source' },
-      { args: ['recall'], en: 'Search prior decisions', ko: '이전 결정' },
+      { args: ['recall'], en: 'Search memory capsules', ko: 'Memory Capsule' },
       { args: ['close'], en: 'Close the current decision task', ko: '현재 decision task 종료' },
       { args: ['abandon'], en: 'Abandon the current decision task', ko: '현재 decision task 폐기' },
     ];

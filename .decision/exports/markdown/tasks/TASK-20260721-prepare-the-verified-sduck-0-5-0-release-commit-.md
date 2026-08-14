@@ -5,6 +5,7 @@ status: ABANDONED
 title: >-
   Prepare the verified sduck 0.5.0 release: commit the current intended release changes and create the local v0.5.0 tag;
   do not publish to npm.
+record_depth: FULL
 created_at: '2026-07-21T08:14:16.721Z'
 updated_at: '2026-07-21T08:24:57.332Z'
 ---
@@ -45,7 +46,8 @@ Prepare the verified sduck 0.5.0 release: commit the current intended release ch
       "npm run package:check",
       "git status --short --branch",
       "git show v0.5.0 --no-patch"
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [
     {

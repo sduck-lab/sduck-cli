@@ -28,12 +28,12 @@ const TASK_EVAL_LABELS = [
 ] as const;
 
 const CANONICAL_TEMPLATE_SEQUENCE =
-  '`sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck remember`/`sduck recall` → `sduck close`';
+  '`sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck memory status`/`sduck memory distill --stdin` → `sduck remember`/`sduck recall` → `sduck close`';
 
 const USER_INTERACTION_MODEL_MARKER = '## User-facing interaction model';
 
 const INTERNAL_COMMANDS_MARKER =
-  'Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, and `sduck remember` as internal agent operations';
+  'Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, `sduck memory status`, `sduck memory distill`, and `sduck remember` as internal agent operations';
 
 const INSTALLED_AGENT_RULE_PATHS: Record<SupportedAgentId, string> = {
   'claude-code': 'CLAUDE.md',
@@ -351,6 +351,8 @@ describe('SDD core regression Interface', () => {
         'New policy-required tasks must record `sduck grill complete --reason "..."` before `submit` or `confirm`, including small work.',
       );
       expect(installedRule, agent.id).toContain('Installed rules are canonical English');
+      expect(installedRule, agent.id).toContain('sd-build-wiki');
+      expect(installedRule, agent.id).toContain('sd-sync-wiki');
 
       const installedSkill = await readFile(
         join(
@@ -376,12 +378,14 @@ describe('SDD core regression Interface', () => {
         'sduck confirm',
         'sduck trace',
         'sduck evaluate --check',
+        'sduck memory status',
+        'sduck memory distill --stdin < memory.json',
         'sduck remember',
         'sduck recall "architecture decisions"',
         'sduck close',
       ]);
       expect(installedSkill, agent.id).toContain(
-        'Run `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded and evaluated.',
+        'Run `sduck memory distill --stdin` and `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded and evaluated.',
       );
 
       const retrospectiveSkill = await readFile(
@@ -406,6 +410,8 @@ describe('SDD core regression Interface', () => {
         'sduck confirm',
         'sduck trace --base <base>',
         'sduck evaluate --check "retrospective review=completed" --limitation "No automated checks were run"',
+        'sduck memory status',
+        'sduck memory distill --stdin < memory.json',
         'sduck remember',
         'sduck close',
       ]);
@@ -423,6 +429,8 @@ describe('SDD core regression Interface', () => {
       if (agent.id === 'claude-code') {
         await access(join(workspace, '.claude', 'skills', 'sduck-codebase-decisions.md'));
         await access(join(workspace, '.claude', 'skills', 'sduck-retrospective-capture.md'));
+        await access(join(workspace, '.claude', 'skills', 'sd-build-wiki.md'));
+        await access(join(workspace, '.claude', 'skills', 'sd-sync-wiki.md'));
       }
 
       await removeTempWorkspace(workspace);
@@ -432,7 +440,7 @@ describe('SDD core regression Interface', () => {
     const root = process.cwd();
     const core = await readFile(join(root, '.sduck/sduck-assets/agent-rules/core.md'), 'utf8');
     expect(core).toContain(
-      'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> remember/recall -> close',
+      'work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> memory status/distill -> remember/recall -> close',
     );
     expect(core).toContain(USER_INTERACTION_MODEL_MARKER);
     expect(core).toContain(INTERNAL_COMMANDS_MARKER);

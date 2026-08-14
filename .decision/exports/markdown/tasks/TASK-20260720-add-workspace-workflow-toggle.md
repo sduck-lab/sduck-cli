@@ -3,6 +3,7 @@ id: TASK-20260720-add-workspace-workflow-toggle
 type: task
 status: CLOSED
 title: Add workspace workflow toggle
+record_depth: FULL
 created_at: '2026-07-20T02:25:11.799Z'
 updated_at: '2026-07-20T02:52:21.034Z'
 ---
@@ -43,7 +44,8 @@ Add workspace workflow toggle
       "Run focused policy/CLI/locale tests.",
       "Run full test suite, typecheck, lint, and format check.",
       "Manually verify enable/disable/status help and disabled work error."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -947,7 +949,8 @@ Add workspace workflow toggle
             "Run focused policy/CLI/locale tests.",
             "Run full test suite, typecheck, lint, and format check.",
             "Manually verify enable/disable/status help and disabled work error."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

@@ -7,6 +7,7 @@ import {
   graphifyExportDir,
   sourceDecisionsDir,
   sourceImplementationsDir,
+  sourceMemoriesDir,
   sourceTasksDir,
   toRelativePath,
 } from './paths.js';
@@ -30,6 +31,9 @@ export function remember(projectRoot: string): RememberResult {
       ),
       ...bundle.implementationTraces.map((item) =>
         path.join(sourceImplementationsDir(projectRoot), `${item.id}.md`),
+      ),
+      ...bundle.memoryCapsules.map((item) =>
+        path.join(sourceMemoriesDir(projectRoot), `${item.id}.md`),
       ),
     ];
     if (taskId === null) {

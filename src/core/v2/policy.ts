@@ -11,12 +11,33 @@ export interface DecisionWorkspacePolicy {
   schemaVersion: 'v2alpha1';
   requireGrillMe: boolean;
   workflowEnabled: boolean;
+  wiki?: WikiPolicy;
 }
 
-export const DEFAULT_REQUIRED_POLICY: DecisionWorkspacePolicy = {
+export interface WikiPolicy {
+  enabled: boolean;
+  root: typeof DEFAULT_WIKI_ROOT;
+}
+
+export interface WikiPolicyStatus {
+  enabled: boolean;
+  initialized: boolean;
+  root: typeof DEFAULT_WIKI_ROOT;
+  policyPath: string;
+}
+
+export const DEFAULT_WIKI_ROOT = 'docs/wiki' as const;
+export const DEFAULT_WIKI_POLICY: WikiPolicy = { enabled: true, root: DEFAULT_WIKI_ROOT };
+
+const DEFAULT_POLICY_WITHOUT_WIKI: DecisionWorkspacePolicy = {
   schemaVersion: 'v2alpha1',
   requireGrillMe: true,
   workflowEnabled: true,
+};
+
+export const DEFAULT_REQUIRED_POLICY: DecisionWorkspacePolicy = {
+  ...DEFAULT_POLICY_WITHOUT_WIKI,
+  wiki: DEFAULT_WIKI_POLICY,
 };
 
 export interface WorkflowStatusView {
@@ -61,11 +82,66 @@ export function readDecisionWorkspacePolicy(projectRoot: string): DecisionWorksp
       problemCode: 'boolean',
     });
   }
+  if (raw['wiki'] !== undefined) {
+    if (typeof raw['wiki'] !== 'object' || raw['wiki'] === null || Array.isArray(raw['wiki'])) {
+      throw new V2ExpectedError('POLICY_INVALID', {
+        field: 'wiki',
+        problemCode: 'json-object',
+      });
+    }
+    const wiki = raw['wiki'] as Record<string, unknown>;
+    if (typeof wiki['enabled'] !== 'boolean') {
+      throw new V2ExpectedError('POLICY_INVALID', {
+        field: 'wiki.enabled',
+        problemCode: 'boolean',
+      });
+    }
+    if (wiki['root'] !== DEFAULT_WIKI_ROOT) {
+      throw new V2ExpectedError('POLICY_INVALID', {
+        field: 'wiki.root',
+        problemCode: 'unsupported-enum-value',
+      });
+    }
+  }
   return {
     schemaVersion: 'v2alpha1',
     requireGrillMe: raw['requireGrillMe'],
     workflowEnabled: raw['workflowEnabled'] ?? true,
+    ...(raw['wiki'] === undefined ? {} : { wiki: raw['wiki'] as WikiPolicy }),
   };
+}
+
+export function readWikiPolicyStatus(projectRoot: string): WikiPolicyStatus {
+  const policy = readDecisionWorkspacePolicy(projectRoot);
+  return {
+    enabled: policy?.wiki?.enabled === true,
+    initialized: policy?.wiki !== undefined,
+    root: policy?.wiki?.root ?? DEFAULT_WIKI_ROOT,
+    policyPath: policyPath(projectRoot),
+  };
+}
+
+export function assertWikiEnabled(projectRoot: string): void {
+  if (!readWikiPolicyStatus(projectRoot).enabled) {
+    throw new Error('Wiki is not enabled for this durable workspace. Run `sduck update` first.');
+  }
+}
+
+export function migrateWikiPolicy(projectRoot: string): WikiPolicyStatus {
+  return withDecisionWorkspaceLock(projectRoot, () => {
+    const existing = readDecisionWorkspacePolicy(projectRoot);
+    if (existing?.wiki !== undefined) return readWikiPolicyStatus(projectRoot);
+    const legacyCompatible: DecisionWorkspacePolicy = existing ?? {
+      schemaVersion: 'v2alpha1',
+      requireGrillMe: false,
+      workflowEnabled: true,
+    };
+    writeAtomicDurable(
+      policyPath(projectRoot),
+      `${JSON.stringify({ ...legacyCompatible, wiki: DEFAULT_WIKI_POLICY }, null, 2)}\n`,
+    );
+    return readWikiPolicyStatus(projectRoot);
+  });
 }
 
 export function resolveTaskCreationPolicy(projectRoot: string): { grillMeRequired: boolean } {
@@ -89,7 +165,7 @@ export function getWorkflowStatus(projectRoot: string): WorkflowStatusView {
 
 export function setWorkflowEnabled(projectRoot: string, enabled: boolean): WorkflowStatusView {
   return withDecisionWorkspaceLock(projectRoot, () => {
-    const policy = readDecisionWorkspacePolicy(projectRoot) ?? DEFAULT_REQUIRED_POLICY;
+    const policy = readDecisionWorkspacePolicy(projectRoot) ?? DEFAULT_POLICY_WITHOUT_WIKI;
     const state = readState(projectRoot);
     const bundle = loadSourceBundle(projectRoot);
     validateDecisionState(state, bundle);

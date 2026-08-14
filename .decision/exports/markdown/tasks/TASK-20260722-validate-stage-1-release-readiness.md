@@ -3,6 +3,7 @@ id: TASK-20260722-validate-stage-1-release-readiness
 type: task
 status: CLOSED
 title: Validate Stage 1 release readiness
+record_depth: FULL
 created_at: '2026-07-22T06:56:47.934Z'
 updated_at: '2026-07-22T07:02:22.620Z'
 ---
@@ -41,7 +42,8 @@ Validate Stage 1 release readiness
     "verificationPlan": [
       "Record package version, worktree cleanliness, full check outcomes, packed-artifact contents, installed tarball version, and smoke results.",
       "Classify the candidate as ready, conditionally ready, or blocked without altering repository state."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -733,7 +735,8 @@ Validate Stage 1 release readiness
           "verificationPlan": [
             "Record package version, worktree cleanliness, full check outcomes, packed-artifact contents, installed tarball version, and smoke results.",
             "Classify the candidate as ready, conditionally ready, or blocked without altering repository state."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

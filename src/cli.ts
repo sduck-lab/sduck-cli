@@ -35,6 +35,8 @@ import {
   runGraphShowCommand,
   runGrillCompleteCommand,
   runGrillMeCommand,
+  runMemoryDistillCommand,
+  runMemoryStatusCommand,
   runRecallCommand,
   runRebuildCommand,
   runRememberCommand,
@@ -47,6 +49,10 @@ import {
   runWorkflowEnableCommand,
   runWorkflowStatusCommand,
   runWorkCommand,
+  runWikiBuildCommand,
+  runWikiLintCommand,
+  runWikiStatusCommand,
+  runWikiSyncCommand,
   renderConfigWarning,
   renderV2CommandError,
 } from './commands/v2/index.js';
@@ -666,6 +672,101 @@ program
     printResult(runEvaluateCommand(process.cwd(), options, v2Runtime));
   });
 
+const wiki = program
+  .command('wiki')
+  .description(
+    v2Text(
+      'Build, inspect, sync, and lint the evidence-backed Markdown Wiki',
+      '근거 기반 Markdown Wiki 빌드, 상태 확인, 동기화 및 lint',
+    ),
+  );
+
+wiki
+  .command('build')
+  .description(
+    v2Text(
+      'Validate an agent-generated initial Wiki payload from stdin',
+      'stdin의 agent 생성 초기 Wiki payload 검증 및 빌드',
+    ),
+  )
+  .option('--stdin', v2Text('Read Wiki payload from stdin', 'stdin에서 Wiki payload 읽기'))
+  .action((options: { stdin?: boolean }) => {
+    try {
+      printResult(
+        runWikiBuildCommand(
+          process.cwd(),
+          readStdinIfRequested(options.stdin, v2Runtime),
+          v2Runtime,
+        ),
+      );
+    } catch (error) {
+      printResult({
+        stdout: '',
+        stderr: isV2CommandError(error)
+          ? renderV2CommandError(error, v2Runtime.messages)
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        exitCode: 1,
+      });
+    }
+  });
+
+wiki
+  .command('status')
+  .description(v2Text('Show Wiki dirty and stale state', 'Wiki dirty 및 stale 상태 표시'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runWikiStatusCommand(process.cwd(), options.json === true, v2Runtime));
+  });
+
+wiki
+  .command('sync')
+  .description(
+    v2Text(
+      'Validate and apply related agent-generated page updates from stdin',
+      'stdin의 관련 agent 생성 페이지 변경 검증 및 적용',
+    ),
+  )
+  .option('--stdin', v2Text('Read Wiki payload from stdin', 'stdin에서 Wiki payload 읽기'))
+  .option(
+    '--force',
+    v2Text(
+      'Explicitly replace edited generated sections',
+      '수정된 generated section을 명시적으로 교체',
+    ),
+  )
+  .action((options: { stdin?: boolean; force?: boolean }) => {
+    try {
+      printResult(
+        runWikiSyncCommand(
+          process.cwd(),
+          readStdinIfRequested(options.stdin, v2Runtime),
+          { force: options.force === true },
+          v2Runtime,
+        ),
+      );
+    } catch (error) {
+      printResult({
+        stdout: '',
+        stderr: isV2CommandError(error)
+          ? renderV2CommandError(error, v2Runtime.messages)
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        exitCode: 1,
+      });
+    }
+  });
+
+wiki
+  .command('lint')
+  .description(v2Text('Lint Wiki integrity and diff noise', 'Wiki 무결성 및 diff noise lint'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runWikiLintCommand(process.cwd(), options.json === true, v2Runtime));
+  });
+
 const graph = program
   .command('graph')
   .description(v2Text('Inspect cache-only decision graph', 'cache-only decision graph 조회'));
@@ -679,6 +780,71 @@ graph
   .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
   .action((root: string, options: { depth?: string; json?: boolean }) => {
     printResult(runGraphShowCommand(process.cwd(), root, options, v2Runtime));
+  });
+
+const memory = program
+  .command('memory')
+  .description(
+    v2Text(
+      'Distill and inspect source-backed memory capsules',
+      '출처 기반 Memory Capsule 정제 및 상태 확인',
+    ),
+  );
+
+memory
+  .command('distill')
+  .description(
+    v2Text(
+      'Validate and upsert an agent-authored memory capsule from stdin',
+      'stdin의 agent 작성 Memory Capsule 검증 및 upsert',
+    ),
+  )
+  .option('--stdin', v2Text('Read memory payload from stdin', 'stdin에서 memory payload 읽기'))
+  .option(
+    '--task <id>',
+    v2Text(
+      'Explicitly target a confirmed or closed task for backfill',
+      'backfill할 confirmed 또는 closed task를 명시적으로 지정',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { stdin?: boolean; task?: string; json?: boolean }) => {
+    try {
+      printResult(
+        runMemoryDistillCommand(
+          process.cwd(),
+          readStdinIfRequested(options.stdin, v2Runtime),
+          {
+            asJson: options.json === true,
+            ...(options.task === undefined ? {} : { taskId: options.task }),
+          },
+          v2Runtime,
+        ),
+      );
+    } catch (error) {
+      printResult({
+        stdout: '',
+        stderr: isV2CommandError(error)
+          ? renderV2CommandError(error, v2Runtime.messages)
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        exitCode: 1,
+      });
+    }
+  });
+
+memory
+  .command('status')
+  .description(
+    v2Text(
+      'Show missing, current, and stale memory capsules',
+      '누락, 최신, stale Memory Capsule 상태 표시',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runMemoryStatusCommand(process.cwd(), options.json === true, v2Runtime));
   });
 
 program
@@ -727,7 +893,10 @@ program
 program
   .command('recall <query...>')
   .description(
-    v2Text('Search prior decisions and implementation traces', '이전 결정과 구현 trace 검색'),
+    v2Text(
+      'Search memory capsules, prior decisions, and implementation traces',
+      'Memory Capsule, 이전 결정, 구현 trace 검색',
+    ),
   )
   .action((queryParts: string[]) => {
     printResult(runRecallCommand(process.cwd(), queryParts.join(' '), v2Runtime));

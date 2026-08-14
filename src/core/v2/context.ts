@@ -9,6 +9,8 @@ import { noCurrentTask, taskNotFound, V2ExpectedError } from './errors.js';
 import { listEvidenceByTask } from './evidence.js';
 import { GRILL_ME_CHECKLIST, GRILL_ME_PROMPT, GRILL_ME_PROTOCOL } from './grill.js';
 import { nextEntityId, nowIso } from './ids.js';
+import { citedMemorySourceIds } from './memory-source.js';
+import { findMemoryCapsules } from './memory.js';
 import {
   graphifyGraphPath,
   graphifyReportPath,
@@ -23,6 +25,7 @@ import {
   readGraphDecisionFileLinks,
   scoreDecisionForFiles,
 } from './relevance.js';
+import { containsLikePattern, searchTerms } from './search.js';
 import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { getCurrentTaskId } from './state.js';
 import { decodeJson, encodeJson, openDatabase } from './store.js';
@@ -34,6 +37,7 @@ import type {
   ContextItem,
   ContextPack,
   ContextSourceType,
+  MemoryCapsule,
   SduckDraft,
   Task,
 } from '../../types/index.js';
@@ -96,7 +100,7 @@ export function buildContextIndex(projectRoot: string, task: Task): ContextItem[
     if (canonicalTask === undefined) throw taskNotFound(task.id);
     new TaskLifecycle(bundle, task.id).assertAllowed('context');
     const db = openDatabase(projectRoot);
-    let contextIds = bundle.contextItems.map((item) => item.id);
+    const contextIds = bundle.contextItems.map((item) => item.id);
     const candidates: ContextCandidate[] = [];
     try {
       const discoveredFiles = findRelevantFiles(projectRoot, canonicalTask.description).slice(
@@ -150,20 +154,28 @@ export function buildContextIndex(projectRoot: string, task: Task): ContextItem[
     } finally {
       db.close();
     }
-    const inserted = dedupeContextCandidates(candidates)
-      .slice(0, 40)
-      .map((candidate) => {
-        const item = makeSourceContextItem(contextIds, candidate);
-        contextIds = [...contextIds, item.id];
-        return item;
+    const previous = bundle.contextItems.filter((item) => item.taskId === canonicalTask.id);
+    const explicit = dedupePersistedContextItems(
+      previous.filter((item) => item.sourceType === 'FILE'),
+    );
+    const automatic = reconcileAutomaticContext(
+      previous.filter((item) => item.sourceType !== 'FILE'),
+      dedupeContextCandidates(candidates),
+      contextIds,
+    );
+    const next = [...explicit, ...automatic];
+    bundle.contextItems = [
+      ...bundle.contextItems.filter((item) => item.taskId !== canonicalTask.id),
+      ...next,
+    ];
+    if (!sameContextItems(previous, next)) {
+      appendSourceEvent(bundle, {
+        taskId: canonicalTask.id,
+        type: 'CONTEXT_INDEXED',
+        payload: { itemCount: automatic.length },
       });
-    bundle.contextItems.push(...inserted);
-    appendSourceEvent(bundle, {
-      taskId: canonicalTask.id,
-      type: 'CONTEXT_INDEXED',
-      payload: { itemCount: inserted.length },
-    });
-    return inserted;
+    }
+    return automatic;
   });
 }
 
@@ -179,12 +191,29 @@ export function getContextPack(projectRoot: string): ContextPack {
       .all(taskId) as unknown as ContextRow[];
     const persistedItems = rows.map(mapContextItem);
     const graphItems = buildGraphContextItems(db, task);
+    const priorMemories = findMemoryCapsules(db, task.description, {
+      excludeTaskId: task.id,
+      limit: 10,
+    });
+    const citedSourceIds = citedMemorySourceIds(priorMemories);
+    const visiblePersistedItems = persistedItems.filter(
+      (item) => item.sourceType === 'FILE' || !citedSourceIds.has(item.sourceRef),
+    );
+    const memoryItems = priorMemories
+      .filter(
+        (memory) =>
+          !visiblePersistedItems.some(
+            (item) => item.sourceType === 'MEMORY' && item.sourceRef === memory.id,
+          ),
+      )
+      .map((memory, index) => memoryContextItem(task.id, memory, index));
     return {
       task,
-      items: [...persistedItems, ...graphItems],
+      items: [...visiblePersistedItems, ...memoryItems, ...graphItems],
       evidence: listEvidenceByTask(db, task.id),
-      priorDecisions: listPriorDecisions(db, task.id),
-      priorTraces: listPriorTraces(db, task.id),
+      priorMemories,
+      priorDecisions: listPriorDecisions(db, task.id, citedSourceIds),
+      priorTraces: listPriorTraces(db, task.id, citedSourceIds),
       grillMeProtocol: buildGrillMeProtocol(),
       grillMePrompt: buildGrillMePrompt(),
       grillMeChecklist: buildGrillMeChecklist(),
@@ -238,25 +267,38 @@ function buildGraphContextItems(db: DatabaseSync, task: Task): ContextItem[] {
 }
 
 function findMemoryItems(db: DatabaseSync, task: Task): ContextCandidate[] {
-  const keywords = task.description
-    .toLowerCase()
-    .split(/[^a-z0-9가-힣]+/i)
-    .filter((word) => word.length >= 3);
-  const likes =
-    keywords.length === 0 ? [`%${task.description}%`] : keywords.map((keyword) => `%${keyword}%`);
-  const items: ContextCandidate[] = [];
+  const memories = findMemoryCapsules(db, task.description, {
+    excludeTaskId: task.id,
+    limit: 10,
+  });
+  const citedSourceIds = citedMemorySourceIds(memories);
+  const likes = searchTerms(task.description).map(containsLikePattern);
+  const items: ContextCandidate[] = memories.map((memory) => ({
+    taskId: task.id,
+    sourceType: 'MEMORY',
+    sourceRef: memory.id,
+    summary: `Memory capsule: ${memory.title} — ${memory.summary}`,
+    metadata: {
+      type: 'memory_capsule',
+      sourceTaskId: memory.taskId,
+      topics: memory.topics,
+      reason: RELEVANCE_REASONS.recallResult,
+      score: 1,
+    },
+  }));
   for (const like of likes) {
     const decisionRows = db
       .prepare(
         `SELECT d.* FROM decisions d
          JOIN tasks t ON t.id = d.task_id
          WHERE d.task_id != ? AND d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
-           AND (d.title LIKE ? OR d.summary LIKE ?)
+           AND (d.title LIKE ? ESCAPE '\\' OR d.summary LIKE ? ESCAPE '\\')
          LIMIT 5`,
       )
       .all(task.id, like, like) as unknown as Parameters<typeof mapDecision>[0][];
     for (const row of decisionRows) {
       const decision = mapDecision(row);
+      if (citedSourceIds.has(decision.id)) continue;
       items.push({
         taskId: task.id,
         sourceType: 'MEMORY',
@@ -275,12 +317,13 @@ function findMemoryItems(db: DatabaseSync, task: Task): ContextCandidate[] {
         `SELECT i.* FROM implementation_traces i
          JOIN tasks t ON t.id = i.task_id
          WHERE i.task_id != ? AND t.status != 'ABANDONED'
-           AND (i.summary LIKE ? OR i.files_changed_json LIKE ?)
+           AND (i.summary LIKE ? ESCAPE '\\' OR i.files_changed_json LIKE ? ESCAPE '\\')
          LIMIT 5`,
       )
       .all(task.id, like, like) as unknown as Parameters<typeof mapTraceRow>[0][];
     for (const row of traceRows) {
       const trace = mapTraceRow(row);
+      if (citedSourceIds.has(trace.id)) continue;
       items.push({
         taskId: task.id,
         sourceType: 'MEMORY',
@@ -459,32 +502,114 @@ function dedupeContextCandidates(candidates: ContextCandidate[]): ContextCandida
   return [...byKey.values()];
 }
 
+function dedupePersistedContextItems(items: ContextItem[]): ContextItem[] {
+  const byKey = new Map<string, ContextItem>();
+  for (const item of items) {
+    const key = contextKey(item);
+    const existing = byKey.get(key);
+    if (existing === undefined || metadataScore(item.metadata) > metadataScore(existing.metadata)) {
+      byKey.set(key, item);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function reconcileAutomaticContext(
+  existingItems: ContextItem[],
+  candidates: ContextCandidate[],
+  existingIds: string[],
+): ContextItem[] {
+  const existingByKey = new Map(
+    dedupePersistedContextItems(existingItems).map((item) => [contextKey(item), item]),
+  );
+  const currentByKey = new Map<string, ContextItem>();
+  let ids = [...existingIds];
+  for (const candidate of candidates) {
+    const key = contextKey(candidate);
+    const existing = existingByKey.get(key);
+    if (existing === undefined) {
+      const created = makeSourceContextItem(ids, candidate);
+      ids = [...ids, created.id];
+      currentByKey.set(key, created);
+      continue;
+    }
+    currentByKey.set(key, {
+      ...candidate,
+      id: existing.id,
+      createdAt: existing.createdAt,
+    });
+  }
+  return [...currentByKey.values()]
+    .sort((left, right) => {
+      const score = metadataScore(right.metadata) - metadataScore(left.metadata);
+      return score === 0 ? left.id.localeCompare(right.id) : score;
+    })
+    .slice(0, 40);
+}
+
+function sameContextItems(left: ContextItem[], right: ContextItem[]): boolean {
+  const normalize = (items: ContextItem[]) =>
+    [...items].sort((first, second) => first.id.localeCompare(second.id));
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+function contextKey(item: Pick<ContextItem, 'sourceType' | 'sourceRef'>): string {
+  return `${item.sourceType}\0${item.sourceRef}`;
+}
+
 function metadataScore(metadata: Record<string, unknown>): number {
   return typeof metadata['score'] === 'number' ? metadata['score'] : 0;
 }
 
-function listPriorDecisions(db: DatabaseSync, taskId: string) {
+function listPriorDecisions(
+  db: DatabaseSync,
+  taskId: string,
+  excludedSourceIds: ReadonlySet<string>,
+) {
   const rows = db
     .prepare(
       `SELECT d.* FROM decisions d
        JOIN tasks t ON t.id = d.task_id
        WHERE d.task_id != ? AND d.status = 'CONFIRMED' AND t.status != 'ABANDONED'
-       ORDER BY d.created_at DESC LIMIT 20`,
+       ORDER BY d.created_at DESC LIMIT 100`,
     )
     .all(taskId) as unknown as Parameters<typeof mapDecision>[0][];
-  return rows.map(mapDecision);
+  return rows
+    .map(mapDecision)
+    .filter((decision) => !excludedSourceIds.has(decision.id))
+    .slice(0, 20);
 }
 
-function listPriorTraces(db: DatabaseSync, taskId: string) {
+function listPriorTraces(db: DatabaseSync, taskId: string, excludedSourceIds: ReadonlySet<string>) {
   const rows = db
     .prepare(
       `SELECT i.* FROM implementation_traces i
        JOIN tasks t ON t.id = i.task_id
        WHERE i.task_id != ? AND t.status != 'ABANDONED'
-       ORDER BY i.created_at DESC LIMIT 20`,
+       ORDER BY i.created_at DESC LIMIT 100`,
     )
     .all(taskId) as unknown as Parameters<typeof mapTraceRow>[0][];
-  return rows.map(mapTraceRow);
+  return rows
+    .map(mapTraceRow)
+    .filter((trace) => !excludedSourceIds.has(trace.id))
+    .slice(0, 20);
+}
+
+function memoryContextItem(taskId: string, memory: MemoryCapsule, index: number): ContextItem {
+  return {
+    id: `MEMORY-${String(index + 1).padStart(4, '0')}`,
+    taskId,
+    sourceType: 'MEMORY',
+    sourceRef: memory.id,
+    summary: `Memory capsule: ${memory.title} — ${memory.summary}`,
+    metadata: {
+      type: 'memory_capsule',
+      sourceTaskId: memory.taskId,
+      topics: memory.topics,
+      synthetic: true,
+    },
+    createdAt: memory.updatedAt,
+  };
 }
 
 export function addContextPath(projectRoot: string, pathOrGlob: string): ContextItem[] {
@@ -496,23 +621,31 @@ export function addContextPath(projectRoot: string, pathOrGlob: string): Context
     const taskId = requireCurrentTaskIdFromState(state.currentTaskId);
     new TaskLifecycle(bundle, taskId).assertAllowed('context');
     let contextIds = bundle.contextItems.map((item) => item.id);
-    const items = matches.map((file) => {
-      const item = makeSourceContextItem(contextIds, {
-        taskId,
-        sourceType: 'FILE',
-        sourceRef: file,
-        summary: `Added by agent/user context request: ${file}`,
-        metadata: { requested: pathOrGlob },
+    const existingKeys = new Set(
+      bundle.contextItems.filter((item) => item.taskId === taskId).map((item) => contextKey(item)),
+    );
+    const items = matches
+      .filter((file) => !existingKeys.has(`FILE\0${file}`))
+      .map((file) => {
+        const item = makeSourceContextItem(contextIds, {
+          taskId,
+          sourceType: 'FILE',
+          sourceRef: file,
+          summary: `Added by agent/user context request: ${file}`,
+          metadata: { requested: pathOrGlob },
+        });
+        contextIds = [...contextIds, item.id];
+        existingKeys.add(contextKey(item));
+        return item;
       });
-      contextIds = [...contextIds, item.id];
-      return item;
-    });
     bundle.contextItems.push(...items);
-    appendSourceEvent(bundle, {
-      taskId,
-      type: 'CONTEXT_ITEM_ADDED',
-      payload: { pathOrGlob, count: items.length },
-    });
+    if (items.length > 0) {
+      appendSourceEvent(bundle, {
+        taskId,
+        type: 'CONTEXT_ITEM_ADDED',
+        payload: { pathOrGlob, count: items.length },
+      });
+    }
     return items;
   });
 }

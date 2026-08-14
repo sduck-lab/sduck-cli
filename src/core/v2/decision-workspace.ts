@@ -9,11 +9,13 @@ import {
   decisionRoot,
   sourceDecisionsDir,
   sourceImplementationsDir,
+  sourceMemoriesDir,
   sourceTasksDir,
   statePath,
 } from './paths.js';
 import { rebuildDecisionCache } from './rebuild.js';
 import {
+  assertSourceBundleRoundTrip,
   loadSourceBundle,
   sourceFileCount,
   validateSourceBundle,
@@ -102,6 +104,7 @@ export class DecisionWorkspace {
         fs.writeFileSync(stagedArtifact, content);
       }
       const stagedBundle = loadSourceBundle(stagingRoot);
+      assertSourceBundleRoundTrip(transaction.bundle, stagedBundle);
       validateSourceBundle(stagedBundle);
       rebuildDecisionCache(stagingRoot);
 
@@ -214,6 +217,7 @@ export class DecisionWorkspace {
         sourceImplementationsDir(stagingRoot),
         sourceImplementationsDir(this.projectRoot),
       ],
+      ['memories', sourceMemoriesDir(stagingRoot), sourceMemoriesDir(this.projectRoot)],
     ] as const;
     const replacements: Replacement[] = [];
 

@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .decision/
+.omc/
 .sduck/sduck-workspace/
 .sduck/sduck-archive/
 .sduck-worktrees/

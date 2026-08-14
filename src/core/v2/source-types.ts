@@ -6,6 +6,7 @@ import type {
   Evidence,
   ImplementationTrace,
   EvaluationRecord,
+  MemoryCapsule,
   Question,
   Task,
 } from '../../types/index.js';
@@ -19,6 +20,7 @@ export interface SourceBundle {
   briefSnapshots: BriefSnapshot[];
   implementationTraces: ImplementationTrace[];
   evaluations: EvaluationRecord[];
+  memoryCapsules: MemoryCapsule[];
   events: EventRecord[];
 }
 
@@ -40,7 +42,12 @@ export interface TraceSourceDocument {
   trace: ImplementationTrace;
 }
 
-export type SourceDocument = TaskSourceDocument | DecisionSourceDocument | TraceSourceDocument;
+export interface MemorySourceDocument {
+  memory: MemoryCapsule;
+}
+
+export type SourceDocument =
+  TaskSourceDocument | DecisionSourceDocument | TraceSourceDocument | MemorySourceDocument;
 
 export interface SourceWriteResult {
   written: string[];

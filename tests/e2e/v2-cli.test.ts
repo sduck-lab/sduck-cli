@@ -63,7 +63,7 @@ describeIfSqlite('v2 CLI flow', () => {
     };
 
     expect(version.exitCode).toBe(0);
-    expect(packageJson.version).toBe('0.6.2');
+    expect(packageJson.version).toBe('0.7.0');
     expect(version.stdout.trim()).toBe(packageJson.version);
     expect(version.stderr).toBe('');
   });

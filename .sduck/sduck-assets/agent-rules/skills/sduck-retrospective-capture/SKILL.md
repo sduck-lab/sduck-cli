@@ -41,6 +41,8 @@ sduck brief
 sduck confirm
 sduck trace --base <base>
 sduck evaluate --check "retrospective review=completed" --limitation "No automated checks were run"
+sduck memory status
+sduck memory distill --stdin < memory.json
 sduck remember
 sduck close
 ```
@@ -56,7 +58,8 @@ sduck close
 7. Draft decisions with concise rationale, alternatives, affected files, risks, and verification limits.
 8. Submit with `sduck submit --stdin`, render `sduck brief`, and confirm with the user using `sduck confirm`.
 9. Run `sduck trace --base <ref>` using the explicit base/range; state that it records changed files and overrides the confirm baseline.
-10. Run `sduck evaluate --check "retrospective review=completed" --limitation "No automated checks were run"` or equivalent executable checks/limitations syntax, then `sduck remember` and `sduck close`.
+10. Run `sduck evaluate --check "retrospective review=completed" --limitation "No automated checks were run"` or equivalent executable checks/limitations syntax.
+11. Check `sduck memory status`, distill one concise source-backed Capsule with `sduck memory distill --stdin`, then run `sduck remember` and `sduck close`.
 
 ## Draft focus
 

@@ -2,18 +2,21 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 import { V2ExpectedError } from './errors.js';
 import {
   sourceDecisionsDir,
   sourceDirs,
   sourceImplementationsDir,
+  sourceMemoriesDir,
   sourceTasksDir,
 } from './paths.js';
 import { cacheHasRows } from './store.js';
 
 import type {
   DecisionSourceDocument,
+  MemorySourceDocument,
   SourceBundle,
   SourceWriteResult,
   TaskSourceDocument,
@@ -29,6 +32,8 @@ import type {
   EventType,
   Evidence,
   ImplementationTrace,
+  MemoryCapsule,
+  MemoryClaim,
   Question,
   RecordDepth,
   Task,
@@ -41,7 +46,7 @@ const yaml = require('js-yaml') as {
   load(value: string): unknown;
 };
 
-const SOURCE_BLOCK_RE = /```json\s+sduck-source\s*\n([\s\S]*?)\n```/m;
+const SOURCE_BLOCK_RE = /```json\s+sduck-source\s*\n([\s\S]*?)\n```/gm;
 
 export interface SourceManifestEntry {
   path: string;
@@ -49,11 +54,17 @@ export interface SourceManifestEntry {
   sha256: string;
 }
 
+export interface MemorySourceFile {
+  path: string;
+  document: MemorySourceDocument;
+}
+
 export type V2ProblemCode =
   | 'array'
   | 'boolean'
   | 'confidence'
   | 'duplicate-id'
+  | 'digest'
   | 'expected-reference'
   | 'hash-or-null'
   | 'json-object'
@@ -65,6 +76,7 @@ export type V2ProblemCode =
   | 'number'
   | 'parse'
   | 'portable-id'
+  | 'round-trip-mismatch'
   | 'string'
   | 'terminal-task'
   | 'unsupported-enum-value'
@@ -105,6 +117,7 @@ export function emptySourceBundle(): SourceBundle {
     briefSnapshots: [],
     implementationTraces: [],
     evaluations: [],
+    memoryCapsules: [],
     events: [],
   };
 }
@@ -154,8 +167,28 @@ export function loadSourceBundle(projectRoot: string): SourceBundle {
   for (const file of markdownFiles(sourceImplementationsDir(projectRoot))) {
     bundle.implementationTraces.push(parseTraceSource(file).trace);
   }
+  for (const source of listMemorySourceFiles(projectRoot)) {
+    bundle.memoryCapsules.push(source.document.memory);
+  }
   validateSourceBundle(bundle);
   return bundle;
+}
+
+export function listMemorySourceFiles(projectRoot: string): MemorySourceFile[] {
+  return markdownFiles(sourceMemoriesDir(projectRoot)).map((file) => ({
+    path: file,
+    document: parseMemorySource(file),
+  }));
+}
+
+export function assertSourceBundleRoundTrip(expected: SourceBundle, actual: SourceBundle): void {
+  const normalizedExpected = normalizeSourceBundle(expected);
+  const normalizedActual = normalizeSourceBundle(actual);
+  for (const key of Object.keys(normalizedExpected) as (keyof SourceBundle)[]) {
+    if (!isDeepStrictEqual(normalizedExpected[key], normalizedActual[key])) {
+      throw sourceValidation(`sourceBundle.${key}`, 'round-trip-mismatch');
+    }
+  }
 }
 
 export function loadSourceBundleForWrite(projectRoot: string): SourceBundle {
@@ -230,6 +263,15 @@ export function writeSourceBundle(projectRoot: string, bundle: SourceBundle): So
       ),
     );
   }
+  for (const memory of bundle.memoryCapsules) {
+    const doc: MemorySourceDocument = { memory };
+    written.push(
+      writeAtomic(
+        path.join(sourceMemoriesDir(projectRoot), `${memory.id}.md`),
+        renderMemorySource(doc),
+      ),
+    );
+  }
   return { written };
 }
 
@@ -254,6 +296,14 @@ export function writeTraceSource(projectRoot: string, doc: TraceSourceDocument):
   return writeAtomic(
     path.join(sourceImplementationsDir(projectRoot), `${doc.trace.id}.md`),
     renderTraceSource(doc),
+  );
+}
+
+export function writeMemorySource(projectRoot: string, doc: MemorySourceDocument): string {
+  ensureSourceDirs(projectRoot);
+  return writeAtomic(
+    path.join(sourceMemoriesDir(projectRoot), `${doc.memory.id}.md`),
+    renderMemorySource(doc),
   );
 }
 
@@ -308,6 +358,25 @@ function renderTraceSource(doc: TraceSourceDocument): string {
       created_at: trace.createdAt,
     },
     `# ${trace.id}: Implementation trace\n\n## Summary\n${trace.summary}\n\n## Decision to code map\n${mapped}\n\n## Unmapped decisions requiring review\n${unmapped}\n\n## Sduck source\n\n${renderSourceJson(doc)}`,
+  );
+}
+
+function renderMemorySource(doc: MemorySourceDocument): string {
+  const memory = doc.memory;
+  const claims = memory.claims
+    .map((claim) => `- **${claim.type}** ${claim.text} (sources: ${claim.sourceIds.join(', ')})`)
+    .join('\n');
+  return renderMarkdown(
+    {
+      id: memory.id,
+      type: 'memory_capsule',
+      task_id: memory.taskId,
+      topics: memory.topics,
+      source_digest: memory.sourceDigest,
+      created_at: memory.createdAt,
+      updated_at: memory.updatedAt,
+    },
+    `# ${memory.id}: ${memory.title}\n\n## Summary\n${memory.summary}\n\n## Claims\n${claims}\n\n## Sduck source\n\n${renderSourceJson(doc)}`,
   );
 }
 
@@ -454,15 +523,46 @@ function parseTraceSource(filePath: string): TraceSourceDocument {
   };
 }
 
+function parseMemorySource(filePath: string): MemorySourceDocument {
+  const raw = parseSourceBlock(filePath);
+  if (raw === null) {
+    throw new SourceParseError(filePath, 'sduck-source', 'expected-reference');
+  }
+  assertObject(raw, filePath, 'sduck-source');
+  assertMemoryCapsule(raw['memory'], filePath, 'memory');
+  return raw as unknown as MemorySourceDocument;
+}
+
 function parseSourceBlock(filePath: string): unknown {
   const content = fs.readFileSync(filePath, 'utf8');
-  const match = SOURCE_BLOCK_RE.exec(content);
+  const match = [...content.matchAll(SOURCE_BLOCK_RE)].at(-1);
   if (match?.[1] === undefined) return null;
   try {
     return JSON.parse(match[1]) as unknown;
   } catch (error) {
     throw new SourceParseError(filePath, 'sduck-source', 'parse', {}, formatUnknownError(error));
   }
+}
+
+function normalizeSourceBundle(bundle: SourceBundle): SourceBundle {
+  const byId = <T extends { id: string }>(items: readonly T[]): T[] =>
+    [...items].sort((left, right) => compareCodeUnits(left.id, right.id));
+  return {
+    tasks: byId(bundle.tasks),
+    decisions: byId(bundle.decisions),
+    questions: byId(bundle.questions),
+    evidence: byId(bundle.evidence),
+    contextItems: byId(bundle.contextItems),
+    briefSnapshots: byId(bundle.briefSnapshots),
+    implementationTraces: byId(bundle.implementationTraces),
+    evaluations: byId(bundle.evaluations),
+    memoryCapsules: byId(bundle.memoryCapsules),
+    events: byId(bundle.events),
+  };
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function parseFrontmatter(filePath: string): {
@@ -581,6 +681,49 @@ function assertTrace(
     unmappedDecisions.forEach((item, index) => {
       assertUnmappedDecision(item, filePath, `${field}.unmappedDecisions[${String(index)}]`);
     });
+  }
+}
+
+function assertMemoryCapsule(
+  value: unknown,
+  filePath: string,
+  field: string,
+): asserts value is MemoryCapsule {
+  assertObject(value, filePath, field);
+  assertPortableId(value['id'], filePath, `${field}.id`);
+  assertPortableId(value['taskId'], filePath, `${field}.taskId`);
+  for (const key of ['title', 'summary', 'sourceDigest', 'createdAt', 'updatedAt']) {
+    assertNonEmptyString(value[key], filePath, `${field}.${key}`);
+  }
+  if (!/^sduck-memory-sources\/v1:[a-f0-9]{64}$/.test(String(value['sourceDigest']))) {
+    throw new SourceParseError(filePath, `${field}.sourceDigest`, 'digest');
+  }
+  assertStringArray(value['topics'], filePath, `${field}.topics`);
+  assertArray(value['claims'], filePath, `${field}.claims`);
+  if (value['claims'].length === 0) {
+    throw new SourceParseError(filePath, `${field}.claims`, 'expected-reference');
+  }
+  value['claims'].forEach((claim, index) => {
+    assertMemoryClaim(claim, filePath, `${field}.claims[${String(index)}]`);
+  });
+}
+
+function assertMemoryClaim(
+  value: unknown,
+  filePath: string,
+  field: string,
+): asserts value is MemoryClaim {
+  assertObject(value, filePath, field);
+  assertEnum(
+    value['type'],
+    ['DECISION', 'CONSTRAINT', 'IMPLEMENTATION', 'VALIDATION'],
+    filePath,
+    `${field}.type`,
+  );
+  assertNonEmptyString(value['text'], filePath, `${field}.text`);
+  assertStringArray(value['sourceIds'], filePath, `${field}.sourceIds`);
+  if (value['sourceIds'].length === 0) {
+    throw new SourceParseError(filePath, `${field}.sourceIds`, 'expected-reference');
   }
 }
 
@@ -960,6 +1103,9 @@ export function validateSourceBundle(bundle: SourceBundle): void {
   bundle.implementationTraces.forEach((item, index) => {
     assertTrace(item, filePath, `implementationTraces[${String(index)}]`);
   });
+  bundle.memoryCapsules.forEach((item, index) => {
+    assertMemoryCapsule(item, filePath, `memoryCapsules[${String(index)}]`);
+  });
   bundle.events.forEach((item, index) => {
     assertEvent(item, filePath, `events[${String(index)}]`);
   });
@@ -973,6 +1119,8 @@ export function validateSourceBundle(bundle: SourceBundle): void {
     ['briefSnapshots.id', bundle.briefSnapshots.map((item) => item.id)],
     ['implementationTraces.id', bundle.implementationTraces.map((item) => item.id)],
     ['evaluations.id', bundle.evaluations.map((item) => item.id)],
+    ['memoryCapsules.id', bundle.memoryCapsules.map((item) => item.id)],
+    ['memoryCapsules.taskId', bundle.memoryCapsules.map((item) => item.taskId)],
     ['events.id', bundle.events.map((item) => item.id)],
   ];
   for (const [field, ids] of idGroups) validateUnique(ids, field);

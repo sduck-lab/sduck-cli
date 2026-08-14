@@ -5,6 +5,7 @@ status: CLOSED
 title: >-
   Release sduck 0.6.0 as CLI foundations: align documentation and bundled rules, make retrospective hooks safe, update
   metadata and tests, validate the packed CLI, then create a local tag without publishing or pushing.
+record_depth: FULL
 created_at: '2026-07-21T08:39:28.749Z'
 updated_at: '2026-07-21T09:41:03.254Z'
 ---
@@ -44,7 +45,8 @@ Release sduck 0.6.0 as CLI foundations: align documentation and bundled rules, m
       "npm run format:check; npm run lint; npm run typecheck; npm run test:coverage; npm run test:e2e; npm run build; npm run package:check",
       "Install a real tarball in an external temporary Git repository; assert 0.6.0 version, expected/unknown routes, engine/package contents/dependencies, usable bundled assets, and preserved existing hooks",
       "Audit staged inventory and compare tag, package, lockfile, and packed CLI versions"
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [
     {
@@ -995,7 +997,8 @@ Release sduck 0.6.0 as CLI foundations: align documentation and bundled rules, m
             "npm run format:check; npm run lint; npm run typecheck; npm run test:coverage; npm run test:e2e; npm run build; npm run package:check",
             "Install a real tarball in an external temporary Git repository; assert 0.6.0 version, expected/unknown routes, engine/package contents/dependencies, usable bundled assets, and preserved existing hooks",
             "Audit staged inventory and compare tag, package, lockfile, and packed CLI versions"
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

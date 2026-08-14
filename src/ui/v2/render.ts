@@ -3,11 +3,13 @@ import { renderBriefMarkdown } from '../../core/v2/brief.js';
 
 import type { V2MessageCatalog } from './messages.js';
 import type { DoctorResult } from '../../core/v2/doctor.js';
+import type { DistillMemoryResult } from '../../core/v2/memory.js';
 import type { RebuildResult } from '../../core/v2/rebuild.js';
 import type { RememberResult } from '../../core/v2/remember.js';
 import type {
   BriefView,
   ContextPack,
+  MemoryStatusView,
   RecallResult,
   StatusView,
   TraceView,
@@ -58,6 +60,11 @@ export function renderContextPack(
     lines.push(
       `  - [${item.sourceType}] ${item.sourceRef}: ${item.summary}${formatItemRelevance(item.metadata, messages)}`,
     );
+  }
+  lines.push('', `${messages.labels.priorMemories}:`);
+  if (pack.priorMemories.length === 0) lines.push(`  - ${messages.common.none}`);
+  for (const memory of pack.priorMemories) {
+    lines.push(`  - ${memory.id} ${memory.title}: ${memory.summary}`);
   }
   lines.push('', `${messages.labels.priorDecisions}:`);
   if (pack.priorDecisions.length === 0) lines.push(`  - ${messages.common.none}`);
@@ -232,8 +239,14 @@ export function renderRecallLocalized(
   const lines = [
     `${messages.labels.query}: ${result.query}`,
     '',
-    `${messages.labels.relatedDecisions}:`,
+    `${messages.labels.relatedMemories}:`,
   ];
+  if (result.memories.length === 0) lines.push(`  - ${messages.common.none}`);
+  for (const memory of result.memories) {
+    lines.push(`  - ${memory.id} ${memory.title}`);
+    lines.push(`    ${memory.summary}`);
+  }
+  lines.push('', `${messages.labels.relatedDecisions}:`);
   if (result.decisions.length === 0) lines.push(`  - ${messages.common.none}`);
   for (const decision of result.decisions) {
     lines.push(`  - ${decision.id} [${decision.kind}] ${decision.title}`);
@@ -242,6 +255,46 @@ export function renderRecallLocalized(
   lines.push('', `${messages.labels.relatedTraces}:`);
   if (result.traces.length === 0) lines.push(`  - ${messages.common.none}`);
   for (const trace of result.traces) lines.push(`  - ${trace.id}: ${trace.summary}`);
+  return lines.join('\n');
+}
+
+export function renderMemoryDistillResult(
+  result: DistillMemoryResult,
+  messages: V2MessageCatalog = enV2Messages,
+): string {
+  const heading = memoryDistillHeading(result, messages);
+  return [
+    heading,
+    `${messages.labels.memoryCapsules}: ${result.capsule.id}`,
+    `${messages.common.task}: ${result.capsule.taskId}`,
+    `${messages.labels.sourceRefs}: ${String(new Set(result.capsule.claims.flatMap((claim) => claim.sourceIds)).size)}`,
+  ].join('\n');
+}
+
+function memoryDistillHeading(result: DistillMemoryResult, messages: V2MessageCatalog): string {
+  if (result.created) return messages.commands.memoryCreated;
+  if (result.changed) return messages.commands.memoryUpdated;
+  return messages.commands.memoryUnchanged;
+}
+
+export function renderMemoryStatus(
+  view: MemoryStatusView,
+  messages: V2MessageCatalog = enV2Messages,
+): string {
+  const lines = [
+    `${messages.labels.memoryCapsules}: ${String(view.entries.length)}`,
+    `CURRENT: ${String(view.current)}`,
+    `MISSING: ${String(view.missing)}`,
+    `STALE: ${String(view.stale)}`,
+  ];
+  for (const entry of view.entries) {
+    const capsule = entry.capsuleId ?? messages.common.none;
+    const reasons =
+      entry.reasons.length === 0
+        ? ''
+        : ` — ${entry.reasons.map(messages.labels.memoryReason).join(', ')}`;
+    lines.push(`  - ${entry.taskId}: ${entry.state} (${capsule})${reasons}`);
+  }
   return lines.join('\n');
 }
 
@@ -258,6 +311,7 @@ export function renderRebuildResult(
     `${messages.labels.contextItems}: ${String(result.contextItems)}`,
     `${messages.labels.briefSnapshots}: ${String(result.briefSnapshots)}`,
     `${messages.labels.implementationTraces}: ${String(result.implementationTraces)}`,
+    `${messages.labels.memoryCapsules}: ${String(result.memoryCapsules)}`,
     `${messages.labels.events}: ${String(result.events)}`,
   ].join('\n');
 }

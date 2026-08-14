@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -16,6 +17,8 @@ import {
   type InitExecutionSummary,
 } from './init.js';
 import { getProjectSduckHomePath } from './project-paths.js';
+import { policyPath } from './v2/paths.js';
+import { migrateWikiPolicy, readWikiPolicyStatus } from './v2/policy.js';
 import { readProjectVersion, writeProjectVersion } from './version-file.js';
 
 export interface UpdateCommandOptions {
@@ -112,16 +115,28 @@ export async function updateProject(
   }
 
   const currentVersion = await readProjectVersion(projectRoot);
+  const wikiNeedsMigration = !readWikiPolicyStatus(projectRoot).initialized;
+  const wikiPolicyExisted = existsSync(policyPath(projectRoot));
 
   if (currentVersion === CLI_VERSION) {
     if (!options.dryRun) {
       const hookSummary = createUpdateHookSummary();
       installRetrospectivePostCommitHook(projectRoot, hookSummary, 'safe');
+      if (wikiNeedsMigration) {
+        migrateWikiPolicy(projectRoot);
+        hookSummary.rows.push({
+          path: '.decision/policy.json',
+          status: wikiPolicyExisted ? 'overwritten' : 'created',
+        });
+      }
 
       return {
         fromVersion: currentVersion,
         toVersion: CLI_VERSION,
-        didChange: hookSummary.created.length > 0 || hookSummary.overwritten.length > 0,
+        didChange:
+          hookSummary.created.length > 0 ||
+          hookSummary.overwritten.length > 0 ||
+          wikiNeedsMigration,
         summary: { rows: hookSummary.rows, warnings: hookSummary.warnings },
       };
     }
@@ -129,8 +144,11 @@ export async function updateProject(
     return {
       fromVersion: currentVersion,
       toVersion: CLI_VERSION,
-      didChange: false,
-      summary: { rows: [], warnings: [] },
+      didChange: wikiNeedsMigration,
+      summary: {
+        rows: [],
+        warnings: wikiNeedsMigration ? ['Dry run — Wiki policy migration is pending.'] : [],
+      },
     };
   }
 
@@ -152,12 +170,20 @@ export async function updateProject(
     projectRoot,
   );
 
+  if (wikiNeedsMigration) {
+    migrateWikiPolicy(projectRoot);
+    initResult.summary.rows.push({
+      path: '.decision/policy.json',
+      status: wikiPolicyExisted ? 'overwritten' : 'created',
+    });
+  }
+
   await writeProjectVersion(projectRoot);
 
   return {
     fromVersion: currentVersion,
     toVersion: CLI_VERSION,
-    didChange: initResult.didChange,
+    didChange: initResult.didChange || wikiNeedsMigration,
     summary: {
       rows: initResult.summary.rows,
       warnings: initResult.summary.warnings,

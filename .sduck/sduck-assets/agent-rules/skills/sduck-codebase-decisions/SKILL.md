@@ -22,6 +22,8 @@ sduck brief
 sduck confirm
 sduck trace
 sduck evaluate --check "decision inventory=completed" --limitation "No automated code checks were required"
+sduck memory status
+sduck memory distill --stdin < memory.json
 sduck remember
 sduck recall "architecture decisions"
 sduck close
@@ -40,8 +42,9 @@ sduck close
 9. Render and confirm the brief with `sduck brief` and `sduck confirm`.
 10. Perform the implementation activity, then record it with `sduck trace`.
 11. Record validation evidence or limitations with `sduck evaluate --check "name=outcome"`.
-12. Export durable artifacts with `sduck remember`, then verify recall with `sduck recall <query>`.
-13. Finish with `sduck close`.
+12. Check `sduck memory status`, distill the inventory into one concise source-backed Capsule with `sduck memory distill --stdin`, and cite the recorded Decision/Trace/Evaluation IDs.
+13. Export durable artifacts with `sduck remember`, then verify recall with `sduck recall <query>`.
+14. Finish with `sduck close`.
 
 ## Decision classification
 
@@ -107,6 +110,6 @@ Use conservative `confidence` for inferred decisions. Prefer questions over pret
 ## Verification
 
 - Run project checks separately; sduck has no built-in CI trace verifier. Record outcomes or limitations with `sduck evaluate` before close.
-- Run `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded and evaluated.
+- Run `sduck memory distill --stdin` and `sduck remember` only after the brief has been confirmed and the implementation trace has been recorded and evaluated.
 - Run `sduck recall <important topic>` and confirm the new decisions are retrievable.
 - Leave unresolved assumptions as `questions` instead of silently dropping them.

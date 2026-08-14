@@ -3,6 +3,7 @@ id: TASK-20260718-document-guided-cli-workflow-0-5-0
 type: task
 status: CLOSED
 title: Document guided CLI workflow 0.5.0
+record_depth: FULL
 created_at: '2026-07-17T15:05:03.041Z'
 updated_at: '2026-07-17T15:10:20.661Z'
 ---
@@ -43,7 +44,8 @@ Document guided CLI workflow 0.5.0
       "Check README links, command names, and examples against the implemented CLI help.",
       "Run formatting verification for the edited Markdown files.",
       "Review the documentation diff for unsupported product claims."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -770,7 +772,8 @@ Document guided CLI workflow 0.5.0
             "Check README links, command names, and examples against the implemented CLI help.",
             "Run formatting verification for the edited Markdown files.",
             "Review the documentation diff for unsupported product claims."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

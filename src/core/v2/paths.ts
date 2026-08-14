@@ -43,11 +43,18 @@ export function markdownImplementationsDir(projectRoot: string): string {
 
 export const sourceImplementationsDir = markdownImplementationsDir;
 
+export function markdownMemoriesDir(projectRoot: string): string {
+  return path.join(decisionRoot(projectRoot), 'exports', 'markdown', 'memories');
+}
+
+export const sourceMemoriesDir = markdownMemoriesDir;
+
 export function sourceDirs(projectRoot: string): string[] {
   return [
     sourceTasksDir(projectRoot),
     sourceDecisionsDir(projectRoot),
     sourceImplementationsDir(projectRoot),
+    sourceMemoriesDir(projectRoot),
   ];
 }
 

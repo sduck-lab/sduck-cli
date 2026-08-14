@@ -3,6 +3,7 @@ id: TASK-20260720-add-automatic-retrospective-capture-for-disabled
 type: task
 status: CLOSED
 title: Add automatic retrospective capture for disabled workflow
+record_depth: FULL
 created_at: '2026-07-20T03:14:28.389Z'
 updated_at: '2026-07-20T03:41:54.548Z'
 ---
@@ -44,7 +45,8 @@ Add automatic retrospective capture for disabled workflow
       "Run focused lifecycle and CLI tests for disabled capture, marker clearing, and ordinary work rejection.",
       "Run the full unit and E2E suites plus typecheck, lint, and formatting checks.",
       "Inspect the diff and verify the hook never invokes an LLM, network, or sduck command."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [],
@@ -825,7 +827,8 @@ Add automatic retrospective capture for disabled workflow
             "Run focused lifecycle and CLI tests for disabled capture, marker clearing, and ordinary work rejection.",
             "Run the full unit and E2E suites plus typecheck, lint, and formatting checks.",
             "Inspect the diff and verify the hook never invokes an LLM, network, or sduck command."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

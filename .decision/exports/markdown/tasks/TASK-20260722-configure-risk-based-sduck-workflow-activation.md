@@ -3,6 +3,7 @@ id: TASK-20260722-configure-risk-based-sduck-workflow-activation
 type: task
 status: CLOSED
 title: Configure risk-based sduck workflow activation
+record_depth: FULL
 created_at: '2026-07-22T03:45:53.512Z'
 updated_at: '2026-07-22T06:55:08.423Z'
 ---
@@ -56,7 +57,8 @@ Configure risk-based sduck workflow activation
       "Verify Markdown source round-trips recordDepth; legacy Markdown and an SQLite cache without record_depth resolve to FULL.",
       "Verify LIGHTWEIGHT tasks still require the current grill, brief confirmation, trace, evaluation, and close contract in Stage 1.",
       "Run git diff --check and inspect changed files to ensure lifecycle gates, trace/evaluate behavior, workspace mode, hooks, and automatic agent routing were not changed."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [
     {
@@ -1056,7 +1058,8 @@ Configure risk-based sduck workflow activation
             "Verify Markdown source round-trips recordDepth; legacy Markdown and an SQLite cache without record_depth resolve to FULL.",
             "Verify LIGHTWEIGHT tasks still require the current grill, brief confirmation, trace, evaluation, and close contract in Stage 1.",
             "Run git diff --check and inspect changed files to ensure lifecycle gates, trace/evaluate behavior, workspace mode, hooks, and automatic agent routing were not changed."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

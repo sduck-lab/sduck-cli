@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { V2_MESSAGE_CATALOGS, getV2Messages } from '../../src/ui/v2/messages.js';
-import { renderDoctorResult } from '../../src/ui/v2/render.js';
+import { renderDoctorResult, renderMemoryStatus } from '../../src/ui/v2/render.js';
 
 import type { V2ExpectedErrorCode } from '../../src/core/v2/errors.js';
 import type { V2ProblemCode } from '../../src/core/v2/source-store.js';
@@ -42,6 +42,12 @@ const expectedErrorCodes = [
   'STATE_JSON_INVALID',
   'STATE_INVALID',
   'REMEMBER_NO_RECORDS',
+  'MEMORY_JSON_INVALID',
+  'MEMORY_SCHEMA',
+  'MEMORY_FIELD',
+  'MEMORY_SOURCE_INVALID',
+  'MEMORY_TASK_MISMATCH',
+  'MEMORY_TASK_NOT_READY',
   'CLOSE_REQUIRES_TRACE',
   'CLOSE_REQUIRES_EVALUATION',
   'EVALUATION_REQUIRED',
@@ -58,6 +64,10 @@ const problemFragments = {
   array: { en: 'must be an array', ko: '배열이어야 합니다' },
   boolean: { en: 'must be a boolean', ko: 'boolean이어야 합니다' },
   confidence: { en: 'must be a number between 0 and 1', ko: '0과 1 사이 숫자여야 합니다' },
+  digest: {
+    en: 'must be a sduck memory source digest',
+    ko: 'sduck memory source digest 형식이어야 합니다',
+  },
   'duplicate-id': { en: 'duplicate id', ko: '중복 id입니다' },
   'expected-reference': {
     en: 'reference did not match expected id',
@@ -84,6 +94,10 @@ const problemFragments = {
   'portable-id': {
     en: 'must be a portable single-segment id',
     ko: 'portable single-segment id여야 합니다',
+  },
+  'round-trip-mismatch': {
+    en: 'did not round-trip through canonical Markdown',
+    ko: 'canonical Markdown round-trip 결과가 일치하지 않습니다',
   },
   string: { en: 'must be a string', ko: '문자열이어야 합니다' },
   'terminal-task': { en: 'references a terminal task', ko: '종료된 task를 참조합니다' },
@@ -210,6 +224,7 @@ describe('v2 message catalogs', () => {
       CACHE_STALE: {},
       INVALID_STATE: { code: 'STATE_INVALID', field: 'updatedAt', problemCode: 'non-empty-string' },
       MISSING_CURRENT_TASK_POINTER: { taskId: 'TASK-missing', problemCode: 'missing-task' },
+      ORPHANED_MEMORY_CAPSULE: { memoryId: 'MEM-orphaned', reasons: 'missing-source' },
       STALE_TERMINAL_TASK_POINTER: { taskId: 'TASK-closed' },
       MALFORMED_SOURCE: {
         path: '.decision/exports/markdown/tasks/bad.md',
@@ -233,6 +248,7 @@ describe('v2 message catalogs', () => {
         'INTERRUPTED_COMMIT',
         'DB_ONLY_MIGRATED',
         'CACHE_REBUILT',
+        'MEMORY_CAPSULE_QUARANTINED',
         'TERMINAL_TASK_POINTER_CLEARED',
       ]) {
         const rendered = messages.doctor.repairs[code]?.({}) ?? '';
@@ -246,6 +262,42 @@ describe('v2 message catalogs', () => {
     expect(
       getV2Messages('ko').doctor.issueMessages['MALFORMED_SOURCE']?.(issueParams.MALFORMED_SOURCE),
     ).toContain('허용: OPEN, CLOSED');
+  });
+
+  it('localizes human-readable memory reasons while preserving structured slugs', () => {
+    const ko = getV2Messages('ko');
+    const error = ko.errors.expected('MEMORY_SOURCE_INVALID', {
+      sourceId: 'DEC-1',
+      claimType: 'VALIDATION',
+      reason: 'incompatible-source-kind',
+    });
+    const status = renderMemoryStatus(
+      {
+        entries: [
+          {
+            taskId: 'TASK-1',
+            taskTitle: 'Memory task',
+            taskStatus: 'CLOSED',
+            capsuleId: 'MEM-1',
+            state: 'STALE',
+            reasons: ['missing-source', 'source-digest-changed'],
+            sourceCount: 1,
+            updatedAt: '2026-08-12T00:00:00.000Z',
+          },
+        ],
+        current: 0,
+        missing: 0,
+        stale: 1,
+      },
+      ko,
+    );
+
+    expect(error).toContain('호환되지 않는 source 종류');
+    expect(error).not.toContain('incompatible-source-kind');
+    expect(status).toContain('source가 없습니다');
+    expect(status).toContain('source digest가 변경되었습니다');
+    expect(status).not.toContain('missing-source');
+    expect(status).not.toContain('source-digest-changed');
   });
 
   it('renders source validation problem codes with stable detail in both locales', () => {

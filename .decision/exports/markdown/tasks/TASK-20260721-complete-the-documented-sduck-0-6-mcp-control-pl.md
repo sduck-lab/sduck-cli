@@ -5,6 +5,7 @@ status: ABANDONED
 title: >-
   Complete the documented sduck 0.6 MCP control plane, validate its packaged CLI behavior, and prepare a local v0.6.0
   release commit and tag without publishing or pushing.
+record_depth: FULL
 created_at: '2026-07-21T08:29:11.236Z'
 updated_at: '2026-07-21T08:39:28.374Z'
 ---
@@ -42,7 +43,8 @@ Complete the documented sduck 0.6 MCP control plane, validate its packaged CLI b
       "Format, lint, typecheck, full tests, build, package dry-run",
       "For MCP scope: stdio client lifecycle and idempotency, digest, migration, context, and verifier matrices",
       "Release artifact installation smoke and clean Git/tag inspection"
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [
     {

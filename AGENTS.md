@@ -6,7 +6,7 @@ Selected agents: Codex
 
 Use v2 `.decision` briefing as the default workflow. Legacy SDD gates apply only when `current_work_id` is non-null.
 
-Canonical v2 sequence: `sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck remember`/`sduck recall` → `sduck close`.
+Canonical v2 sequence: `sduck work` → `sduck context` → `sduck grill complete --reason "..."` → `sduck submit --stdin` → `sduck ask`/`sduck answer` → `sduck brief`/`sduck confirm` → implementation activity → `sduck trace` → `sduck evaluate` → `sduck memory status`/`sduck memory distill --stdin` → `sduck remember`/`sduck recall` → `sduck close`.
 
 New policy-required tasks must record `sduck grill complete --reason "..."` before `submit` or `confirm`, including small work. `sduck grill-me` is only a compatibility prompt/start command. Keep small-work drafts concise; do not skip the gate. Installed rules are canonical English and do not depend on user locale. There is no built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`.
 
@@ -15,6 +15,8 @@ New policy-required tasks must record `sduck grill complete --reason "..."` befo
 - Read `AGENTS.md` as the project instruction file.
 - Use the CLI for lifecycle changes; do not hand-edit state or cache files.
 - Keep evidence and source references concrete and concise.
+- Before creating the initial Wiki, read `.sduck/sduck-assets/agent-rules/skills/sd-build-wiki/SKILL.md`.
+- When Wiki status or task close reports dirty/stale pages, read `.sduck/sduck-assets/agent-rules/skills/sd-sync-wiki/SKILL.md`.
 
 # sduck Decision Briefing Rules
 
@@ -27,21 +29,22 @@ Use v2 unless `.sduck/sduck-state.yml` names an active legacy task.
 3. Record decisions/questions/evidence/scope with `sduck submit --stdin`; resolve questions with `sduck ask` and `sduck answer`.
 4. Render and confirm the brief with `sduck brief` and `sduck confirm`.
 5. Implement only after `sduck confirm` succeeds. Here “implement” means the development activity, not the legacy `sduck implement` command.
-6. Record implementation with `sduck trace`, record validation or limitations with `sduck evaluate`, then make it reusable with `sduck remember` and searchable with `sduck recall`.
-7. Finish with `sduck close` or `sduck abandon`.
+6. Record implementation with `sduck trace` and validation or limitations with `sduck evaluate`. Inspect `sduck memory status`; when the current task is missing or stale, submit one concise, source-backed capsule with `sduck memory distill --stdin`.
+7. Make the result reusable with `sduck remember` and searchable with `sduck recall`.
+8. Finish with `sduck close` or `sduck abandon`.
 
-The contract is `work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> remember/recall -> close`.
+The contract is `work -> context -> grill complete -> submit -> ask/answer -> brief/confirm -> implementation activity -> trace -> evaluate -> memory status/distill -> remember/recall -> close`.
 For a small, obvious change, use one concise decision and no unnecessary questions. For a complex or ambiguous change, provide the full decision brief and explicit scope boundaries.
 
 `--record-depth FULL` is the default and preserves the current/legacy behavior: the full decision briefing lifecycle remains required. `--record-depth LIGHTWEIGHT` is documented for Stage 1 compatibility only and is a behavioral no-op in this release; it does not shorten, skip, or otherwise change any lifecycle command or gate.
 
-Canonical records are `.decision/exports/markdown/**` plus the tracked `.decision/policy.json` for new workspaces. `.decision/db.sqlite` is a local, ignored cache. User-global locale config is outside the repository and does not change these artifacts. Installed agent rules are canonical English regardless of user locale. The CLI records workflow evidence but does not include a built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`. Agent hooks are convenience checks, not a security boundary and cannot block arbitrary editor or shell writes.
+Canonical records are `.decision/exports/markdown/**` plus the tracked `.decision/policy.json` for new workspaces. Memory Capsules live under `.decision/exports/markdown/memories/`; each task has at most one stable capsule. `.decision/db.sqlite` is a local, ignored cache. User-global locale config is outside the repository and does not change these artifacts. Installed agent rules are canonical English regardless of user locale. The CLI records workflow evidence but does not include a built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`. Agent hooks are convenience checks, not a security boundary and cannot block arbitrary editor or shell writes.
 
 ## User-facing interaction model
 
 `sduck` is an internal decision-recording tool for coding agents. Users normally should not be asked to run lifecycle commands themselves. Agents use the commands internally to record decisions, evidence, traces, and reusable memory, then explain outcomes in plain language.
 
-Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, and `sduck remember` as internal agent operations unless the user explicitly asks for command details.
+Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, `sduck memory status`, `sduck memory distill`, and `sduck remember` as internal agent operations unless the user explicitly asks for command details.
 
 Plain-language scenario:
 
@@ -52,6 +55,27 @@ Plain-language scenario:
 5. Ask for plain-language approval, for example: “Implement this direction?”
 6. Implement only after approval.
 7. Report what changed and the verification results.
+
+## Bounded memory workflow
+
+Memory Capsules are a compact retrieval layer over canonical history, not a replacement for it. The CLI never calls a model: the active coding agent writes the semantic summary, and sduck validates its structure and provenance.
+
+- Run `sduck memory status` after trace/evaluation work. `MISSING` means an eligible confirmed/closed task has no capsule; `STALE` means a reference is invalid, a cited source changed, a newer source record exists, or a cited decision is no longer reusable. Stale capsules fall back to raw retrieval; use `sduck doctor` for invalid-reference recovery.
+- For the current task, submit one `sduck-memory/v1` payload through `sduck memory distill --stdin`. Re-distillation updates the same `MEM-*` record; an identical payload is a no-op. Historical backfill must be explicit with `sduck memory distill --task <TASK-ID> --stdin`, and the option and payload IDs must match.
+- Every claim must cite same-task canonical source IDs. `DECISION` and `CONSTRAINT` claims use confirmed Decision/Evidence sources, `IMPLEMENTATION` requires an Implementation Trace, and `VALIDATION` requires an Evaluation.
+- Keep capsules concise and durable. Preserve raw Task, Decision, Evidence, Trace, and Evaluation records; cold archive or deletion requires a separate reviewed migration.
+- `sduck recall` and future context packs prefer matching current capsules, suppress only raw Decision/Trace IDs actually cited by those capsules, and preserve bounded uncited/raw fallback results.
+
+## Evidence-backed Wiki workflow
+
+The Git-tracked Markdown Wiki under `docs/wiki/` is the default human reading view. Canonical `.decision/exports/markdown/**` Decision, Evidence, Trace, and Evaluation records remain the traceable backend; the Wiki is a materialized explanation, not another source of truth.
+
+- CLI commands are `sduck wiki build|status|sync|lint`. Skill names are `sd-build-wiki` and `sd-sync-wiki`; do not conflate them.
+- When an enabled Wiki has not been built, read `.sduck/sduck-assets/agent-rules/skills/sd-build-wiki/SKILL.md` before creating it.
+- After trace/evaluation/memory work and whenever close reports dirty or stale pages, read `.sduck/sduck-assets/agent-rules/skills/sd-sync-wiki/SKILL.md` and update only related generated sections.
+- Preserve content outside generated ownership markers. Never use Wiki sync `--force` without explicit authorization to replace an edited generated section.
+- Keep decision intent, recorded implementation claims, changed-file tracking, reported validation outcomes, and agent-proposed semantic conflicts distinct. Do not claim the CLI verified code meaning or executed CI.
+- Wiki status and lint are advisory. A dirty/stale Wiki or sync failure must remain visible but must not block task close. Do not commit Wiki changes automatically.
 
 ## Best-effort retrospective marker
 

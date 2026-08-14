@@ -143,6 +143,55 @@ export interface EvaluationRecord {
   createdAt: string;
 }
 
+export type MemoryClaimType = 'DECISION' | 'CONSTRAINT' | 'IMPLEMENTATION' | 'VALIDATION';
+
+export interface MemoryClaim {
+  type: MemoryClaimType;
+  text: string;
+  sourceIds: string[];
+}
+
+export interface MemoryCapsule {
+  id: string;
+  taskId: string;
+  title: string;
+  summary: string;
+  topics: string[];
+  claims: MemoryClaim[];
+  sourceDigest: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryCapsuleDraft {
+  schemaVersion: 'sduck-memory/v1';
+  taskId?: string;
+  title: string;
+  summary: string;
+  topics?: string[];
+  claims: MemoryClaim[];
+}
+
+export type MemoryState = 'MISSING' | 'CURRENT' | 'STALE';
+
+export interface MemoryStatusEntry {
+  taskId: string;
+  taskTitle: string;
+  taskStatus: TaskStatus;
+  capsuleId: string | null;
+  state: MemoryState;
+  reasons: string[];
+  sourceCount: number;
+  updatedAt: string | null;
+}
+
+export interface MemoryStatusView {
+  entries: MemoryStatusEntry[];
+  current: number;
+  missing: number;
+  stale: number;
+}
+
 export interface BriefView {
   task: Task;
   decisions: Record<DecisionKind, Decision[]>;
@@ -200,6 +249,7 @@ export interface ContextPack {
   task: Task;
   items: ContextItem[];
   evidence: Evidence[];
+  priorMemories: MemoryCapsule[];
   priorDecisions: Decision[];
   priorTraces: ImplementationTrace[];
   grillMeProtocol: string[];
@@ -258,6 +308,7 @@ export interface TraceView {
 
 export interface RecallResult {
   query: string;
+  memories: MemoryCapsule[];
   decisions: Decision[];
   traces: ImplementationTrace[];
 }

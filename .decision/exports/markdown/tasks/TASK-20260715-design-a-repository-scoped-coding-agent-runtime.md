@@ -3,6 +3,7 @@ id: TASK-20260715-design-a-repository-scoped-coding-agent-runtime
 type: task
 status: ABANDONED
 title: Design a repository-scoped coding agent runtime
+record_depth: FULL
 created_at: '2026-07-15T04:04:08.373Z'
 updated_at: '2026-07-15T06:56:44.163Z'
 ---
@@ -30,7 +31,8 @@ Design a repository-scoped coding agent runtime
       "production remote execution before local/Docker validation"
     ],
     "createdAt": "2026-07-15T04:04:08.373Z",
-    "updatedAt": "2026-07-15T06:56:44.163Z"
+    "updatedAt": "2026-07-15T06:56:44.163Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [],

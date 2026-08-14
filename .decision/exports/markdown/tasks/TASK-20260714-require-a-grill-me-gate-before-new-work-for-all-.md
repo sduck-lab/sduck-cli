@@ -3,6 +3,7 @@ id: TASK-20260714-require-a-grill-me-gate-before-new-work-for-all-
 type: task
 status: CLOSED
 title: Require a grill-me gate before new work for all future sduck installations
+record_depth: FULL
 created_at: '2026-07-14T03:35:49.380Z'
 updated_at: '2026-07-14T04:03:43.601Z'
 ---
@@ -30,7 +31,8 @@ Require a grill-me gate before new work for all future sduck installations
       "Expanding legacy SDD behavior or adding unrelated CI verification features"
     ],
     "createdAt": "2026-07-14T03:35:49.380Z",
-    "updatedAt": "2026-07-14T04:03:43.601Z"
+    "updatedAt": "2026-07-14T04:03:43.601Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [],
@@ -317,7 +319,8 @@ Require a grill-me gate before new work for all future sduck installations
             "Expanding legacy SDD behavior or adding unrelated CI verification features"
           ],
           "createdAt": "2026-07-14T03:35:49.380Z",
-          "updatedAt": "2026-07-14T03:39:55.380Z"
+          "updatedAt": "2026-07-14T03:39:55.380Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

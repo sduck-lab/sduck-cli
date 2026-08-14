@@ -3,6 +3,7 @@ id: TASK-20260714-organize-the-complete-workflow-and-update-the-re
 type: task
 status: CLOSED
 title: Organize the complete workflow and update the README
+record_depth: FULL
 created_at: '2026-07-14T05:05:37.746Z'
 updated_at: '2026-07-15T00:23:04.147Z'
 ---
@@ -30,7 +31,8 @@ Organize the complete workflow and update the README
       "A project-tracked or per-workspace locale preference"
     ],
     "createdAt": "2026-07-14T05:05:37.746Z",
-    "updatedAt": "2026-07-15T00:23:04.147Z"
+    "updatedAt": "2026-07-15T00:23:04.147Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [],
@@ -379,7 +381,8 @@ Organize the complete workflow and update the README
             "A project-tracked or per-workspace locale preference"
           ],
           "createdAt": "2026-07-14T05:05:37.746Z",
-          "updatedAt": "2026-07-14T05:14:53.216Z"
+          "updatedAt": "2026-07-14T05:14:53.216Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

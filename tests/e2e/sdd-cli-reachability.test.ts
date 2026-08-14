@@ -112,8 +112,32 @@ describeIfSqlite('SDD CLI reachability regression', () => {
         'SKILL.md',
       ),
     );
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'skills',
+        'sd-build-wiki',
+        'SKILL.md',
+      ),
+    );
+    await access(
+      join(
+        workspace,
+        '.sduck',
+        'sduck-assets',
+        'agent-rules',
+        'skills',
+        'sd-sync-wiki',
+        'SKILL.md',
+      ),
+    );
     await access(join(workspace, '.claude', 'skills', 'sduck-codebase-decisions.md'));
     await access(join(workspace, '.claude', 'skills', 'sduck-retrospective-capture.md'));
+    await access(join(workspace, '.claude', 'skills', 'sd-build-wiki.md'));
+    await access(join(workspace, '.claude', 'skills', 'sd-sync-wiki.md'));
     await access(join(workspace, '.claude', 'hooks', 'sdd-guard.sh'));
     await access(join(workspace, '.claude', 'settings.json'));
 
@@ -147,10 +171,12 @@ describeIfSqlite('SDD CLI reachability regression', () => {
     expect(claudeRules).toContain(
       '.sduck/sduck-assets/agent-rules/skills/sduck-retrospective-capture/SKILL.md',
     );
+    expect(claudeRules).toContain('.sduck/sduck-assets/agent-rules/skills/sd-build-wiki/SKILL.md');
+    expect(claudeRules).toContain('.sduck/sduck-assets/agent-rules/skills/sd-sync-wiki/SKILL.md');
     expect(claudeRules).toContain('Primary workflow: v2 `.decision` decision briefing');
     expect(claudeRules).toContain('## User-facing interaction model');
     expect(claudeRules).toContain(
-      'Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, and `sduck remember` as internal agent operations',
+      'Treat `sduck work`, `sduck context`, `sduck grill complete`, `sduck submit`, `sduck brief`, `sduck confirm`, `sduck trace`, `sduck evaluate`, `sduck memory status`, `sduck memory distill`, and `sduck remember` as internal agent operations',
     );
     expect(claudeRules).toContain('Implement this direction?');
     expect(claudeRules).toContain(

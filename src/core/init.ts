@@ -67,6 +67,8 @@ export type AssetTemplateKey =
   | 'agent-rules-antigravity'
   | 'agent-rules-skill-codebase-decisions'
   | 'agent-rules-skill-retrospective-capture'
+  | 'agent-rules-skill-build-wiki'
+  | 'agent-rules-skill-sync-wiki'
   | 'agent-rules-hook'
   | 'agent-rules-retrospective-post-commit-hook';
 
@@ -232,6 +234,24 @@ const ASSET_TEMPLATE_DEFINITIONS = [
       'agent-rules',
       'skills',
       'sduck-retrospective-capture',
+      'SKILL.md',
+    ),
+  },
+  {
+    key: 'agent-rules-skill-build-wiki',
+    relativePath: getProjectRelativeSduckAssetPath(
+      'agent-rules',
+      'skills',
+      'sd-build-wiki',
+      'SKILL.md',
+    ),
+  },
+  {
+    key: 'agent-rules-skill-sync-wiki',
+    relativePath: getProjectRelativeSduckAssetPath(
+      'agent-rules',
+      'skills',
+      'sd-sync-wiki',
       'SKILL.md',
     ),
   },
@@ -916,7 +936,12 @@ async function installClaudeCodeSkills(
     return;
   }
 
-  for (const skillName of ['sduck-codebase-decisions', 'sduck-retrospective-capture'] as const) {
+  for (const skillName of [
+    'sduck-codebase-decisions',
+    'sduck-retrospective-capture',
+    'sd-build-wiki',
+    'sd-sync-wiki',
+  ] as const) {
     const skillSourcePath = join(skillsSourceRoot, skillName, 'SKILL.md');
     const skillTargetRelativePath = `${CLAUDE_CODE_SKILLS_PATH}/${skillName}.md`;
     const skillTargetPath = join(skillsTargetRoot, `${skillName}.md`);

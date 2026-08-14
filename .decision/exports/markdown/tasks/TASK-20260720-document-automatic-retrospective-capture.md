@@ -3,6 +3,7 @@ id: TASK-20260720-document-automatic-retrospective-capture
 type: task
 status: CLOSED
 title: Document automatic retrospective capture
+record_depth: FULL
 created_at: '2026-07-20T14:10:12.152Z'
 updated_at: '2026-07-20T14:11:38.977Z'
 ---
@@ -40,7 +41,8 @@ Document automatic retrospective capture
     "verificationPlan": [
       "Check both README sections and command tables for matching behavior.",
       "Run Prettier format check and inspect the documentation diff."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [],
@@ -834,7 +836,8 @@ Document automatic retrospective capture
           "verificationPlan": [
             "Check both README sections and command tables for matching behavior.",
             "Run Prettier format check and inspect the documentation diff."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

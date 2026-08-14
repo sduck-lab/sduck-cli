@@ -93,6 +93,7 @@ describe('DecisionWorkspace', () => {
         },
       ],
       evaluations: [],
+      memoryCapsules: [],
       events: [],
     });
     const firstDecision = (bundle: SourceBundle) => {

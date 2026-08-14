@@ -11,7 +11,7 @@
 - 요구사항 해석 오류나 기존 설계 위반으로 재작업이 반복되던 영역의 작업
 - 신규 기능, 비단순 버그 수정, 구조 변경, 팀 간 계약 변경
 
-각 작업은 시작 시 `small`, `medium`, `large`로 분류하고 근거를 남긴다. 새로 초기화한 v2 workspace/task에서는 `small`도 `sduck grill-me` gate를 실행해야 한다. 다만 `small`은 한 개의 간결한 decision과 질문 0개로 끝낼 수 있어야 하며 불필요한 full briefing을 강제하지 않는다. `.decision/policy.json` 도입 전 workspace/task는 permissive/legacy-compatible로 남는다.
+각 작업은 시작 시 `small`, `medium`, `large`로 분류하고 근거를 남긴다. 새로 초기화한 v2 workspace/task에서는 `small`도 `sduck grill complete --reason "..."` gate를 통과해야 한다. 다만 `small`은 한 개의 간결한 decision과 질문 0개로 끝낼 수 있어야 하며 불필요한 full briefing을 강제하지 않는다. `sduck grill-me`는 compatibility prompt/start command일 뿐 completion gate가 아니다. `.decision/policy.json` 도입 전 workspace/task는 permissive/legacy-compatible로 남는다.
 
 ## 적용 제외 기준
 
@@ -36,7 +36,24 @@
 
 “Decision 재사용”은 단순 검색 노출이 아니다. 과거 decision ID가 새 brief의 `CARRIED` 항목, evidence/source ref, 구현 선택 설명, 또는 리뷰 근거 중 하나에 인용되고 실제 선택에 영향을 줘야 한다.
 
-측정 시 canonical v2 flow는 `work → context → grill-me → submit → ask/answer → brief/confirm → 구현 활동 → trace → remember/recall → close`로 기록한다. `sduck config locale en|ko`는 user-global terminal 표시 설정이며 tracked artifact, JSON output, canonical source에는 영향을 주지 않으므로 지표 비교 기준에 포함하지 않는다.
+측정 시 canonical v2 flow는 `work → context → grill complete → submit → ask/answer → brief/confirm → 구현 활동 → trace → evaluate → remember/recall → close`로 기록한다. `sduck config locale en|ko`는 user-global terminal 표시 설정이며 tracked artifact, JSON output, canonical source에는 영향을 주지 않으므로 지표 비교 기준에 포함하지 않는다.
+
+## Auto Wiki pilot 지표
+
+Auto Wiki cohort는 최소 20개의 build/sync 작업과 최소 5명의 returning user를 권장한다. `.decision`을 canonical backend로 유지하면서 `docs/wiki/`가 사람의 기본 읽기 surface로 실제 작동하는지 평가한다. CLI가 semantic truth를 판정하지 않으므로, 정확성 평가는 사람 review로 별도 기록하고 deterministic safety/freshness 지표와 섞지 않는다.
+
+| 지표                      | 정의와 수집 방법                                                                                                                  | Go 기준                             |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Broken source ID          | build/sync가 성공한 generated block 중 존재하지 않거나 superseded된 source ID 수. manifest와 canonical source를 대조한다.         | `0`                                 |
+| Human region overwrite    | sync 전후 marker 밖 byte diff 또는 Team Notes 손실 건수                                                                           | `0`                                 |
+| Sync success rate         | valid dirty-page sync 시도 중 atomic success 후 status/lint를 통과한 비율. Invalid input/refused conflict는 별도 분모로 기록한다. | `>=95%`                             |
+| Long-stale pages          | 하나의 confirmed task가 더 종료된 뒤에도 dirty/stale인 page / 전체 Wiki page                                                      | `<5%`                               |
+| Unrelated page changes    | status가 관련 있다고 판정하지 않은 clean page의 content 또는 mtime 변경 건수                                                      | `0`                                 |
+| Generated edit/revert     | 사람이 generated region을 편집했다가 conflict 때문에 revert하거나 명시적 force로 교체한 sync / 전체 sync                          | `<10%`                              |
+| Wiki merge conflicts      | Wiki file을 포함한 PR/merge 중 ownership boundary 또는 generated content 때문에 conflict가 발생한 비율                            | `<5%`                               |
+| Returning-user reanalysis | Wiki를 먼저 읽은 returning user가 필요한 답을 얻지 못해 Wiki를 건너뛰고 같은 영역 code/decision source를 다시 분석한 비율과 이유  | 하향 추세; baseline cohort보다 감소 |
+
+실패 신호는 broken source ID 또는 human overwrite가 1건이라도 발생하는 경우, partial multi-page write, 반복되는 unrelated page churn, agent가 사용자 승인 없이 `--force`를 적용한 경우다. 이들은 평균 지표와 무관하게 rollout을 중지하고 원인을 수정한 뒤 새 cohort로 재검증한다.
 
 ## 작업별 기록 양식
 
@@ -54,6 +71,15 @@ reused_decision_ids: []
 reuse_effect:
 trace_files_expected: []
 trace_noise_files: []
+wiki_pages_expected: []
+wiki_pages_changed: []
+wiki_dirty_after_next_task: []
+wiki_broken_source_ids: []
+wiki_human_region_overwrites: 0
+wiki_force_authorized_by_user: false
+wiki_merge_conflict: false
+returning_user_skipped_wiki: false
+returning_user_reanalysis_reason:
 satisfaction_clarity_1_to_5:
 satisfaction_overhead_1_to_5:
 satisfaction_recall_1_to_5:

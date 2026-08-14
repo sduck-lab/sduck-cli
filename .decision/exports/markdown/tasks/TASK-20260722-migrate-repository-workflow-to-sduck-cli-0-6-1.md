@@ -3,6 +3,7 @@ id: TASK-20260722-migrate-repository-workflow-to-sduck-cli-0-6-1
 type: task
 status: CLOSED
 title: Migrate repository workflow to sduck CLI 0.6.1
+record_depth: FULL
 created_at: '2026-07-22T01:53:43.995Z'
 updated_at: '2026-07-22T01:56:23.441Z'
 ---
@@ -39,7 +40,8 @@ Migrate repository workflow to sduck CLI 0.6.1
     "verificationPlan": [
       "Verify sduck --version reports 0.6.1 after installation.",
       "Run final sduck doctor and inspect git status --short --branch, git diff --stat, and git diff --name-status."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -905,7 +907,8 @@ Migrate repository workflow to sduck CLI 0.6.1
           "verificationPlan": [
             "Verify sduck --version reports 0.6.1 after installation.",
             "Run final sduck doctor and inspect git status --short --branch, git diff --stat, and git diff --name-status."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

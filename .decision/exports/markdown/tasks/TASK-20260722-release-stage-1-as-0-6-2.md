@@ -3,6 +3,7 @@ id: TASK-20260722-release-stage-1-as-0-6-2
 type: task
 status: CLOSED
 title: Release Stage 1 as 0.6.2
+record_depth: FULL
 created_at: '2026-07-22T07:25:46.744Z'
 updated_at: '2026-07-22T07:34:31.470Z'
 ---
@@ -48,7 +49,8 @@ Release Stage 1 as 0.6.2
       "Require format, lint, typecheck, coverage, E2E, build, package dry-run, and production/full audit to pass.",
       "Install the packed tarball into a temporary isolated directory and verify 0.6.2, bundled CLI/assets, and --record-depth help/syntax.",
       "Before commit, inspect status and staged diff; after publish, query the registry for exactly 0.6.2."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -730,7 +732,8 @@ Release Stage 1 as 0.6.2
             "Require format, lint, typecheck, coverage, E2E, build, package dry-run, and production/full audit to pass.",
             "Install the packed tarball into a temporary isolated directory and verify 0.6.2, bundled CLI/assets, and --record-depth help/syntax.",
             "Before commit, inspect status and staged diff; after publish, query the registry for exactly 0.6.2."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

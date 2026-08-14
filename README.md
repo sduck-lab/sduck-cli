@@ -6,15 +6,16 @@
 
 The primary public workflow is v2, stored in `.decision/`. Legacy SDD commands still exist for compatibility, but new documentation and installed agent rules point to the v2 decision briefing flow.
 
-## What is new in 0.6.0
+## What is new in 0.7.0
 
-- CLI-first guided workflow: every new `sduck work` task is guided from creation.
-- `sduck work` automatically records the grill start; agents review context and converse before `sduck grill complete --reason "..."`.
-- One implementation brief now includes the problem, decisions, evidence, scope, `implementationPlan`, and `verificationPlan`.
-- `sduck evaluate` records evidence for the latest trace before a guided task can close. It does not execute commands.
-- `sduck graph show <TASK-*|DEC-*>` inspects the local SQLite graph projection. Markdown remains canonical; SQLite is a rebuildable local cache.
-- Bundled agent rules and documentation are aligned to the CLI-only v2 lane: `grill complete`, `brief`/`confirm`, `trace`, `evaluate`, `remember`, and `close`.
-- Repository-only Phase 0 fixtures document future brief-digest/source-envelope contracts. MCP runtime, MCP control-plane commands, and built-in CI trace verification are deferred and absent from 0.6.0.
+- Auto Wiki turns confirmed `.decision` records into five stable, human-readable pages under `docs/wiki/` while keeping `.decision` as the canonical source of truth.
+- `sduck wiki build`, `status`, `sync`, and `lint` provide atomic creation, deterministic staleness/conflict detection, source validation, and section-level updates that preserve Team Notes and all bytes outside generated markers.
+- Every generated claim carries typed evidence links. Decision intent, implementation claims, change tracking, and validation reports remain distinct; the CLI verifies provenance and structure, not semantic truth.
+- The bundled `sd-build-wiki` and `sd-sync-wiki` skills guide the active coding agent through authoring and selective refresh. sduck adds no daemon, background LLM, or automatic commit/push behavior.
+- New workspaces enable Wiki policy by default. Existing workspaces stay unchanged until `sduck update` explicitly adds the policy field; migration alone creates no Wiki pages.
+- `sduck close` remains independent of Wiki freshness. It succeeds first and then prints a non-blocking sync advisory when related pages are dirty.
+
+See the [0.7.0 release note](docs/release-0.7.0.md) for the evidence model, compatibility behavior, and explicit exclusions.
 
 ## Requirements and installation
 
@@ -85,10 +86,14 @@ sduck confirm
 sduck trace
 sduck evaluate --check "tests=passed"
 
+# Distill durable knowledge into one source-backed capsule for this task.
+sduck memory status
+sduck memory distill --stdin < memory.json
+
 # Optional: inspect the local graph projection.
 sduck graph show TASK-20260507-payment-retry --depth 2
 
-# 9. Reuse prior decisions and finish the task.
+# 9. Export, recall capsule-first memory, and finish the task.
 sduck remember
 sduck recall "payment retry"
 sduck close
@@ -96,16 +101,36 @@ sduck close
 
 Here “implement” means the development activity after `sduck confirm`; it is not the legacy `sduck implement` command.
 
+### Auto Wiki quick start
+
+Ask the coding agent to use the bundled `sd-build-wiki` skill after `sduck init`. The agent inspects the repository and confirmed decision records, asks only blocking questions one at a time, and submits the evidence-backed page payload internally.
+
+```bash
+# Usually run by the active coding agent.
+sduck wiki build --stdin < wiki.json
+sduck wiki status
+sduck wiki lint
+
+# After later confirmed decisions, traces, evaluations, or relevant code changes:
+sduck wiki status
+sduck wiki sync --stdin < wiki-update.json
+sduck wiki lint
+```
+
+The initial build creates exactly `docs/wiki/README.md`, `glossary.md`, `capabilities.md`, `architecture-and-flows.md`, `decisions-and-recent-changes.md`, and the tracked control manifest `docs/wiki/.sduck-wiki.json`. If any fixed target already exists without a manifest, build refuses instead of replacing the existing team document. Sync accepts one or more of those pages, updates only their owned sections, and leaves all content outside `sduck:generated` markers byte-for-byte unchanged. A clean page is not rewritten unless the user explicitly authorizes `--force`; agents must not apply that option automatically.
+
+Auto Wiki's bundled workflow is Codex-first: managed `AGENTS.md` instructions point Codex to the repository skill files explicitly instead of assuming native skill installation. Claude Code also receives copied skill files through its existing installer; other agents receive best-effort managed-rule guidance and are not promised identical behavior.
+
 ## User-facing interaction model
 
-Most users interact with sduck through their coding agent, not by running lifecycle commands themselves. The agent uses `sduck work`, `context`, `grill complete`, `submit`, `brief`, `confirm`, `trace`, `evaluate`, and `remember` internally to record decisions and evidence, then speaks in plain language: restate the request, inspect code and prior decisions, ask only blocking questions with a recommended answer and rationale, summarize what will and will not change plus verification, ask “Implement this direction?”, implement after approval, and report verification.
+Most users interact with sduck through their coding agent, not by running lifecycle commands themselves. The agent uses `sduck work`, `context`, `grill complete`, `submit`, `brief`, `confirm`, `trace`, `evaluate`, `memory status/distill`, and `remember` internally to record decisions and evidence, then speaks in plain language: restate the request, inspect code and prior decisions, ask only blocking questions with a recommended answer and rationale, summarize what will and will not change plus verification, ask “Implement this direction?”, implement after approval, and report verification.
 
 ## Workflow contract and gates
 
 Canonical v2 sequence:
 
 ```text
-init → work → context/conversation → grill complete → submit → ask/answer → brief/confirm → implement → trace → evaluate → graph show? → remember/recall → close
+init → work → context/conversation → grill complete → submit → ask/answer → brief/confirm → implement → trace → evaluate → memory status/distill → graph show? → remember/recall → close
 ```
 
 The practical contract is:
@@ -121,14 +146,19 @@ The practical contract is:
 9. `sduck trace` records changed implementation files since confirmation.
 10. `sduck evaluate --check "name=outcome"` records evidence against the latest trace. It never runs shell commands or verification tools.
 11. Optionally inspect relationships with `sduck graph show <TASK-*|DEC-*> [--depth N] [--json]`.
-12. `sduck remember` exports reusable graph artifacts; `sduck recall` searches remembered decisions/traces.
-13. `sduck close` completes the guided task only after the latest trace has an evaluation, or `sduck abandon` abandons it.
+12. `sduck memory status` reports confirmed/closed tasks with missing or stale capsules. `sduck memory distill --stdin` targets the current task; intentional historical backfill requires `--task <TASK-ID>` and a matching payload task ID.
+13. `sduck remember` exports reusable graph artifacts; `sduck recall` searches matching capsules first, then keeps bounded raw Decision/Trace results that the matched capsules did not cite.
+14. `sduck close` completes the guided task only after the latest trace has an evaluation, or `sduck abandon` abandons it.
+
+When Wiki policy is enabled, a successful `close` also checks Wiki status. Dirty pages produce an advisory pointing to the `sd-sync-wiki` skill; they never prevent the task from closing.
 
 `confirm`, `trace`, `close`, and `abandon` reject invalid or terminal transitions without changing canonical source. `confirm` also rejects remaining open questions, active `OPEN` decisions, and active `CONFLICT` decisions.
 
 ## Guided workflow and compatibility
 
 New `sduck work` tasks are guided. The CLI automatically records grill start, but guided `submit` and `confirm` require explicit grill completion with a non-empty reason:
+
+`sduck work` automatically records the grill start; agents review context and converse before `sduck grill complete --reason "..."`.
 
 ```bash
 sduck context
@@ -208,11 +238,54 @@ This user-global config is separate from tracked `.decision/policy.json`.
 | `sduck confirm`                                                  | Confirm a ready brief and capture the baseline.                                                                                                                                           |
 | `sduck trace [--base <ref>] [--json]`                            | Record implementation files changed since confirmation.                                                                                                                                   |
 | `sduck evaluate --check "name=outcome"`                          | Record evaluation evidence for the latest trace; does not execute commands.                                                                                                               |
+| `sduck memory status [--json]`                                   | Report eligible tasks whose Memory Capsule is missing, current, or stale.                                                                                                                 |
+| `sduck memory distill --stdin [--task <id>] [--json]`            | Validate and create/update the current task's capsule; require `--task` for explicit historical backfill.                                                                                 |
 | `sduck graph show <TASK-*\|DEC-*> [--depth N] [--json]`          | Inspect bounded relationships from the rebuildable local SQLite graph projection.                                                                                                         |
 | `sduck remember`                                                 | Export Markdown-derived graph artifacts for reuse.                                                                                                                                        |
-| `sduck recall <query...>`                                        | Search prior confirmed decisions and traces.                                                                                                                                              |
+| `sduck recall <query...>`                                        | Search matching Memory Capsules first, then bounded confirmed decision/trace fallbacks.                                                                                                   |
 | `sduck close`                                                    | Mark the current task closed after guided trace evaluation.                                                                                                                               |
 | `sduck abandon`                                                  | Abandon the current v2 task.                                                                                                                                                              |
+
+### Bounded memory
+
+The active coding agent writes semantic memory; sduck does not call an LLM. A `sduck-memory/v1` payload is bounded to 20 topics and 20 claims, and every claim must cite canonical sources from the same task. Re-running distillation updates the stable `MEM-*` document for that task; an identical payload changes nothing. By default the payload must name the current task. Use `sduck memory distill --task <TASK-ID> --stdin` only for an intentional confirmed/closed-task backfill, and keep the option and payload IDs identical.
+
+```json
+{
+  "schemaVersion": "sduck-memory/v1",
+  "taskId": "TASK-20260507-payment-retry",
+  "title": "Payment retry policy",
+  "summary": "Retry transient provider failures at the service boundary with a fixed cap.",
+  "topics": ["payments", "retry"],
+  "claims": [
+    {
+      "type": "DECISION",
+      "text": "Retry transient failures no more than three times.",
+      "sourceIds": ["DEC-retry-policy", "EVD-retry-helper"]
+    },
+    {
+      "type": "VALIDATION",
+      "text": "The recorded retry test suite passed.",
+      "sourceIds": ["EVAL-0001"]
+    }
+  ]
+}
+```
+
+Claim contracts are deliberately strict: `DECISION` requires a confirmed Decision, `CONSTRAINT` requires a Decision or Evidence, `IMPLEMENTATION` requires an Implementation Trace, and `VALIDATION` requires an Evaluation. Supporting source kinds are allowed only within the corresponding claim contract. `memory status` marks a capsule stale when a reference is missing or invalid, cited content changes, a newer task source exists, or a cited decision stops being confirmed. The public CLI currently has no decision-supersede command; the last condition remains defensive for source-level migrations and merges. Stale capsules are excluded from retrieval so bounded raw history remains available. `sduck doctor` reports invalid capsule references, and explicit `sduck doctor --repair` moves only the affected capsule into `.decision/quarantine/memories/` before rebuilding the cache.
+
+Capsules are a compact retrieval layer, not destructive compaction. Raw Task, Decision, Evidence, Trace, and Evaluation records remain canonical. A matching capsule suppresses only raw Decision/Trace IDs it actually cites. Automatic context is refreshed from the current candidate set, reuses IDs for continuing sources, removes obsolete automatic entries, and is capped at 40 items per task; explicit file context remains separate. Canonical Markdown always reads the final generated `sduck-source` fence and is round-trip checked before commit, so prose may safely document the source format. Cold archive, deletion, and incremental source/cache writes are intentionally outside this change.
+
+### Auto Wiki
+
+| Command                             | Purpose                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `sduck wiki build --stdin`          | Atomically create the fixed five-page Wiki and manifest from a complete `sduck-wiki/v1` payload.                                    |
+| `sduck wiki status [--json]`        | Report dirty, stale, and conflict reasons without modifying files.                                                                  |
+| `sduck wiki sync --stdin [--force]` | Atomically refresh only supplied pages; preserve human-owned bytes and reject edited generated regions.                             |
+| `sduck wiki lint [--json]`          | Validate fixed schema, ownership markers, evidence IDs, generated digests, and links; report suspicious large rewrites as warnings. |
+
+Wiki payloads contain fixed page kinds/slugs/section IDs and typed Markdown blocks. Each block has `type`, non-empty `markdown`, and one or more `sourceIds` referencing an existing task, decision, evidence, implementation trace, or evaluation. Unknown and superseded IDs are rejected. `decision-intent`, `change-tracking`, and `validation-report` blocks additionally require a decision, trace, and evaluation source respectively.
 
 ### Legacy compatibility commands
 
@@ -310,6 +383,12 @@ Tracked canonical source:
 - `.decision/exports/markdown/tasks/*.md`
 - `.decision/exports/markdown/decisions/*.md`
 - `.decision/exports/markdown/implementations/*.md`
+- `.decision/exports/markdown/memories/*.md`
+
+Human-readable materialized view when Wiki policy is enabled and the Wiki has been built:
+
+- `docs/wiki/{README,glossary,capabilities,architecture-and-flows,decisions-and-recent-changes}.md`
+- `docs/wiki/.sduck-wiki.json` (schema, source/generated digests, and sync baseline)
 
 Local/generated files:
 
@@ -327,14 +406,15 @@ Terminal output may be localized. JSON output and canonical Markdown remain loca
 ## Concepts
 
 - **Decision task**: one unit of briefing and implementation alignment.
-- **Context pack**: project files, prior decisions, traces, prompts, and draft schema shown to the agent.
+- **Context pack**: project files, matching Memory Capsules, bounded fallback decisions/traces, prompts, and draft schema shown to the agent.
 - **Guided grill**: the clarification/interview phase auto-started by `work` and completed with `grill complete`.
 - **Brief**: problem, grouped decisions, questions, evidence, expected/avoided scope, implementation plan, and verification plan.
 - **Confirmation baseline**: the Git baseline captured by `sduck confirm` for later tracing.
 - **Trace**: implementation files mapped back to confirmed decisions.
 - **Evaluation**: evidence recorded for the latest trace. It does not execute commands.
 - **Graph projection**: rebuildable local SQLite relationships inspectable with `graph show`; Markdown remains canonical.
-- **Memory**: prior confirmed decisions/traces exported and searchable by `recall`.
+- **Memory Capsule**: one bounded, agent-authored summary per task with claim-level source IDs and a deterministic source digest. `recall` and context prefer capsules before raw history.
+- **Auto Wiki**: an evidence-backed materialized view for humans. The active coding agent writes explanations; sduck deterministically enforces source IDs, fixed ownership boundaries, and freshness signals.
 
 ## Legacy compatibility
 
@@ -362,7 +442,10 @@ Most tests create temporary workspaces outside the repository. CLI-spawning test
 - v2 is designed for terminal-driven agent workflows; it does not replace code review or CI.
 - Agent hooks are advisory. The CLI records workflow evidence but has no built-in CI trace verifier; run project checks separately and record outcomes with `sduck evaluate`.
 - The local SQLite cache depends on Node's experimental `node:sqlite` API.
+- Memory Capsules improve retrieval and stop duplicate context growth, but do not delete or cold-archive canonical history; full-bundle mutations remain proportional to total canonical source size.
 - Legacy v1/SDD behavior is compatibility-only and is not localized.
+- Auto Wiki does not infer intent, prove implementation claims, or replace review. Status/lint detect only concrete source, digest, marker, link, and Git-change signals.
+- Auto Wiki has no resident process or built-in language model. Refresh occurs only when an active agent or user invokes the commands, and sduck never commits, tags, pushes, or publishes the result.
 
 ## License
 

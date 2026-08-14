@@ -6,15 +6,16 @@
 
 현재 기본 공개 workflow는 v2 `.decision` workflow입니다. legacy SDD(v1) 명령은 호환성을 위해 남아 있지만, 새 문서와 설치되는 agent rule은 v2 decision briefing을 기본으로 안내합니다.
 
-## 0.6.0에서 달라진 점
+## 0.7.0에서 달라진 점
 
-- CLI-first guided workflow: 새 `sduck work` task는 생성 시점부터 guided task입니다.
-- `sduck work`가 grill start를 자동 기록합니다. agent는 context를 검토하고 대화한 뒤 `sduck grill complete --reason "..."`를 기록합니다.
-- 하나의 Brief가 문제, decision, evidence, scope, `implementationPlan`, `verificationPlan`을 함께 담습니다.
-- guided task를 닫기 전에 `sduck evaluate`가 최신 trace에 대한 근거를 기록합니다. 명령이나 검증 도구를 실행하지 않습니다.
-- `sduck graph show <TASK-*|DEC-*>`로 local SQLite graph projection을 조회할 수 있습니다. Markdown이 canonical source이며 SQLite는 재빌드 가능한 local cache입니다.
-- bundled agent rule과 문서는 CLI-only v2 lane에 맞춰 `grill complete`, `brief`/`confirm`, `trace`, `evaluate`, `remember`, `close`를 안내합니다.
-- Repository-only Phase 0 fixture는 future brief-digest/source-envelope contract만 문서화합니다. MCP runtime, MCP control-plane command, built-in CI trace verification은 0.6.0에서 deferred/absent입니다.
+- Auto Wiki는 confirmed `.decision` record를 `docs/wiki/` 아래의 안정적인 사람용 문서 5개로 투영합니다. Canonical source는 계속 `.decision`입니다.
+- `sduck wiki build`, `status`, `sync`, `lint`가 원자적 생성, 결정론적 stale/conflict 탐지, source 검증, Team Notes와 generated marker 밖의 모든 바이트를 보존하는 section 단위 갱신을 제공합니다.
+- 생성된 모든 주장은 typed evidence link를 가집니다. Decision intent, implementation claim, change tracking, validation report를 구분하며 CLI는 provenance와 구조를 검증할 뿐 semantic truth를 판정하지 않습니다.
+- bundled `sd-build-wiki`, `sd-sync-wiki` skill이 활성 coding agent의 작성·선택적 갱신을 안내합니다. sduck는 daemon, background LLM, 자동 commit/push를 추가하지 않습니다.
+- 새 workspace는 Wiki policy가 기본 활성화됩니다. 기존 workspace는 `sduck update`가 명시적으로 policy field를 추가할 때까지 기존 동작을 유지하며, migration만으로 Wiki page가 생성되지는 않습니다.
+- `sduck close`는 Wiki freshness와 독립적으로 성공합니다. 관련 page가 dirty이면 닫힌 뒤 non-blocking sync 안내만 출력합니다.
+
+Evidence model, compatibility, 명시적 제외 범위는 [0.7.0 release note](docs/release-0.7.0.md)를 참고하세요.
 
 ## 요구사항과 설치
 
@@ -82,10 +83,14 @@ sduck confirm
 sduck trace
 sduck evaluate --check "tests=passed"
 
+# 현재 task의 durable knowledge를 출처 기반 Capsule 하나로 정제합니다.
+sduck memory status
+sduck memory distill --stdin < memory.json
+
 # 선택: local graph projection을 조회합니다.
 sduck graph show TASK-20260507-payment-retry --depth 2
 
-# 9. 과거 결정을 검색하고 작업을 닫습니다.
+# 9. Capsule 우선 memory를 검색하고 작업을 닫습니다.
 sduck remember
 sduck recall "payment retry"
 sduck close
@@ -93,16 +98,36 @@ sduck close
 
 여기서 “구현”은 `sduck confirm` 이후의 개발 활동을 뜻합니다. legacy `sduck implement` 명령을 실행하라는 의미가 아닙니다.
 
+### Auto Wiki 빠른 시작
+
+`sduck init` 후 coding agent에게 bundled `sd-build-wiki` skill을 사용해 달라고 요청하세요. Agent는 repository와 confirmed decision record를 확인하고, blocking question만 한 번에 하나씩 물은 뒤 evidence-backed page payload를 내부적으로 제출합니다.
+
+```bash
+# 일반적으로 활성 coding agent가 내부에서 실행합니다.
+sduck wiki build --stdin < wiki.json
+sduck wiki status
+sduck wiki lint
+
+# 이후 confirmed decision/trace/evaluation 또는 관련 code change가 생겼을 때:
+sduck wiki status
+sduck wiki sync --stdin < wiki-update.json
+sduck wiki lint
+```
+
+최초 build는 정확히 `docs/wiki/README.md`, `glossary.md`, `capabilities.md`, `architecture-and-flows.md`, `decisions-and-recent-changes.md`와 tracked control manifest `docs/wiki/.sduck-wiki.json`을 만듭니다. Manifest 없이 fixed target 중 하나라도 이미 있으면 기존 team document를 교체하지 않고 build를 거부합니다. Sync는 이 중 하나 이상의 page를 받아 owned section만 갱신하고 `sduck:generated` marker 밖의 모든 내용을 byte-for-byte로 보존합니다. Clean page는 사용자가 `--force`를 명시적으로 허용하지 않으면 rewrite하지 않으며 agent는 이 option을 자동 적용하면 안 됩니다.
+
+Auto Wiki bundled workflow는 Codex-first입니다. Managed `AGENTS.md`가 native skill 자동 설치를 가정하지 않고 repository skill file을 명시적으로 읽도록 Codex를 연결합니다. Claude Code에는 기존 installer가 skill file을 복사하며, 다른 agent는 best-effort managed-rule guidance를 받을 뿐 동일 동작을 보장하지 않습니다.
+
 ## 사용자 상호작용 모델
 
-대부분의 사용자는 lifecycle command를 직접 실행하기보다 coding agent를 통해 sduck을 사용합니다. Agent는 `sduck work`, `context`, `grill complete`, `submit`, `brief`, `confirm`, `trace`, `evaluate`, `remember`를 내부적으로 사용해 decision과 evidence를 기록하고, 사용자에게는 plain language로 요청을 다시 말하고, code와 prior decision을 확인하며, blocking question만 recommended answer와 rationale을 붙여 하나씩 묻고, 구현 전에는 변경/비변경 범위와 핵심 결정 및 검증 방법을 요약한 뒤 “이 방향으로 구현할까요?”라고 승인받고, 승인 후 구현하고 verification 결과를 보고합니다.
+대부분의 사용자는 lifecycle command를 직접 실행하기보다 coding agent를 통해 sduck을 사용합니다. Agent는 `sduck work`, `context`, `grill complete`, `submit`, `brief`, `confirm`, `trace`, `evaluate`, `memory status/distill`, `remember`를 내부적으로 사용해 decision과 evidence를 기록하고, 사용자에게는 plain language로 요청을 다시 말하고, code와 prior decision을 확인하며, blocking question만 recommended answer와 rationale을 붙여 하나씩 묻고, 구현 전에는 변경/비변경 범위와 핵심 결정 및 검증 방법을 요약한 뒤 “이 방향으로 구현할까요?”라고 승인받고, 승인 후 구현하고 verification 결과를 보고합니다.
 
 ## Workflow contract와 gate
 
 Canonical v2 순서:
 
 ```text
-init → work → context/conversation → grill complete → submit → ask/answer → brief/confirm → implement → trace → evaluate → graph show? → remember/recall → close
+init → work → context/conversation → grill complete → submit → ask/answer → brief/confirm → implement → trace → evaluate → memory status/distill → graph show? → remember/recall → close
 ```
 
 실제 contract는 다음과 같습니다.
@@ -118,14 +143,19 @@ init → work → context/conversation → grill complete → submit → ask/ans
 9. `sduck trace`는 confirm 이후 변경된 구현 파일을 기록합니다.
 10. `sduck evaluate --check "name=outcome"`는 최신 trace에 대한 근거를 기록합니다. shell command나 verification tool을 실행하지 않습니다.
 11. 필요하면 `sduck graph show <TASK-*|DEC-*> [--depth N] [--json]`로 관계를 조회합니다.
-12. `sduck remember`는 재사용 가능한 graph artifact를 만들고, `sduck recall`은 기억된 decision/trace를 검색합니다.
-13. Guided task는 최신 trace에 evaluation이 있어야 `sduck close`로 완료할 수 있습니다. 또는 `sduck abandon`으로 폐기합니다.
+12. `sduck memory status`는 confirmed/closed task의 Capsule 누락·최신·stale 상태를 보고합니다. `sduck memory distill --stdin`은 현재 task를 대상으로 하며, 과거 task backfill은 payload와 같은 ID의 `--task <TASK-ID>`를 명시해야 합니다.
+13. `sduck remember`는 재사용 가능한 graph artifact를 만들고, `sduck recall`은 일치하는 Capsule을 먼저 검색한 뒤 Capsule이 실제로 인용하지 않은 bounded raw Decision/Trace 결과를 유지합니다.
+14. Guided task는 최신 trace에 evaluation이 있어야 `sduck close`로 완료할 수 있습니다. 또는 `sduck abandon`으로 폐기합니다.
+
+Wiki policy가 활성화된 경우 성공한 `close`가 Wiki status도 확인합니다. Dirty page가 있으면 `sd-sync-wiki` skill을 가리키는 advisory가 나오지만 task close를 막지는 않습니다.
 
 `confirm`, `trace`, `close`, `abandon`은 잘못된 상태 전이를 canonical source 변경 없이 거부합니다. `confirm`은 열린 질문, active `OPEN` decision, active `CONFLICT` decision이 남아 있어도 실패합니다.
 
 ## Guided workflow와 compatibility
 
 새 `sduck work` task는 guided task입니다. CLI가 grill start를 자동 기록하지만, guided `submit`과 `confirm`은 non-empty reason이 있는 grill completion을 요구합니다.
+
+`sduck work`가 grill start를 자동 기록합니다. agent는 context를 검토하고 대화한 뒤 `sduck grill complete --reason "..."`를 기록합니다.
 
 ```bash
 sduck context
@@ -189,27 +219,70 @@ sduck config locale ko
 
 ### Decision task flow
 
-| Command                                                        | 설명                                                                  |
-| -------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `sduck work <description...>`                                  | guided decision briefing task 시작, grill 자동 시작, context indexing |
-| `sduck resume <taskId>`                                        | 이전 non-terminal task 재개                                           |
-| `sduck context [--json]`                                       | 현재 context pack 출력                                                |
-| `sduck context add <pathOrGlob>`                               | project-local context 추가                                            |
-| `sduck grill-me [--json]`                                      | Compatibility command: grill start prompt/protocol 출력 및 기록       |
-| `sduck grill complete --reason <text> [--carried <DEC-ID>...]` | Guided grill completion 기록                                          |
-| `sduck submit --stdin`                                         | stdin에서 JSON 또는 Markdown draft 읽기                               |
-| `sduck ask`                                                    | 다음 열린 질문 표시                                                   |
-| `sduck answer <questionId> --option <n>`                       | 1-based option 번호로 답변                                            |
-| `sduck answer <questionId> --text <answer>`                    | free-text 답변                                                        |
-| `sduck brief [--json]`                                         | implementation brief 렌더링                                           |
-| `sduck confirm`                                                | 준비된 brief 확정 및 baseline 기록                                    |
-| `sduck trace [--base <ref>] [--json]`                          | confirm 이후 변경된 구현 파일 기록                                    |
-| `sduck evaluate --check "name=outcome"`                        | 최신 trace의 evaluation evidence 기록. 명령은 실행하지 않음           |
-| `sduck graph show <TASK-*\|DEC-*> [--depth N] [--json]`        | 재빌드 가능한 local SQLite graph projection에서 bounded 관계 조회     |
-| `sduck remember`                                               | 재사용을 위한 graph artifact export                                   |
-| `sduck recall <query...>`                                      | 과거 confirmed decision/trace 검색                                    |
-| `sduck close`                                                  | guided trace evaluation 이후 현재 task를 CLOSED로 표시                |
-| `sduck abandon`                                                | 현재 v2 task를 ABANDONED로 표시                                       |
+| Command                                                        | 설명                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `sduck work <description...>`                                  | guided decision briefing task 시작, grill 자동 시작, context indexing    |
+| `sduck resume <taskId>`                                        | 이전 non-terminal task 재개                                              |
+| `sduck context [--json]`                                       | 현재 context pack 출력                                                   |
+| `sduck context add <pathOrGlob>`                               | project-local context 추가                                               |
+| `sduck grill-me [--json]`                                      | Compatibility command: grill start prompt/protocol 출력 및 기록          |
+| `sduck grill complete --reason <text> [--carried <DEC-ID>...]` | Guided grill completion 기록                                             |
+| `sduck submit --stdin`                                         | stdin에서 JSON 또는 Markdown draft 읽기                                  |
+| `sduck ask`                                                    | 다음 열린 질문 표시                                                      |
+| `sduck answer <questionId> --option <n>`                       | 1-based option 번호로 답변                                               |
+| `sduck answer <questionId> --text <answer>`                    | free-text 답변                                                           |
+| `sduck brief [--json]`                                         | implementation brief 렌더링                                              |
+| `sduck confirm`                                                | 준비된 brief 확정 및 baseline 기록                                       |
+| `sduck trace [--base <ref>] [--json]`                          | confirm 이후 변경된 구현 파일 기록                                       |
+| `sduck evaluate --check "name=outcome"`                        | 최신 trace의 evaluation evidence 기록. 명령은 실행하지 않음              |
+| `sduck memory status [--json]`                                 | eligible task의 Memory Capsule 누락·최신·stale 상태 보고                 |
+| `sduck memory distill --stdin [--task <id>] [--json]`          | 현재 task의 Capsule을 검증·생성/갱신하고 과거 backfill에는 `--task` 요구 |
+| `sduck graph show <TASK-*\|DEC-*> [--depth N] [--json]`        | 재빌드 가능한 local SQLite graph projection에서 bounded 관계 조회        |
+| `sduck remember`                                               | 재사용을 위한 graph artifact export                                      |
+| `sduck recall <query...>`                                      | Memory Capsule 우선, 이후 bounded confirmed decision/trace 검색          |
+| `sduck close`                                                  | guided trace evaluation 이후 현재 task를 CLOSED로 표시                   |
+| `sduck abandon`                                                | 현재 v2 task를 ABANDONED로 표시                                          |
+
+### Bounded memory
+
+Semantic memory는 활성 coding agent가 작성하며 sduck 내부에서 LLM을 호출하지 않습니다. `sduck-memory/v1` payload는 topic 20개, claim 20개로 제한되고 모든 claim은 같은 task의 canonical source ID를 가져야 합니다. 다시 정제하면 task의 stable `MEM-*` 문서를 갱신하며 payload와 source digest가 같으면 아무것도 바꾸지 않습니다. 기본값은 현재 task이며, confirmed/closed 과거 task를 의도적으로 backfill할 때만 `sduck memory distill --task <TASK-ID> --stdin`을 사용하고 option과 payload ID를 같게 유지합니다.
+
+```json
+{
+  "schemaVersion": "sduck-memory/v1",
+  "taskId": "TASK-20260507-payment-retry",
+  "title": "Payment retry policy",
+  "summary": "Provider의 transient failure를 service boundary에서 fixed cap으로 retry합니다.",
+  "topics": ["payments", "retry"],
+  "claims": [
+    {
+      "type": "DECISION",
+      "text": "Transient failure는 최대 3회 retry합니다.",
+      "sourceIds": ["DEC-retry-policy", "EVD-retry-helper"]
+    },
+    {
+      "type": "VALIDATION",
+      "text": "기록된 retry test suite가 통과했습니다.",
+      "sourceIds": ["EVAL-0001"]
+    }
+  ]
+}
+```
+
+Claim contract는 엄격합니다. `DECISION`은 confirmed Decision, `CONSTRAINT`는 Decision 또는 Evidence, `IMPLEMENTATION`은 Implementation Trace, `VALIDATION`은 Evaluation을 필수로 요구합니다. `memory status`는 참조가 없거나 잘못됐거나, 인용 내용이 바뀌거나, 더 최신 task source가 생기거나, 인용 decision이 confirmed 상태가 아니게 되면 stale로 표시합니다. 현재 public CLI에는 decision supersede 명령이 없으며 마지막 조건은 source-level migration/merge를 위한 방어 규칙입니다. Stale Capsule은 retrieval에서 제외되어 bounded raw history가 계속 노출됩니다. `sduck doctor`는 잘못된 Capsule 참조를 보고하고, 명시적인 `sduck doctor --repair`는 해당 Capsule만 `.decision/quarantine/memories/`로 옮긴 뒤 cache를 재빌드합니다.
+
+Capsule은 destructive compaction이 아니라 compact retrieval layer입니다. 원본 Task, Decision, Evidence, Trace, Evaluation은 canonical로 보존됩니다. 일치하는 Capsule은 실제 인용한 raw Decision/Trace ID만 억제합니다. Automatic context는 현재 candidate set에서 다시 계산하고, 계속 매칭되는 source의 ID를 재사용하며, obsolete automatic entry를 제거한 뒤 task당 40개로 제한합니다. Explicit file context는 별도로 보존합니다. Canonical Markdown은 문서 마지막의 generated `sduck-source` fence를 읽고 commit 전에 round-trip을 검사하므로 prose에서 source format을 안전하게 설명할 수 있습니다. Cold archive, 삭제, incremental source/cache write는 이번 변경 범위 밖입니다.
+
+### Auto Wiki
+
+| 명령                                | 설명                                                                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `sduck wiki build --stdin`          | 완전한 `sduck-wiki/v1` payload로 고정된 Wiki 5개와 manifest를 원자적으로 생성                                              |
+| `sduck wiki status [--json]`        | 파일을 수정하지 않고 dirty, stale, conflict reason을 보고                                                                  |
+| `sduck wiki sync --stdin [--force]` | 전달된 page만 원자적으로 갱신하고 human-owned byte를 보존하며, 편집된 generated region은 거부                              |
+| `sduck wiki lint [--json]`          | 고정 schema, ownership marker, evidence ID, generated digest, link를 검증하고 의심스러운 대규모 rewrite는 warning으로 보고 |
+
+Wiki payload는 고정된 page kind/slug/section ID와 typed Markdown block을 담습니다. 각 block에는 `type`, 비어 있지 않은 `markdown`, 기존 task/decision/evidence/implementation trace/evaluation을 가리키는 하나 이상의 `sourceIds`가 필요합니다. Unknown 또는 superseded ID는 거부됩니다. `decision-intent`, `change-tracking`, `validation-report` block은 각각 decision, trace, evaluation source를 추가로 요구합니다.
 
 ### Legacy compatibility command
 
@@ -307,6 +380,12 @@ Tracked canonical source:
 - `.decision/exports/markdown/tasks/*.md`
 - `.decision/exports/markdown/decisions/*.md`
 - `.decision/exports/markdown/implementations/*.md`
+- `.decision/exports/markdown/memories/*.md`
+
+Wiki policy가 활성화되고 Wiki를 build한 경우의 사람용 materialized view:
+
+- `docs/wiki/{README,glossary,capabilities,architecture-and-flows,decisions-and-recent-changes}.md`
+- `docs/wiki/.sduck-wiki.json` (schema, source/generated digest, sync baseline)
 
 Local/generated file:
 
@@ -324,14 +403,15 @@ Terminal output은 locale에 따라 달라질 수 있습니다. JSON output과 c
 ## Concepts
 
 - **Decision task**: briefing과 구현 alignment의 단위입니다.
-- **Context pack**: agent에게 전달되는 관련 파일, 과거 결정, trace, prompt, draft schema입니다.
+- **Context pack**: agent에게 전달되는 관련 파일, 일치하는 Memory Capsule, bounded fallback decision/trace, prompt, draft schema입니다.
 - **Guided grill**: `work`가 자동 시작하고 `grill complete`로 완료하는 clarification/interview 단계입니다.
 - **Brief**: problem, decision, question, evidence, expected/avoided scope, implementation plan, verification plan을 묶은 구현 전 요약입니다.
 - **Confirmation baseline**: `sduck confirm`이 `trace`를 위해 기록하는 Git baseline입니다.
 - **Trace**: confirmed decision과 실제 구현 파일의 연결 기록입니다.
 - **Evaluation**: 최신 trace에 대해 기록하는 근거입니다. 명령을 실행하지 않습니다.
 - **Graph projection**: `graph show`로 조회하는 재빌드 가능한 local SQLite 관계입니다. Markdown이 canonical입니다.
-- **Memory**: `remember`로 export되고 `recall`로 검색되는 과거 confirmed decision/trace입니다.
+- **Memory Capsule**: task당 하나인 bounded agent-authored summary이며 claim-level source ID와 deterministic source digest를 가집니다. `recall`과 context는 raw history보다 Capsule을 먼저 사용합니다.
+- **Auto Wiki**: 사람을 위한 evidence-backed materialized view입니다. 활성 coding agent가 설명을 쓰고, sduck는 source ID, 고정 ownership boundary, freshness signal을 결정론적으로 강제합니다.
 
 ## Legacy compatibility
 
@@ -359,7 +439,10 @@ npm run package:check
 - v2는 terminal-driven agent workflow를 위한 도구이며 code review나 CI를 대체하지 않습니다.
 - Agent hook은 advisory입니다. CLI는 workflow evidence를 기록하지만 built-in CI trace verifier는 제공하지 않습니다. Project check는 별도로 실행하고 결과를 `sduck evaluate`로 기록하세요.
 - local SQLite cache는 Node experimental `node:sqlite` API에 의존합니다.
+- Memory Capsule은 retrieval과 duplicate context growth를 개선하지만 canonical history를 삭제하거나 cold archive하지 않습니다. Full-bundle mutation 비용은 여전히 전체 canonical source 크기에 비례합니다.
 - Legacy v1/SDD behavior는 compatibility-only이며 localize하지 않습니다.
+- Auto Wiki는 intent를 추론하거나 implementation claim을 입증하거나 review를 대체하지 않습니다. Status/lint는 구체적인 source, digest, marker, link, Git-change signal만 탐지합니다.
+- Auto Wiki에는 resident process나 built-in language model이 없습니다. 활성 agent 또는 사용자가 명령을 실행할 때만 갱신하며 sduck는 결과를 commit, tag, push, publish하지 않습니다.
 
 ## License
 

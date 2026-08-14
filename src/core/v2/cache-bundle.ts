@@ -52,6 +52,7 @@ export function loadLegacyCacheBundle(projectRoot: string): SourceBundle {
       briefSnapshots,
       implementationTraces,
       evaluations: [],
+      memoryCapsules: [],
       events,
     };
   } finally {

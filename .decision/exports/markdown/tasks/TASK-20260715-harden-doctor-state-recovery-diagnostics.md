@@ -3,6 +3,7 @@ id: TASK-20260715-harden-doctor-state-recovery-diagnostics
 type: task
 status: CLOSED
 title: Harden doctor state recovery diagnostics
+record_depth: FULL
 created_at: '2026-07-15T10:33:23.065Z'
 updated_at: '2026-07-15T10:45:37.784Z'
 ---
@@ -32,7 +33,8 @@ Harden doctor state recovery diagnostics
       "automatic repair of non-terminal invalid state"
     ],
     "createdAt": "2026-07-15T10:33:23.065Z",
-    "updatedAt": "2026-07-15T10:45:37.784Z"
+    "updatedAt": "2026-07-15T10:45:37.784Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -604,7 +606,8 @@ Harden doctor state recovery diagnostics
             "automatic repair of non-terminal invalid state"
           ],
           "createdAt": "2026-07-15T10:33:23.065Z",
-          "updatedAt": "2026-07-15T10:39:24.692Z"
+          "updatedAt": "2026-07-15T10:39:24.692Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

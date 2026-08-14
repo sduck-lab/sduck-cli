@@ -3,6 +3,7 @@ id: TASK-20260722-release-0-6-1-clarify-agent-internal-cli-workflo
 type: task
 status: CLOSED
 title: 'Release 0.6.1: clarify agent-internal CLI workflow and user-facing development scenario'
+record_depth: FULL
 created_at: '2026-07-22T01:12:32.530Z'
 updated_at: '2026-07-22T01:29:39.391Z'
 ---
@@ -53,7 +54,8 @@ Release 0.6.1: clarify agent-internal CLI workflow and user-facing development s
       "npm run package:check",
       "npm run audit:prod",
       "Inspect packed package for version 0.6.1, managed assets including .sduck-version, and exclusion of .ignore"
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -1023,7 +1025,8 @@ Release 0.6.1: clarify agent-internal CLI workflow and user-facing development s
             "npm run package:check",
             "npm run audit:prod",
             "Inspect packed package for version 0.6.1, managed assets including .sduck-version, and exclusion of .ignore"
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

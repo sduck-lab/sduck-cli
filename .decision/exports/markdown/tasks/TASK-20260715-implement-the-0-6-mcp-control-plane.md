@@ -3,6 +3,7 @@ id: TASK-20260715-implement-the-0-6-mcp-control-plane
 type: task
 status: CLOSED
 title: Implement the 0.6 MCP control plane
+record_depth: FULL
 created_at: '2026-07-15T06:56:44.449Z'
 updated_at: '2026-07-15T09:28:13.810Z'
 ---
@@ -34,7 +35,8 @@ Implement the 0.6 MCP control plane
       "security claims based on hooks or MCP permission dialogs"
     ],
     "createdAt": "2026-07-15T06:56:44.449Z",
-    "updatedAt": "2026-07-15T09:28:13.810Z"
+    "updatedAt": "2026-07-15T09:28:13.810Z",
+    "recordDepth": "FULL"
   },
   "questions": [
     {
@@ -831,7 +833,8 @@ Implement the 0.6 MCP control plane
             "security claims based on hooks or MCP permission dialogs"
           ],
           "createdAt": "2026-07-15T06:56:44.449Z",
-          "updatedAt": "2026-07-15T09:18:26.414Z"
+          "updatedAt": "2026-07-15T09:18:26.414Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

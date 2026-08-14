@@ -3,6 +3,7 @@ id: TASK-20260716-implement-cli-first-guided-decision-workflow
 type: task
 status: CLOSED
 title: Implement CLI-first guided decision workflow
+record_depth: FULL
 created_at: '2026-07-16T06:05:24.991Z'
 updated_at: '2026-07-17T15:02:48.061Z'
 ---
@@ -36,7 +37,8 @@ Implement CLI-first guided decision workflow
       "Graph visualization UI or a graph query DSL."
     ],
     "createdAt": "2026-07-16T06:05:24.991Z",
-    "updatedAt": "2026-07-17T15:02:48.061Z"
+    "updatedAt": "2026-07-17T15:02:48.061Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -805,7 +807,8 @@ Implement CLI-first guided decision workflow
             "Graph visualization UI or a graph query DSL."
           ],
           "createdAt": "2026-07-16T06:05:24.991Z",
-          "updatedAt": "2026-07-17T13:57:26.599Z"
+          "updatedAt": "2026-07-17T13:57:26.599Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

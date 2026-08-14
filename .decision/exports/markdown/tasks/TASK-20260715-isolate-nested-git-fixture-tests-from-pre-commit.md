@@ -3,6 +3,7 @@ id: TASK-20260715-isolate-nested-git-fixture-tests-from-pre-commit
 type: task
 status: CLOSED
 title: Isolate nested Git fixture tests from pre-commit hook environment
+record_depth: FULL
 created_at: '2026-07-15T01:02:50.524Z'
 updated_at: '2026-07-15T01:06:23.187Z'
 ---
@@ -29,7 +30,8 @@ Isolate nested Git fixture tests from pre-commit hook environment
       "Publishing"
     ],
     "createdAt": "2026-07-15T01:02:50.524Z",
-    "updatedAt": "2026-07-15T01:06:23.187Z"
+    "updatedAt": "2026-07-15T01:06:23.187Z",
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -559,7 +561,8 @@ Isolate nested Git fixture tests from pre-commit hook environment
             "Publishing"
           ],
           "createdAt": "2026-07-15T01:02:50.524Z",
-          "updatedAt": "2026-07-15T01:05:24.954Z"
+          "updatedAt": "2026-07-15T01:05:24.954Z",
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [],

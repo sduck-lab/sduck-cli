@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { V2ExpectedError } from './errors.js';
+import { buildMemorySourceCatalog, memoryCapsuleStaleReasons } from './memory-source.js';
 import { dbPath, dbSidecarPaths, decisionRoot } from './paths.js';
 import { loadSourceBundle, sourceFileCount, sourceFingerprint } from './source-store.js';
 import {
@@ -28,6 +29,7 @@ export interface RebuildResult {
   briefSnapshots: number;
   implementationTraces: number;
   evaluations: number;
+  memoryCapsules: number;
   events: number;
 }
 
@@ -41,6 +43,13 @@ function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
     throw new V2ExpectedError('SOURCE_DB_ONLY');
   }
   const bundle = loadSourceBundle(projectRoot);
+  const memoryCatalog = buildMemorySourceCatalog(bundle);
+  const projectedBundle: SourceBundle = {
+    ...bundle,
+    memoryCapsules: bundle.memoryCapsules.filter(
+      (memory) => memoryCapsuleStaleReasons(bundle, memory, memoryCatalog).length === 0,
+    ),
+  };
   const nonce = `${String(process.pid)}-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
   const stagingDir = path.join(decisionRoot(projectRoot), `.staging-cache-${nonce}`);
   const stagedDatabase = path.join(stagingDir, 'db.sqlite');
@@ -48,7 +57,7 @@ function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
   try {
     db.exec('BEGIN');
     try {
-      insertBundle(db, bundle);
+      insertBundle(db, projectedBundle);
       setCacheMetadata(db, 'source_fingerprint', sourceFingerprint(projectRoot));
       setCacheMetadata(db, 'graph_projection_version', GRAPH_PROJECTION_VERSION);
       db.exec('COMMIT');
@@ -76,6 +85,7 @@ function rebuildDecisionCacheUnlocked(projectRoot: string): RebuildResult {
     briefSnapshots: bundle.briefSnapshots.length,
     implementationTraces: bundle.implementationTraces.length,
     evaluations: bundle.evaluations.length,
+    memoryCapsules: projectedBundle.memoryCapsules.length,
     events: bundle.events.length,
   };
 }
@@ -120,6 +130,7 @@ export function formatRebuildResult(result: RebuildResult): string {
     `Brief snapshots: ${String(result.briefSnapshots)}`,
     `Implementation traces: ${String(result.implementationTraces)}`,
     `Evaluations: ${String(result.evaluations)}`,
+    `Memory capsules: ${String(result.memoryCapsules)}`,
     `Events: ${String(result.events)}`,
   ].join('\n');
 }
@@ -256,6 +267,24 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
     );
   }
 
+  const insertMemory = db.prepare(
+    `INSERT INTO memory_capsules (id, task_id, title, summary, topics_json, claims_json, source_digest, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const memory of bundle.memoryCapsules) {
+    insertMemory.run(
+      memory.id,
+      memory.taskId,
+      memory.title,
+      memory.summary,
+      encodeJson(memory.topics),
+      encodeJson(memory.claims),
+      memory.sourceDigest,
+      memory.createdAt,
+      memory.updatedAt,
+    );
+  }
+
   const insertEvent = db.prepare(
     `INSERT INTO events (id, task_id, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)`,
   );
@@ -317,6 +346,13 @@ function insertGraph(db: DatabaseSync, bundle: SourceBundle): void {
     addNode(evaluation.id, 'evaluation', evaluation.id);
     addEdge(evaluation.taskId, evaluation.id, 'EVALUATED_BY');
     addEdge(evaluation.id, evaluation.traceId, 'EVALUATES');
+  }
+  for (const memory of bundle.memoryCapsules) {
+    addNode(memory.id, 'memory', memory.title);
+    addEdge(memory.taskId, memory.id, 'HAS_MEMORY');
+    for (const claim of memory.claims) {
+      for (const sourceId of claim.sourceIds) addEdge(memory.id, sourceId, 'DERIVED_FROM');
+    }
   }
   const insertNode = db.prepare(`INSERT INTO graph_nodes (id, kind, label) VALUES (?, ?, ?)`);
   for (const node of [...nodes.values()].sort((a, b) => a.id.localeCompare(b.id)))

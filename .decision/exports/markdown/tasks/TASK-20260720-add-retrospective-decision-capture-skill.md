@@ -3,6 +3,7 @@ id: TASK-20260720-add-retrospective-decision-capture-skill
 type: task
 status: CLOSED
 title: Add retrospective decision capture skill
+record_depth: FULL
 created_at: '2026-07-20T02:05:06.998Z'
 updated_at: '2026-07-20T02:14:23.188Z'
 ---
@@ -44,7 +45,8 @@ Add retrospective decision capture skill
       "Run targeted asset/init regression tests.",
       "Verify sduck init installs the skill at the documented path.",
       "Review the skill to ensure it never instructs chat-log scraping or unsupported explicit decisions."
-    ]
+    ],
+    "recordDepth": "FULL"
   },
   "questions": [],
   "evidence": [
@@ -870,7 +872,8 @@ Add retrospective decision capture skill
             "Run targeted asset/init regression tests.",
             "Verify sduck init installs the skill at the documented path.",
             "Review the skill to ensure it never instructs chat-log scraping or unsupported explicit decisions."
-          ]
+          ],
+          "recordDepth": "FULL"
         },
         "decisions": {
           "EXPLICIT": [

@@ -82,6 +82,7 @@ export interface V2MessageCatalog {
     questionsOpen: string;
     briefSnapshots: string;
     implementationTraces: string;
+    memoryCapsules: string;
     evaluations: string;
     exports: string;
     progress: string;
@@ -91,6 +92,7 @@ export interface V2MessageCatalog {
     implementationBrief: string;
     decisions: string;
     evidence: string;
+    priorMemories: string;
     priorDecisions: string;
     priorTraces: string;
     currentEvidence: string;
@@ -98,6 +100,7 @@ export interface V2MessageCatalog {
     decisionCodeMap: string;
     unmapped: string;
     query: string;
+    relatedMemories: string;
     relatedDecisions: string;
     relatedTraces: string;
     explicit: string;
@@ -124,6 +127,7 @@ export interface V2MessageCatalog {
     truncated: string;
     nodes: string;
     edges: string;
+    memoryReason: (reason: string) => string;
   };
   workflow: {
     work: string;
@@ -169,6 +173,9 @@ export interface V2MessageCatalog {
     workflowEnabled: string;
     workflowDisabled: string;
     retrospectiveCaptured: string;
+    memoryCreated: string;
+    memoryUpdated: string;
+    memoryUnchanged: string;
   };
   errors: {
     unexpected: (detail: string) => string;
@@ -288,6 +295,7 @@ export const enV2Messages = {
     questionsOpen: 'Questions open',
     briefSnapshots: 'Brief snapshots',
     implementationTraces: 'Implementation traces',
+    memoryCapsules: 'Memory capsules',
     evaluations: 'Evaluations',
     exports: 'Exports',
     progress: 'Progress',
@@ -297,6 +305,7 @@ export const enV2Messages = {
     implementationBrief: 'Implementation Brief',
     decisions: 'Decisions',
     evidence: 'Evidence',
+    priorMemories: 'Prior memory capsules',
     priorDecisions: 'Prior decisions',
     priorTraces: 'Prior implementation traces',
     currentEvidence: 'Current evidence',
@@ -304,6 +313,7 @@ export const enV2Messages = {
     decisionCodeMap: 'Decision → code map',
     unmapped: 'Unmapped decisions requiring review',
     query: 'Query',
+    relatedMemories: 'Related memory capsules',
     relatedDecisions: 'Related decisions',
     relatedTraces: 'Related implementation traces',
     explicit: 'A. Explicit decisions',
@@ -330,6 +340,7 @@ export const enV2Messages = {
     truncated: 'Truncated',
     nodes: 'Nodes',
     edges: 'Edges',
+    memoryReason: enProblem,
   },
   workflow: {
     work: 'work',
@@ -375,6 +386,9 @@ export const enV2Messages = {
     workflowEnabled: 'Workflow enabled.',
     workflowDisabled: 'Workflow disabled.',
     retrospectiveCaptured: 'Retrospective capture recorded.',
+    memoryCreated: 'Memory capsule created.',
+    memoryUpdated: 'Memory capsule updated.',
+    memoryUnchanged: 'Memory capsule is already current.',
   },
   errors: {
     unexpected: (detail) => `Error: ${detail}`,
@@ -404,6 +418,8 @@ export const enV2Messages = {
           .join(': ')}`,
       MISSING_CURRENT_TASK_POINTER: (params) =>
         `State currentTaskId references missing canonical task ${params['taskId'] ?? ''}.`,
+      ORPHANED_MEMORY_CAPSULE: (params) =>
+        `Memory capsule ${params['memoryId'] ?? ''} has invalid canonical source references: ${params['reasons'] ?? ''}.`,
       STALE_TERMINAL_TASK_POINTER: (params) =>
         `State currentTaskId references terminal canonical task ${params['taskId'] ?? ''}.`,
       MALFORMED_SOURCE: (params) =>
@@ -426,6 +442,8 @@ export const enV2Messages = {
       INVALID_STATE: 'Fix .decision/state.json manually, then rerun `sduck doctor`.',
       MISSING_CURRENT_TASK_POINTER:
         'Inspect .decision/state.json and canonical tasks; repair manually before retrying.',
+      ORPHANED_MEMORY_CAPSULE:
+        'Run `sduck doctor --repair` to quarantine the capsule and rebuild the cache.',
       STALE_TERMINAL_TASK_POINTER:
         'Run `sduck doctor --repair` to clear the stale current task pointer.',
       MALFORMED_SOURCE: 'Fix the malformed source file, then run `sduck rebuild`.',
@@ -436,6 +454,8 @@ export const enV2Messages = {
       INTERRUPTED_COMMIT: () => 'Recovered an interrupted DecisionWorkspace commit journal.',
       DB_ONLY_MIGRATED: () => 'Migrated DB-only cache to canonical Markdown source.',
       CACHE_REBUILT: () => 'Rebuilt the local SQLite cache from canonical Markdown source.',
+      MEMORY_CAPSULE_QUARANTINED: (params) =>
+        `Quarantined memory capsule ${params['memoryId'] ?? ''} at ${params['path'] ?? ''}.`,
       TERMINAL_TASK_POINTER_CLEARED: (params) =>
         `Cleared stale current task pointer to terminal task ${params['taskId'] ?? ''}.`,
     },
@@ -462,6 +482,7 @@ function enProblem(code: string): string {
     'missing-schema-version': 'missing schemaVersion',
     'unsupported-schema-version': 'schemaVersion must be v2alpha1',
     'non-empty-string': 'must be a non-empty string',
+    'non-empty-array': 'must be a non-empty array',
     array: 'must be an array',
     'string-array': 'must be a string array',
     boolean: 'must be a boolean',
@@ -479,11 +500,22 @@ function enProblem(code: string): string {
     'non-negative-number': 'must be a non-negative number',
     number: 'must be a number',
     'portable-id': 'must be a portable single-segment id',
+    'round-trip-mismatch': 'did not round-trip through canonical Markdown',
     'unsupported-enum-value': 'must be one of the allowed values',
     'missing-trace-decision': 'references a decision not included in the trace',
     'task-id': 'must be a valid task id',
     'missing-task': 'references a missing task',
     'terminal-task': 'references a terminal task',
+    maximum: 'exceeds the maximum size',
+    digest: 'must be a sduck memory source digest',
+    'capsule-missing': 'capsule is missing',
+    'missing-source': 'source is missing',
+    'incompatible-source-kind': 'source kind is incompatible with the claim',
+    'missing-primary-source': 'required primary source is missing',
+    'decision-not-confirmed': 'decision is not confirmed',
+    'source-digest-changed': 'source digest changed',
+    'newer-source-record': 'a newer task source exists',
+    'source-no-longer-reusable': 'a cited decision is no longer reusable',
   };
   return labels[code] ?? code;
 }
@@ -493,6 +525,7 @@ function koProblem(code: string): string {
     'missing-schema-version': 'schemaVersion 누락',
     'unsupported-schema-version': 'schemaVersion은 v2alpha1이어야 합니다',
     'non-empty-string': '비어 있지 않은 문자열이어야 합니다',
+    'non-empty-array': '비어 있지 않은 배열이어야 합니다',
     array: '배열이어야 합니다',
     'string-array': '문자열 배열이어야 합니다',
     boolean: 'boolean이어야 합니다',
@@ -510,11 +543,22 @@ function koProblem(code: string): string {
     'non-negative-number': '0 이상의 숫자여야 합니다',
     number: '숫자여야 합니다',
     'portable-id': 'portable single-segment id여야 합니다',
+    'round-trip-mismatch': 'canonical Markdown round-trip 결과가 일치하지 않습니다',
     'unsupported-enum-value': '허용된 값 중 하나여야 합니다',
     'missing-trace-decision': 'trace에 포함되지 않은 decision을 참조합니다',
     'task-id': '유효한 task id여야 합니다',
     'missing-task': '없는 task를 참조합니다',
     'terminal-task': '종료된 task를 참조합니다',
+    maximum: '최대 크기를 초과합니다',
+    digest: 'sduck memory source digest 형식이어야 합니다',
+    'capsule-missing': 'Capsule이 없습니다',
+    'missing-source': 'source가 없습니다',
+    'incompatible-source-kind': 'claim과 호환되지 않는 source 종류입니다',
+    'missing-primary-source': '필수 primary source가 없습니다',
+    'decision-not-confirmed': 'decision이 confirmed 상태가 아닙니다',
+    'source-digest-changed': 'source digest가 변경되었습니다',
+    'newer-source-record': '더 최신 task source가 있습니다',
+    'source-no-longer-reusable': '인용한 decision을 더 이상 재사용할 수 없습니다',
   };
   return labels[code] ?? code;
 }
@@ -605,6 +649,18 @@ function renderEnExpectedError(code: V2ExpectedErrorCode, params: V2ExpectedErro
       return `.decision/state.json ${p('field') ? `${p('field')} ` : ''}${enProblem(p('problemCode'))}${p('taskId') ? `: ${p('taskId')}` : ''}`;
     case 'REMEMBER_NO_RECORDS':
       return 'No decision records to remember. Run `sduck work "..."` first.';
+    case 'MEMORY_JSON_INVALID':
+      return `Memory payload JSON is malformed: ${p('detail')}`;
+    case 'MEMORY_SCHEMA':
+      return `Memory schema must be ${p('expected')}; received ${p('actual') || 'missing'}.`;
+    case 'MEMORY_FIELD':
+      return `${p('field')} ${enProblem(p('problemCode'))}${p('maximum') ? ` (${p('maximum')})` : ''}.`;
+    case 'MEMORY_SOURCE_INVALID':
+      return `Invalid memory source ${p('sourceId')} for ${p('claimType')}: ${enProblem(p('reason'))}.`;
+    case 'MEMORY_TASK_MISMATCH':
+      return `Memory payload task ${p('taskId')} does not match target task ${p('expectedTaskId')}. Use --task for an explicit backfill.`;
+    case 'MEMORY_TASK_NOT_READY':
+      return `Cannot distill task ${p('taskId')}: status is ${p('status')}. Expected: ${p('expected')}.`;
     case 'CLOSE_REQUIRES_TRACE':
       return `Cannot close task ${p('taskId')}: record a trace first.`;
     case 'CLOSE_REQUIRES_EVALUATION':
@@ -706,6 +762,18 @@ function renderKoExpectedError(code: V2ExpectedErrorCode, params: V2ExpectedErro
       return `.decision/state.json ${p('field') ? `${p('field')} ` : ''}${koProblem(p('problemCode'))}${p('taskId') ? `: ${p('taskId')}` : ''}`;
     case 'REMEMBER_NO_RECORDS':
       return '기억할 decision record가 없습니다. 먼저 `sduck work "..."`를 실행하세요.';
+    case 'MEMORY_JSON_INVALID':
+      return `Memory payload JSON 형식이 잘못되었습니다: ${p('detail')}`;
+    case 'MEMORY_SCHEMA':
+      return `Memory schema는 ${p('expected')}이어야 합니다. 입력: ${p('actual') || '없음'}.`;
+    case 'MEMORY_FIELD':
+      return `${p('field')} ${koProblem(p('problemCode'))}${p('maximum') ? ` (${p('maximum')})` : ''}.`;
+    case 'MEMORY_SOURCE_INVALID':
+      return `${p('claimType')} claim의 memory source ${p('sourceId')}가 잘못되었습니다: ${koProblem(p('reason'))}.`;
+    case 'MEMORY_TASK_MISMATCH':
+      return `Memory payload task ${p('taskId')}가 대상 task ${p('expectedTaskId')}와 일치하지 않습니다. 명시적 backfill에는 --task를 사용하세요.`;
+    case 'MEMORY_TASK_NOT_READY':
+      return `task ${p('taskId')} 정제 불가: 상태는 ${p('status')}입니다. 필요 상태: ${p('expected')}.`;
     case 'CLOSE_REQUIRES_TRACE':
       return `close 불가: task ${p('taskId')}에 trace를 먼저 기록하세요.`;
     case 'CLOSE_REQUIRES_EVALUATION':
@@ -840,6 +908,7 @@ export const koV2Messages = {
     questionsOpen: '열린 질문',
     briefSnapshots: 'Brief 스냅샷',
     implementationTraces: '구현 trace',
+    memoryCapsules: 'Memory Capsule',
     evaluations: 'Evaluation',
     exports: 'Export',
     progress: '진행 상황',
@@ -849,6 +918,7 @@ export const koV2Messages = {
     implementationBrief: '구현 Brief',
     decisions: '결정',
     evidence: '근거',
+    priorMemories: '이전 Memory Capsule',
     priorDecisions: '이전 결정',
     priorTraces: '이전 구현 trace',
     currentEvidence: '현재 근거',
@@ -856,6 +926,7 @@ export const koV2Messages = {
     decisionCodeMap: 'Decision → code 매핑',
     unmapped: '검토가 필요한 미매핑 결정',
     query: '검색어',
+    relatedMemories: '관련 Memory Capsule',
     relatedDecisions: '관련 결정',
     relatedTraces: '관련 구현 trace',
     explicit: 'A. 명시적 결정',
@@ -882,6 +953,7 @@ export const koV2Messages = {
     truncated: '잘림',
     nodes: '노드',
     edges: '엣지',
+    memoryReason: koProblem,
   },
   workflow: {
     work: 'work',
@@ -927,6 +999,9 @@ export const koV2Messages = {
     workflowEnabled: 'Workflow를 활성화했습니다.',
     workflowDisabled: 'Workflow를 비활성화했습니다.',
     retrospectiveCaptured: 'Retrospective capture를 기록했습니다.',
+    memoryCreated: 'Memory Capsule을 생성했습니다.',
+    memoryUpdated: 'Memory Capsule을 갱신했습니다.',
+    memoryUnchanged: 'Memory Capsule이 이미 최신 상태입니다.',
   },
   errors: {
     unexpected: (detail) => `오류: ${detail}`,
@@ -956,6 +1031,8 @@ export const koV2Messages = {
           .join(': ')}`,
       MISSING_CURRENT_TASK_POINTER: (params) =>
         `State currentTaskId가 없는 canonical task ${params['taskId'] ?? ''}를 참조합니다.`,
+      ORPHANED_MEMORY_CAPSULE: (params) =>
+        `Memory Capsule ${params['memoryId'] ?? ''}의 canonical source 참조가 잘못되었습니다: ${params['reasons'] ?? ''}.`,
       STALE_TERMINAL_TASK_POINTER: (params) =>
         `State currentTaskId가 종료된 canonical task ${params['taskId'] ?? ''}를 참조합니다.`,
       MALFORMED_SOURCE: (params) =>
@@ -979,6 +1056,8 @@ export const koV2Messages = {
       INVALID_STATE: '.decision/state.json을 직접 수정한 뒤 `sduck doctor`를 다시 실행하세요.',
       MISSING_CURRENT_TASK_POINTER:
         '.decision/state.json과 canonical tasks를 확인하고 직접 복구한 뒤 다시 시도하세요.',
+      ORPHANED_MEMORY_CAPSULE:
+        'Capsule을 격리하고 cache를 재빌드하려면 `sduck doctor --repair`를 실행하세요.',
       STALE_TERMINAL_TASK_POINTER:
         'stale current task pointer를 지우려면 `sduck doctor --repair`를 실행하세요.',
       MALFORMED_SOURCE: '잘못된 source 파일을 수정한 뒤 `sduck rebuild`를 실행하세요.',
@@ -989,6 +1068,8 @@ export const koV2Messages = {
       INTERRUPTED_COMMIT: () => '중단된 DecisionWorkspace commit journal을 복구했습니다.',
       DB_ONLY_MIGRATED: () => 'DB-only cache를 canonical Markdown source로 마이그레이션했습니다.',
       CACHE_REBUILT: () => 'canonical Markdown source에서 로컬 SQLite cache를 재빌드했습니다.',
+      MEMORY_CAPSULE_QUARANTINED: (params) =>
+        `Memory Capsule ${params['memoryId'] ?? ''}를 ${params['path'] ?? ''}에 격리했습니다.`,
       TERMINAL_TASK_POINTER_CLEARED: (params) =>
         `종료된 task ${params['taskId'] ?? ''}에 대한 stale current task pointer를 지웠습니다.`,
     },
