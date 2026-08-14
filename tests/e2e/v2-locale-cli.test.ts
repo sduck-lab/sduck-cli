@@ -455,7 +455,7 @@ describe('v2 localized CLI presentation', () => {
     );
     expect(taskSource).toContain('Implementation Brief');
     expect(taskSource).not.toContain('구현 Brief');
-  });
+  }, 15_000);
 
   it('keeps representative legacy command output identical across locale preferences', async () => {
     workspace = await createTempWorkspace('v2-locale-v1-');

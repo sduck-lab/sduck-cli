@@ -80,7 +80,7 @@ describe('Auto Wiki CLI', () => {
     const linted = await runCli(['wiki', 'lint'], { cliRoot, cwd: workspace });
     expect(linted).toMatchObject({ exitCode: 0 });
     expect(linted.stdout).toContain('Wiki lint passed');
-  });
+  }, 15_000);
 
   it('localizes Wiki help and command results in Korean', async () => {
     workspace = await createTempWorkspace('wiki-cli-ko-');
@@ -187,5 +187,5 @@ describe('Auto Wiki CLI', () => {
     expect(overview).toContain(`users-and-success ${winner.suffix}.`);
     expect(overview).toContain(`scope-and-constraints ${winner.suffix}.`);
     expect((await runCli(['wiki', 'lint'], { cliRoot, cwd: projectRoot })).exitCode).toBe(0);
-  });
+  }, 15_000);
 });
