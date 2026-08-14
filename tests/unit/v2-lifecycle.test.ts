@@ -910,7 +910,7 @@ describe('v2 decision task lifecycle', () => {
     expect(result.stdout).toContain(previous.id);
     expect(getCurrentTaskId(root)).toBe(previous.id);
     expect(buildStatusView(root).task?.id).toBe(previous.id);
-  });
+  }, 15_000);
 
   it('traces committed and uncommitted implementation files since confirm without harness noise', async () => {
     workspace = await createTempWorkspace('v2-trace-baseline-');

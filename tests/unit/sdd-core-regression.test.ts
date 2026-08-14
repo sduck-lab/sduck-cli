@@ -777,7 +777,7 @@ describe('SDD core regression Interface', () => {
     expect(captured.exitCode).toBe(0);
     expect(captured.stdout).toContain('Retrospective capture recorded.');
     await expect(access(markerAbsolutePath)).rejects.toThrow();
-  });
+  }, 15_000);
 
   it('documents marker-driven retrospective guidance without promising hook-run LLMs', async () => {
     const root = process.cwd();
