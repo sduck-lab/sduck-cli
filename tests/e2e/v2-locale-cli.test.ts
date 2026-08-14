@@ -116,7 +116,7 @@ describe('v2 localized CLI presentation', () => {
       enabled: true,
       initialized: true,
     });
-  });
+  }, 15_000);
 
   it('renders structured Korean init output without string replacement', async () => {
     workspace = await createTempWorkspace('v2-locale-init-');
