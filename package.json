@@ -1,7 +1,15 @@
 {
   "name": "@sduck/sduck-cli",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Terminal-first decision briefing harness for coding agents",
+  "keywords": [
+    "cli",
+    "coding-agent",
+    "decision-briefing",
+    "decision-record",
+    "ai-agent-workflow",
+    "developer-tools"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sduck-lab/sduck-cli.git"
