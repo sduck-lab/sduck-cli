@@ -300,6 +300,18 @@ describe('DecisionWorkspace', () => {
       expect(nodeIds.has(edge.to)).toBe(true);
     }
     expect(() => showGraph(root, 'TASK-root', Number.NaN)).toThrow(/GRAPH_DEPTH_INVALID/);
+
+    const { renderGraphMermaid } = await import('../../src/ui/v2/render.js');
+    const mermaid = renderGraphMermaid(view);
+    expect(mermaid.startsWith('```mermaid\nflowchart LR')).toBe(true);
+    expect(mermaid.endsWith('```')).toBe(true);
+    expect(mermaid).toContain('%% truncated');
+    for (const node of view.nodes) {
+      expect(mermaid).toContain(`n_${node.id.replace(/[^a-zA-Z0-9_]/g, '_')}["`);
+    }
+    for (const edge of view.edges) {
+      expect(mermaid).toContain(`|${edge.kind}|`);
+    }
   });
 
   it('does not mutate source when a draft contains a broken decision reference', async () => {

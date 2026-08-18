@@ -16,7 +16,7 @@ avoids:
   - Deleting raw Task, Decision, Evidence, Trace, or Evaluation records
   - Silently retrieving stale capsules
 created_at: '2026-08-12T05:10:34.572Z'
-updated_at: '2026-08-12T05:10:34.572Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-DEGRADED-READ-RECOVERY: Keep canonical history usable when a capsule reference breaks
 
@@ -54,7 +54,8 @@ Memory cross-reference failures become stale retrieval state instead of bundle-l
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-12T05:10:34.572Z",
-    "updatedAt": "2026-08-12T05:10:34.572Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```

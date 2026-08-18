@@ -24,6 +24,7 @@ export function recordEvaluation(
       id: nextSourceEntityId(
         bundle.evaluations.map((item) => item.id),
         'EVAL',
+        projectRoot,
       ),
       taskId,
       traceId: trace.id,
@@ -32,11 +33,15 @@ export function recordEvaluation(
       createdAt: nowIso(),
     };
     bundle.evaluations.push(evaluation);
-    appendSourceEvent(bundle, {
-      taskId,
-      type: 'EVALUATION_RECORDED',
-      payload: { evaluationId: evaluation.id, traceId: trace.id },
-    });
+    appendSourceEvent(
+      bundle,
+      {
+        taskId,
+        type: 'EVALUATION_RECORDED',
+        payload: { evaluationId: evaluation.id, traceId: trace.id },
+      },
+      projectRoot,
+    );
     return evaluation;
   });
 }

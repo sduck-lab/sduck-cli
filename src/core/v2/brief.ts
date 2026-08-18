@@ -101,6 +101,7 @@ export function confirmBrief(projectRoot: string): BriefSnapshot {
       id: nextSourceEntityId(
         bundle.briefSnapshots.map((item) => item.id),
         'BRF',
+        projectRoot,
       ),
       taskId: view.task.id,
       snapshot: view,
@@ -109,11 +110,15 @@ export function confirmBrief(projectRoot: string): BriefSnapshot {
       createdAt: nowIso(),
     };
     bundle.briefSnapshots.push(snapshot);
-    appendSourceEvent(bundle, {
-      taskId: snapshot.taskId,
-      type: 'BRIEF_CONFIRMED',
-      payload: { snapshotId: snapshot.id },
-    });
+    appendSourceEvent(
+      bundle,
+      {
+        taskId: snapshot.taskId,
+        type: 'BRIEF_CONFIRMED',
+        payload: { snapshotId: snapshot.id },
+      },
+      projectRoot,
+    );
     return snapshot;
   });
 }

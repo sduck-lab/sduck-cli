@@ -1,5 +1,10 @@
 export type V2ErrorCode =
-  'INVALID_LOCALE' | 'NO_DRAFT_STDIN' | 'USE_STDIN' | 'ANSWER_INPUT_CONFLICT' | 'NO_CURRENT_TASK';
+  | 'INVALID_LOCALE'
+  | 'NO_DRAFT_STDIN'
+  | 'USE_STDIN'
+  | 'ANSWER_INPUT_CONFLICT'
+  | 'NO_CURRENT_TASK'
+  | 'TAG_ARGS_REQUIRED';
 
 export class V2CommandError extends Error {
   constructor(

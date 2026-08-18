@@ -987,7 +987,7 @@ describe('v2 decision task lifecycle', () => {
     expect(context.some((item) => item.sourceRef.includes('ignored/'))).toBe(false);
   });
 
-  it('exposes only confirmed decisions from non-abandoned tasks in recall and context', async () => {
+  it('exposes confirmed and draft decisions from non-abandoned tasks in recall, but only confirmed ones in context', async () => {
     workspace = await createTempWorkspace('v2-memory-visibility-');
     const root = workspace;
     initDecisionWorkspace(root);
@@ -1082,9 +1082,12 @@ describe('v2 decision task lifecycle', () => {
     );
     buildContextIndex(root, current);
 
-    expect(recall(root, 'visibility').decisions.map((decision) => decision.id)).toEqual([
-      'DEC-visible',
-    ]);
+    // recall() now also surfaces DRAFT decisions from non-abandoned tasks (labeled as such by
+    // callers via `.status`) -- only REJECTED/SUPERSEDED decisions and any decision whose task
+    // was abandoned stay hidden. getContextPack() is a separate, unchanged CONFIRMED-only surface.
+    expect(new Set(recall(root, 'visibility').decisions.map((decision) => decision.id))).toEqual(
+      new Set(['DEC-visible', 'DEC-draft-hidden']),
+    );
     expect(getContextPack(root).priorDecisions.map((decision) => decision.id)).toEqual([
       'DEC-visible',
     ]);

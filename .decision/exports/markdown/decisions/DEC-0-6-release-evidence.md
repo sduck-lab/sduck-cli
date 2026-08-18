@@ -13,7 +13,7 @@ applies_to:
   - README.md
 avoids: []
 created_at: '2026-07-21T08:39:55.739Z'
-updated_at: '2026-07-21T08:39:55.739Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-0-6-release-evidence: Prove the CLI release from a packed artifact
 
@@ -45,7 +45,8 @@ Release confidence requires source checks plus an installed tarball smoke that o
     "avoids": [],
     "sourceRefs": [],
     "createdAt": "2026-07-21T08:39:55.739Z",
-    "updatedAt": "2026-07-21T08:39:55.739Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "릴리스/배포"
   }
 }
 ```

@@ -246,6 +246,18 @@ This user-global config is separate from tracked `.decision/policy.json`.
 | `sduck close`                                                    | Mark the current task closed after guided trace evaluation.                                                                                                                               |
 | `sduck abandon`                                                  | Abandon the current v2 task.                                                                                                                                                              |
 
+### Categories
+
+| Command                                                                       | Purpose                                                                               |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `sduck categories suggest [--json]`                                           | Print generic starter category suggestions (read-only, no file writes).               |
+| `sduck categories set <name...> [--json]`                                     | Replace the project category taxonomy. Record a decision for this first.              |
+| `sduck categories list [--json]`                                              | Show configured categories and how many findable decisions are in each.               |
+| `sduck categories browse [category] [--uncategorized] [--limit <n>] [--json]` | List every findable decision in a category, unranked, id+title only.                  |
+| `sduck categories tag [id] [category] [--stdin] [--json]`                     | Retroactively set the category on existing decisions (single, or `--stdin` for bulk). |
+
+Categories are a small, project-wide fixed taxonomy stored in `.decision/policy.json`, not a free-form tag field: `set` replaces the whole list, and `submit`/`tag` reject any category outside it. `list` and `browse` use the same visibility rule as `recall` (status `CONFIRMED`/`DRAFT`, task not `ABANDONED`), so counts shown by `list` always match what `browse` can actually return. `browse` applies no ranking or filtering — every id and title in the bucket is returned as-is (default `--limit` 500, overridable per call, with an honest `truncated` flag rather than a silent cut) so an agent can read the full table of contents and judge relevance directly. `tag --stdin` accepts a bulk `{"assignments": [{"id":..., "category":...}]}` payload and updates only the `category`/`updatedAt` fields on existing decisions, including already-confirmed ones — the whole batch fails together if any id or category is invalid.
+
 ### Bounded memory
 
 The active coding agent writes semantic memory; sduck does not call an LLM. A `sduck-memory/v1` payload is bounded to 20 topics and 20 claims, and every claim must cite canonical sources from the same task. Re-running distillation updates the stable `MEM-*` document for that task; an identical payload changes nothing. By default the payload must name the current task. Use `sduck memory distill --task <TASK-ID> --stdin` only for an intentional confirmed/closed-task backfill, and keep the option and payload IDs identical.

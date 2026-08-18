@@ -14,7 +14,7 @@ applies_to:
   - tests
 avoids: []
 created_at: '2026-07-21T08:47:37.727Z'
-updated_at: '2026-07-21T08:47:37.727Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-0-6-safe-retrospective-hook: Use a safe managed retrospective-hook state machine
 
@@ -47,7 +47,8 @@ updated_at: '2026-07-21T08:47:37.727Z'
     "avoids": [],
     "sourceRefs": [],
     "createdAt": "2026-07-21T08:47:37.727Z",
-    "updatedAt": "2026-07-21T08:47:37.727Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

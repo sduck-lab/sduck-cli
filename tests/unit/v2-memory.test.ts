@@ -101,8 +101,20 @@ describe('v2 memory compaction', () => {
     expect(recall(root, '회수 제한').memories.map((memory) => memory.id)).toEqual([
       distilled.capsule.id,
     ]);
-    expect(recall(root, '%')).toEqual({ query: '%', memories: [], decisions: [], traces: [] });
-    expect(recall(root, '_')).toEqual({ query: '_', memories: [], decisions: [], traces: [] });
+    expect(recall(root, '%')).toEqual({
+      query: '%',
+      memories: [],
+      decisions: [],
+      traces: [],
+      related: [],
+    });
+    expect(recall(root, '_')).toEqual({
+      query: '_',
+      memories: [],
+      decisions: [],
+      traces: [],
+      related: [],
+    });
   });
 
   it('keeps automatic and explicit context idempotent across repeated indexing', async () => {

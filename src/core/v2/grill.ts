@@ -69,11 +69,15 @@ export function recordGrillMeStarted(projectRoot: string): GrillMeView {
     );
     const event =
       existing ??
-      appendSourceEvent(bundle, {
-        taskId,
-        type: 'GRILL_STARTED',
-        payload: { prompt: GRILL_ME_PROMPT, protocol: [...GRILL_ME_PROTOCOL] },
-      });
+      appendSourceEvent(
+        bundle,
+        {
+          taskId,
+          type: 'GRILL_STARTED',
+          payload: { prompt: GRILL_ME_PROMPT, protocol: [...GRILL_ME_PROTOCOL] },
+        },
+        projectRoot,
+      );
     return {
       taskId,
       recorded: existing === undefined,
@@ -95,17 +99,21 @@ export function recordGrillCompleted(
     if (taskId === null) throw noCurrentTask();
     const task = bundle.tasks.find((item) => item.id === taskId);
     if (task === undefined) throw taskNotFound(taskId);
-    const event = appendSourceEvent(bundle, {
-      taskId,
-      type: 'GRILL_COMPLETED',
-      payload: {
-        reason: input.reason,
-        carried: input.carried ?? [],
-        ...(input.changedAssumption === undefined
-          ? {}
-          : { changedAssumption: input.changedAssumption }),
+    const event = appendSourceEvent(
+      bundle,
+      {
+        taskId,
+        type: 'GRILL_COMPLETED',
+        payload: {
+          reason: input.reason,
+          carried: input.carried ?? [],
+          ...(input.changedAssumption === undefined
+            ? {}
+            : { changedAssumption: input.changedAssumption }),
+        },
       },
-    });
+      projectRoot,
+    );
     return { taskId, eventId: event.id };
   });
 }

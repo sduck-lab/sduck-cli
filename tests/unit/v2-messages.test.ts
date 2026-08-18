@@ -54,6 +54,11 @@ const expectedErrorCodes = [
   'CARRIED_DECISION_INVALID',
   'GRAPH_ROOT_NOT_FOUND',
   'GRAPH_DEPTH_INVALID',
+  'DRAFT_CATEGORY_INVALID',
+  'CATEGORIES_EMPTY',
+  'CATEGORY_NOT_FOUND',
+  'BROWSE_LIMIT_INVALID',
+  'DECISION_NOT_FOUND',
 ] as const satisfies readonly V2ExpectedErrorCode[];
 
 type MissingExpectedErrorCodes = Exclude<V2ExpectedErrorCode, (typeof expectedErrorCodes)[number]>;

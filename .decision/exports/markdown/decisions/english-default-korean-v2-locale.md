@@ -20,7 +20,7 @@ avoids:
   - Storing locale in tracked .decision/policy.json
   - Making locale a project-shared setting
 created_at: '2026-07-14T05:14:52.654Z'
-updated_at: '2026-07-14T05:14:53.216Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # english-default-korean-v2-locale: Default to English and offer a global Korean v2 locale
 
@@ -65,7 +65,8 @@ Use English as the default for CLI output and documentation, publish a Korean RE
       "src/core/v2/policy.ts:6-40"
     ],
     "createdAt": "2026-07-14T05:14:52.654Z",
-    "updatedAt": "2026-07-14T05:14:53.216Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "로케일/국제화"
   }
 }
 ```

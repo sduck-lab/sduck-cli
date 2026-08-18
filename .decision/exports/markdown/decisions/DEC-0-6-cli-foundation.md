@@ -15,7 +15,7 @@ applies_to:
   - package.json
 avoids: []
 created_at: '2026-07-21T08:39:55.739Z'
-updated_at: '2026-07-21T08:39:55.739Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-0-6-cli-foundation: Ship 0.6.0 as CLI foundations, not an MCP runtime
 
@@ -49,7 +49,8 @@ The user will use the CLI only. 0.6.0 ships supported CLI foundations and reposi
     "avoids": [],
     "sourceRefs": [],
     "createdAt": "2026-07-21T08:39:55.739Z",
-    "updatedAt": "2026-07-21T08:39:55.739Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "릴리스/배포"
   }
 }
 ```

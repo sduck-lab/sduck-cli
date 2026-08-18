@@ -18,6 +18,7 @@ interface DecisionRow {
   applies_to_json: string;
   avoids_json: string;
   source_refs_json: string;
+  category: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +36,7 @@ export function mapDecision(row: DecisionRow): Decision {
     appliesTo: decodeJson<string[]>(row.applies_to_json, []),
     avoids: decodeJson<string[]>(row.avoids_json, []),
     sourceRefs: decodeJson<string[]>(row.source_refs_json, []),
+    ...(row.category === null ? {} : { category: row.category }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

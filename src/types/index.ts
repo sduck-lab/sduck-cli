@@ -63,6 +63,7 @@ export interface Decision {
   appliesTo: string[];
   avoids: string[];
   sourceRefs: string[];
+  category?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -269,6 +270,7 @@ export interface DraftDecision {
   appliesTo?: string[];
   avoids?: string[];
   sourceRefs?: string[];
+  category?: string;
 }
 
 export interface DraftQuestion {
@@ -306,9 +308,16 @@ export interface TraceView {
   filesChanged: string[];
 }
 
+export interface RelatedGraphItem {
+  id: string;
+  kind: string;
+  label: string;
+}
+
 export interface RecallResult {
   query: string;
   memories: MemoryCapsule[];
   decisions: Decision[];
   traces: ImplementationTrace[];
+  related: RelatedGraphItem[];
 }

@@ -117,6 +117,7 @@ export function answerQuestion(
     const evidenceId = nextSourceEntityId(
       bundle.evidence.map((item) => item.id),
       'EVD',
+      projectRoot,
     );
     const evidence: Evidence = {
       id: evidenceId,
@@ -150,6 +151,7 @@ export function answerQuestion(
       const decisionId = nextSourceEntityId(
         bundle.decisions.map((item) => item.id),
         'DEC',
+        projectRoot,
       );
       const decision: Decision = {
         id: decisionId,
@@ -167,17 +169,25 @@ export function answerQuestion(
         updatedAt: answeredAt,
       };
       bundle.decisions.push(decision);
-      appendSourceEvent(bundle, {
-        taskId: question.taskId,
-        type: 'DECISION_CREATED',
-        payload: { decisionId },
-      });
+      appendSourceEvent(
+        bundle,
+        {
+          taskId: question.taskId,
+          type: 'DECISION_CREATED',
+          payload: { decisionId },
+        },
+        projectRoot,
+      );
     }
-    appendSourceEvent(bundle, {
-      taskId: question.taskId,
-      type: 'QUESTION_ANSWERED',
-      payload: { questionId: question.id, answer },
-    });
+    appendSourceEvent(
+      bundle,
+      {
+        taskId: question.taskId,
+        type: 'QUESTION_ANSWERED',
+        payload: { questionId: question.id, answer },
+      },
+      projectRoot,
+    );
     new TaskLifecycle(bundle, question.taskId).reconcileBriefReadiness(answeredAt);
     return { question: updatedQuestion, answer };
   });

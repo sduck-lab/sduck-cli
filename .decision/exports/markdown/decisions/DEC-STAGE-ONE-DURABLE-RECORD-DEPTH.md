@@ -28,7 +28,7 @@ avoids:
   - src/core/v2/trace.ts behavior changes
   - automatic agent routing
 created_at: '2026-07-22T06:25:58.737Z'
-updated_at: '2026-07-22T06:48:11.316Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-STAGE-ONE-DURABLE-RECORD-DEPTH: Ship durable record-depth storage before changing lifecycle behavior
 
@@ -81,7 +81,8 @@ Stage 1 introduces a backward-compatible FULL/LIGHTWEIGHT task field and CLI sel
       "src/core/v2/task-lifecycle.ts"
     ],
     "createdAt": "2026-07-22T06:25:58.737Z",
-    "updatedAt": "2026-07-22T06:48:11.316Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

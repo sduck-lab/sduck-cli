@@ -1,6 +1,7 @@
 import { DecisionWorkspace } from './decision-workspace.js';
 import { noCurrentTask, taskNotFound, V2ExpectedError } from './errors.js';
 import { nowIso } from './ids.js';
+import { readCategoriesStatus } from './policy.js';
 import { appendSourceEvent, nextSourceEntityId } from './source-store.js';
 import { TaskLifecycle } from './task-lifecycle.js';
 
@@ -54,11 +55,23 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
     const evidence = draft.evidence ?? [];
     const now = nowIso();
     validateCarriedDecisions(bundle, taskId, decisions);
+    const allowedCategories = readCategoriesStatus(projectRoot).categories;
+    for (const draftDecision of decisions) {
+      if (
+        draftDecision.category !== undefined &&
+        !allowedCategories.includes(draftDecision.category)
+      ) {
+        throw new V2ExpectedError('DRAFT_CATEGORY_INVALID', {
+          category: draftDecision.category,
+          allowed: allowedCategories.join(', '),
+        });
+      }
+    }
     let decisionIds = bundle.decisions.map((item) => item.id);
     let questionIds = bundle.questions.map((item) => item.id);
     let evidenceIds = bundle.evidence.map((item) => item.id);
     for (const draftDecision of decisions) {
-      const id = draftDecision.id ?? nextSourceEntityId(decisionIds, 'DEC');
+      const id = draftDecision.id ?? nextSourceEntityId(decisionIds, 'DEC', projectRoot);
       decisionIds = [...decisionIds, id];
       const decision: Decision = {
         id,
@@ -72,14 +85,19 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
         appliesTo: draftDecision.appliesTo ?? [],
         avoids: draftDecision.avoids ?? [],
         sourceRefs: draftDecision.sourceRefs ?? [],
+        ...(draftDecision.category === undefined ? {} : { category: draftDecision.category }),
         createdAt: now,
         updatedAt: now,
       };
       bundle.decisions.push(decision);
-      appendSourceEvent(bundle, { taskId, type: 'DECISION_CREATED', payload: { decisionId: id } });
+      appendSourceEvent(
+        bundle,
+        { taskId, type: 'DECISION_CREATED', payload: { decisionId: id } },
+        projectRoot,
+      );
     }
     for (const draftQuestion of questions) {
-      const id = draftQuestion.id ?? nextSourceEntityId(questionIds, 'Q');
+      const id = draftQuestion.id ?? nextSourceEntityId(questionIds, 'Q', projectRoot);
       questionIds = [...questionIds, id];
       const question: Question = {
         id,
@@ -96,7 +114,7 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
       bundle.questions.push(question);
     }
     for (const draftEvidence of evidence) {
-      const id = draftEvidence.id ?? nextSourceEntityId(evidenceIds, 'EVD');
+      const id = draftEvidence.id ?? nextSourceEntityId(evidenceIds, 'EVD', projectRoot);
       evidenceIds = [...evidenceIds, id];
       const item: Evidence = {
         id,
@@ -126,19 +144,23 @@ export function submitDraft(projectRoot: string, content: string): SubmitDraftRe
           }
         : item,
     );
-    appendSourceEvent(bundle, {
-      taskId,
-      type: 'DRAFT_SUBMITTED',
-      payload: {
-        decisions: decisions.length,
-        questions: questions.length,
-        evidence: evidence.length,
-        expectedScope: draft.expectedScope ?? [],
-        avoidScope: draft.avoidScope ?? [],
-        implementationPlan: draft.implementationPlan ?? [],
-        verificationPlan: draft.verificationPlan ?? [],
+    appendSourceEvent(
+      bundle,
+      {
+        taskId,
+        type: 'DRAFT_SUBMITTED',
+        payload: {
+          decisions: decisions.length,
+          questions: questions.length,
+          evidence: evidence.length,
+          expectedScope: draft.expectedScope ?? [],
+          avoidScope: draft.avoidScope ?? [],
+          implementationPlan: draft.implementationPlan ?? [],
+          verificationPlan: draft.verificationPlan ?? [],
+        },
       },
-    });
+      projectRoot,
+    );
     new TaskLifecycle(bundle, taskId).reconcileBriefReadiness(now);
     return {
       taskId,
@@ -178,6 +200,7 @@ export function validateDraft(draft: unknown): SduckDraft {
     if (decision.confidence !== undefined && (decision.confidence < 0 || decision.confidence > 1)) {
       throw new V2ExpectedError('DRAFT_CONFIDENCE', { field: 'Decision', ref: decision.title });
     }
+    if (decision.category !== undefined) assertString(decision.category, 'decision.category');
   }
   for (const item of candidate.evidence ?? []) {
     assertString(item.sourceType, 'evidence.sourceType');

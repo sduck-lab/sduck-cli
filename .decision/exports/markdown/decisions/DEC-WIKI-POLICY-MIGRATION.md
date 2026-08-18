@@ -16,7 +16,7 @@ avoids:
   - manual policy editing
   - implicit Wiki file creation in legacy projects
 created_at: '2026-08-11T13:38:09.882Z'
-updated_at: '2026-08-11T13:38:20.347Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-WIKI-POLICY-MIGRATION: Default Wiki on only for new workspaces and migrate durable workspaces explicitly
 
@@ -56,7 +56,8 @@ Newly initialized workspaces receive enabled Wiki policy; existing durable works
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-11T13:38:09.882Z",
-    "updatedAt": "2026-08-11T13:38:20.347Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "Wiki"
   }
 }
 ```

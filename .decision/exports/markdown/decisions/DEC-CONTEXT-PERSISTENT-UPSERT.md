@@ -15,7 +15,7 @@ avoids:
   - Dropping explicitly requested file context
   - Reassigning existing context IDs
 created_at: '2026-08-11T14:37:48.747Z'
-updated_at: '2026-08-11T14:37:48.747Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-CONTEXT-PERSISTENT-UPSERT: Make persisted context indexing idempotent
 
@@ -55,7 +55,8 @@ Deduplicate persisted context by task, source type, and source reference; preser
       "src/core/v2/context.ts:447"
     ],
     "createdAt": "2026-08-11T14:37:48.747Z",
-    "updatedAt": "2026-08-11T14:37:48.747Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "컨텍스트 인덱싱"
   }
 }
 ```

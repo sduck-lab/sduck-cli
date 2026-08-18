@@ -16,7 +16,7 @@ avoids:
   - retrospective hook reuse for external commit detection
   - unrelated Wiki page changes
 created_at: '2026-08-11T13:38:09.882Z'
-updated_at: '2026-08-11T13:38:20.347Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-WIKI-DIRTY-STATUS: Compute Wiki dirtiness only from deterministic evidence
 
@@ -56,7 +56,8 @@ Status and lint compare referenced source digests, missing or superseded IDs, ge
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-11T13:38:09.882Z",
-    "updatedAt": "2026-08-11T13:38:20.347Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "Wiki"
   }
 }
 ```

@@ -12,6 +12,7 @@ export interface DecisionWorkspacePolicy {
   requireGrillMe: boolean;
   workflowEnabled: boolean;
   wiki?: WikiPolicy;
+  categories?: string[];
 }
 
 export interface WikiPolicy {
@@ -28,6 +29,28 @@ export interface WikiPolicyStatus {
 
 export const DEFAULT_WIKI_ROOT = 'docs/wiki' as const;
 export const DEFAULT_WIKI_POLICY: WikiPolicy = { enabled: true, root: DEFAULT_WIKI_ROOT };
+
+// A generic, domain-agnostic starting point -- `sduck categories suggest` prints these so an
+// agent can accept, edit, or replace them for the project's actual domain before `categories set`
+// commits a project-specific fixed taxonomy. Not written anywhere automatically.
+export const DEFAULT_CATEGORY_SUGGESTIONS: readonly string[] = [
+  '인증/보안',
+  '데이터/저장소',
+  'API/인터페이스',
+  '성능',
+  '테스트/품질',
+  '배포/인프라',
+  'UI/UX',
+  '문서화',
+  '워크플로우/프로세스',
+  '기타',
+];
+
+export interface CategoriesStatus {
+  categories: string[];
+  configured: boolean;
+  policyPath: string;
+}
 
 const DEFAULT_POLICY_WITHOUT_WIKI: DecisionWorkspacePolicy = {
   schemaVersion: 'v2alpha1',
@@ -103,11 +126,23 @@ export function readDecisionWorkspacePolicy(projectRoot: string): DecisionWorksp
       });
     }
   }
+  if (raw['categories'] !== undefined) {
+    if (
+      !Array.isArray(raw['categories']) ||
+      raw['categories'].some((item) => typeof item !== 'string' || item.trim() === '')
+    ) {
+      throw new V2ExpectedError('POLICY_INVALID', {
+        field: 'categories',
+        problemCode: 'string-array',
+      });
+    }
+  }
   return {
     schemaVersion: 'v2alpha1',
     requireGrillMe: raw['requireGrillMe'],
     workflowEnabled: raw['workflowEnabled'] ?? true,
     ...(raw['wiki'] === undefined ? {} : { wiki: raw['wiki'] as WikiPolicy }),
+    ...(raw['categories'] === undefined ? {} : { categories: raw['categories'] as string[] }),
   };
 }
 
@@ -119,6 +154,27 @@ export function readWikiPolicyStatus(projectRoot: string): WikiPolicyStatus {
     root: policy?.wiki?.root ?? DEFAULT_WIKI_ROOT,
     policyPath: policyPath(projectRoot),
   };
+}
+
+export function readCategoriesStatus(projectRoot: string): CategoriesStatus {
+  const policy = readDecisionWorkspacePolicy(projectRoot);
+  return {
+    categories: policy?.categories ?? [],
+    configured: policy?.categories !== undefined,
+    policyPath: policyPath(projectRoot),
+  };
+}
+
+export function setCategories(projectRoot: string, categories: string[]): CategoriesStatus {
+  return withDecisionWorkspaceLock(projectRoot, () => {
+    if (categories.length === 0) throw new V2ExpectedError('CATEGORIES_EMPTY');
+    const policy = readDecisionWorkspacePolicy(projectRoot) ?? DEFAULT_POLICY_WITHOUT_WIKI;
+    writeAtomicDurable(
+      policyPath(projectRoot),
+      `${JSON.stringify({ ...policy, categories }, null, 2)}\n`,
+    );
+    return readCategoriesStatus(projectRoot);
+  });
 }
 
 export function assertWikiEnabled(projectRoot: string): void {

@@ -15,7 +15,7 @@ avoids:
   - claims that evaluation strings are executable CI evidence
   - general claim graph
 created_at: '2026-08-11T13:38:09.882Z'
-updated_at: '2026-08-11T13:38:20.347Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-WIKI-EVIDENCE-LANGUAGE: Keep intent, implementation claims, changes, and validation reports distinct
 
@@ -54,7 +54,8 @@ Use typed explanatory blocks with block-level source IDs and visible provenance 
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-11T13:38:09.882Z",
-    "updatedAt": "2026-08-11T13:38:20.347Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "Wiki"
   }
 }
 ```

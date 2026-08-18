@@ -9,7 +9,7 @@ import {
   memorySourceDigest,
   type MemorySourceEntry,
 } from './memory-source.js';
-import { containsLikePattern, searchTerms } from './search.js';
+import { containsLikePattern, ftsMatchQuery, searchTerms } from './search.js';
 import { loadSourceBundle, nextSourceEntityId } from './source-store.js';
 import { decodeJson } from './store.js';
 
@@ -93,6 +93,7 @@ export function distillMemory(
         nextSourceEntityId(
           bundle.memoryCapsules.map((memory) => memory.id),
           'MEM',
+          projectRoot,
         ),
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
@@ -173,6 +174,22 @@ export function findMemoryCapsules(
   const limit = options.limit ?? 10;
   const terms = searchTerms(query);
   const byId = new Map<string, MemoryCapsule>();
+  const ftsQuery = ftsMatchQuery(terms);
+  if (ftsQuery !== null) {
+    const rows = db
+      .prepare(
+        `SELECT m.* FROM memory_fts
+         JOIN memory_capsules m ON m.id = memory_fts.id
+         JOIN tasks t ON t.id = m.task_id
+         WHERE t.status != 'ABANDONED' AND memory_fts MATCH ?
+         ORDER BY bm25(memory_fts) LIMIT ?`,
+      )
+      .all(ftsQuery, limit) as unknown as MemoryRow[];
+    for (const row of rows) {
+      if (row.task_id === options.excludeTaskId) continue;
+      byId.set(row.id, mapMemoryCapsuleRow(row));
+    }
+  }
   for (const term of terms) {
     const like = containsLikePattern(term);
     const rows = db

@@ -9,7 +9,14 @@ const LOCK_RETRY_MS = 20;
 
 export function withDecisionWorkspaceLock<T>(projectRoot: string, operation: () => T): T {
   fs.mkdirSync(decisionRoot(projectRoot), { recursive: true });
-  const lockPath = path.join(decisionRoot(projectRoot), 'workspace.lock');
+  return withPathLock(path.join(decisionRoot(projectRoot), 'workspace.lock'), operation);
+}
+
+// Generalized so cross-worktree coordination (shared-ids.ts) can reuse the same mkdirSync-based
+// mutual exclusion and stale-lock recovery instead of duplicating it. The lock directory's parent
+// must already exist -- callers are responsible for that (workspace roots and git common dirs
+// both already exist by construction).
+export function withPathLock<T>(lockPath: string, operation: () => T): T {
   const ownerPath = path.join(lockPath, 'owner.json');
   const token = `${String(process.pid)}-${Math.random().toString(36).slice(2)}`;
   const deadline = Date.now() + LOCK_TIMEOUT_MS;

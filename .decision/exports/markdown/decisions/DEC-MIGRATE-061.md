@@ -15,7 +15,7 @@ avoids:
   - source code
   - Git staging and commits
 created_at: '2026-07-22T01:55:29.443Z'
-updated_at: '2026-07-22T01:55:29.685Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MIGRATE-061: Use the CLI-only 0.6.1 migration path
 
@@ -53,7 +53,8 @@ Install exactly @sduck/sduck-cli@0.6.1 globally, then run the requested doctor, 
       "User request, 2026-07-22"
     ],
     "createdAt": "2026-07-22T01:55:29.443Z",
-    "updatedAt": "2026-07-22T01:55:29.685Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "릴리스/배포"
   }
 }
 ```

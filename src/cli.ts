@@ -25,6 +25,11 @@ import {
   runAnswerCommand,
   runAskCommand,
   runBriefCommand,
+  runCategoriesBrowseCommand,
+  runCategoriesListCommand,
+  runCategoriesSetCommand,
+  runCategoriesSuggestCommand,
+  runCategoriesTagCommand,
   runCloseCommand,
   runConfirmCommand,
   runContextAddCommand,
@@ -499,6 +504,104 @@ workflow
     printResult(runWorkflowDisableCommand(process.cwd(), options.json === true, v2Runtime));
   });
 
+const categories = program
+  .command('categories')
+  .description(
+    v2Text(
+      'Manage the project-wide fixed decision category taxonomy',
+      '프로젝트 전역 고정 결정 카테고리 분류 체계 관리',
+    ),
+  );
+
+categories
+  .command('suggest')
+  .description(
+    v2Text('Print generic starter category suggestions', '범용 기초 카테고리 제안 목록 출력'),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runCategoriesSuggestCommand(options.json === true, v2Runtime));
+  });
+
+categories
+  .command('set <name...>')
+  .description(
+    v2Text(
+      'Replace the project category taxonomy (record a decision for this first)',
+      '프로젝트 카테고리 분류 체계를 교체(먼저 이에 대한 결정을 기록할 것)',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((name: string[], options: { json?: boolean }) => {
+    printResult(runCategoriesSetCommand(process.cwd(), name, options.json === true, v2Runtime));
+  });
+
+categories
+  .command('list')
+  .description(
+    v2Text(
+      'Show configured categories and how many findable decisions are in each',
+      '설정된 카테고리와 각 카테고리에서 찾을 수 있는 결정 개수 표시',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((options: { json?: boolean }) => {
+    printResult(runCategoriesListCommand(process.cwd(), options.json === true, v2Runtime));
+  });
+
+categories
+  .command('browse [category]')
+  .description(
+    v2Text(
+      'List every findable decision in a category, unranked, id+title only',
+      '한 카테고리 안의 모든 결정을 순위 없이 id+제목만 나열',
+    ),
+  )
+  .option(
+    '--uncategorized',
+    v2Text('Browse decisions with no category set', '카테고리가 없는 결정 조회'),
+  )
+  .option(
+    '--limit <n>',
+    v2Text('Max decisions to list (default 500)', '나열할 최대 결정 수(기본값 500)'),
+    (value: string) => parseInteger(value, '--limit', 1),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action(
+    (
+      category: string | undefined,
+      options: { uncategorized?: boolean; limit?: number; json?: boolean },
+    ) => {
+      printResult(runCategoriesBrowseCommand(process.cwd(), category, options, v2Runtime));
+    },
+  );
+
+categories
+  .command('tag [id] [category]')
+  .description(
+    v2Text(
+      'Retroactively set the category on existing decisions (single, or --stdin for bulk)',
+      '기존 결정에 카테고리를 소급 부여(단건, 또는 --stdin으로 일괄)',
+    ),
+  )
+  .option(
+    '--stdin',
+    v2Text(
+      'Read a bulk {"assignments": [{"id":..., "category":...}]} payload from stdin',
+      'stdin에서 {"assignments": [{"id":..., "category":...}]} 일괄 페이로드 읽기',
+    ),
+  )
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action(
+    (
+      id: string | undefined,
+      category: string | undefined,
+      options: { stdin?: boolean; json?: boolean },
+    ) => {
+      printResult(runCategoriesTagCommand(process.cwd(), id, category, options, v2Runtime));
+    },
+  );
+
 const context = program
   .command('context')
   .description(v2Text('Show or extend current context pack', '현재 context pack 표시 또는 확장'));
@@ -778,7 +881,11 @@ graph
   )
   .option('--depth <n>', v2Text('Traversal depth (max 4)', '탐색 깊이 (최대 4)'))
   .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
-  .action((root: string, options: { depth?: string; json?: boolean }) => {
+  .option(
+    '--mermaid',
+    v2Text('Print a Mermaid flowchart for humans', '사람이 보기 위한 Mermaid flowchart 출력'),
+  )
+  .action((root: string, options: { depth?: string; json?: boolean; mermaid?: boolean }) => {
     printResult(runGraphShowCommand(process.cwd(), root, options, v2Runtime));
   });
 
@@ -898,8 +1005,10 @@ program
       'Memory Capsule, 이전 결정, 구현 trace 검색',
     ),
   )
-  .action((queryParts: string[]) => {
-    printResult(runRecallCommand(process.cwd(), queryParts.join(' '), v2Runtime));
+  .option('--depth <n>', v2Text('Graph expansion depth (max 4)', 'graph 확장 깊이 (최대 4)'))
+  .option('--json', v2Text('Print machine-readable JSON', '기계가 읽는 JSON 출력'))
+  .action((queryParts: string[], options: { depth?: string; json?: boolean }) => {
+    printResult(runRecallCommand(process.cwd(), queryParts.join(' '), options, v2Runtime));
   });
 
 program

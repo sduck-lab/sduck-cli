@@ -12,6 +12,7 @@ import {
   sourceMemoriesDir,
   sourceTasksDir,
 } from './paths.js';
+import { reserveSharedId } from './shared-ids.js';
 import { cacheHasRows } from './store.js';
 
 import type {
@@ -198,23 +199,26 @@ export function loadSourceBundleForWrite(projectRoot: string): SourceBundle {
   return loadSourceBundle(projectRoot);
 }
 
-export function nextSourceEntityId(ids: string[], prefix: string): string {
-  const max = ids.reduce((highest, id) => {
+export function nextSourceEntityId(ids: string[], prefix: string, projectRoot: string): string {
+  const localMax = ids.reduce((highest, id) => {
     const match = new RegExp(`^${escapeRegExp(prefix)}-(\\d+)$`).exec(id);
     if (match?.[1] === undefined) return highest;
     return Math.max(highest, Number.parseInt(match[1], 10));
   }, 0);
-  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
+  const next = reserveSharedId(projectRoot, prefix, localMax);
+  return `${prefix}-${String(next).padStart(4, '0')}`;
 }
 
 export function appendSourceEvent(
   bundle: SourceBundle,
   input: { taskId: string | null; type: EventType; payload?: Record<string, unknown> },
+  projectRoot: string,
 ): EventRecord {
   const event: EventRecord = {
     id: nextSourceEntityId(
       bundle.events.map((item) => item.id),
       'EVT',
+      projectRoot,
     ),
     taskId: input.taskId,
     type: input.type,
@@ -655,6 +659,9 @@ function assertDecision(
   assertConfidence(value['confidence'], filePath, `${field}.confidence`);
   for (const key of ['rationale', 'appliesTo', 'avoids', 'sourceRefs']) {
     assertStringArray(value[key], filePath, `${field}.${key}`);
+  }
+  if (value['category'] !== undefined) {
+    assertNonEmptyString(value['category'], filePath, `${field}.category`);
   }
 }
 

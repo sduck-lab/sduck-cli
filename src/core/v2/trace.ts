@@ -87,6 +87,7 @@ export function createImplementationTrace(
       id: nextSourceEntityId(
         bundle.implementationTraces.map((item) => item.id),
         'IMPL',
+        projectRoot,
       ),
       taskId,
       decisionIds: decisions.map((decision) => decision.id),
@@ -97,11 +98,15 @@ export function createImplementationTrace(
       createdAt: nowIso(),
     };
     bundle.implementationTraces.push(trace);
-    appendSourceEvent(bundle, {
-      taskId,
-      type: 'TRACE_CREATED',
-      payload: { traceId: trace.id, filesChanged },
-    });
+    appendSourceEvent(
+      bundle,
+      {
+        taskId,
+        type: 'TRACE_CREATED',
+        payload: { traceId: trace.id, filesChanged },
+      },
+      projectRoot,
+    );
     return { trace, filesChanged };
   });
 }

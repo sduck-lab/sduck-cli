@@ -24,7 +24,7 @@ avoids:
   - publishing without authenticated npm identity
   - publishing a tarball different from the validated artifact
 created_at: '2026-08-14T07:25:35.114Z'
-updated_at: '2026-08-14T07:30:43.862Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-RELEASE-0-7-0-SAFETY: Gate irreversible release mutations on fresh evidence
 
@@ -75,7 +75,8 @@ Run the repository CI-equivalent checks, validate and smoke-test the packed tarb
       "npm whoami: E401 Unauthorized"
     ],
     "createdAt": "2026-08-14T07:25:35.114Z",
-    "updatedAt": "2026-08-14T07:30:43.862Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "릴리스/배포"
   }
 }
 ```

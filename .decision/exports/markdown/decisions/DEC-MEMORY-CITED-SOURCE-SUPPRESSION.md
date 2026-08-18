@@ -12,7 +12,7 @@ applies_to:
 avoids:
   - Task-wide raw-history suppression
 created_at: '2026-08-12T05:10:34.572Z'
-updated_at: '2026-08-12T05:10:34.572Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-CITED-SOURCE-SUPPRESSION: Suppress only raw sources actually cited by a matching capsule
 
@@ -46,7 +46,8 @@ Recall and context hide only cited Decision and Implementation Trace IDs, never 
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-12T05:10:34.572Z",
-    "updatedAt": "2026-08-12T05:10:34.572Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```

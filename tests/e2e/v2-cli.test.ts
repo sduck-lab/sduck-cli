@@ -266,9 +266,11 @@ describeIfSqlite('v2 CLI flow', () => {
     });
     expect(graph.exitCode).toBe(0);
     const parsedGraph = JSON.parse(graph.stdout) as { nodes: { id: string }[]; edges: unknown[] };
-    expect(parsedGraph.nodes.map((node) => node.id)).toEqual(
-      [...parsedGraph.nodes.map((node) => node.id)].sort((a, b) => a.localeCompare(b)),
-    );
+    // Node order is hop-distance from the root first (this is the ranking signal recall() feeds
+    // into rankByRrf), id alphabetical only as a same-level tiebreaker -- so the root (the only
+    // depth-0 node) must sort first, but the rest of the list is no longer purely alphabetical.
+    expect(parsedGraph.nodes[0]?.id).toBe(taskId);
+    expect(new Set(parsedGraph.nodes.map((node) => node.id)).size).toBe(parsedGraph.nodes.length);
     expect(parsedGraph.edges.length).toBeGreaterThan(0);
     for (const edge of parsedGraph.edges as { from: string; to: string }[]) {
       expect(parsedGraph.nodes.some((node) => node.id === edge.from)).toBe(true);

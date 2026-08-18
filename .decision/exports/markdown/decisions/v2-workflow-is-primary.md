@@ -18,7 +18,7 @@ avoids:
   - Reworking the legacy v1 lifecycle
   - Claiming arbitrary editor or shell writes are blocked
 created_at: '2026-07-14T05:14:52.654Z'
-updated_at: '2026-07-14T05:14:53.216Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # v2-workflow-is-primary: Make v2 the single primary documented workflow
 
@@ -61,7 +61,8 @@ Reorganize public documentation, installed agent rules, and v2 next-step guidanc
       "src/commands/v2/index.ts:48-200"
     ],
     "createdAt": "2026-07-14T05:14:52.654Z",
-    "updatedAt": "2026-07-14T05:14:53.216Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

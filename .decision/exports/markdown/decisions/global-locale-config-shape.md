@@ -16,7 +16,7 @@ avoids:
   - New per-workspace locale files
   - Home-directory configuration for legacy v1 behavior
 created_at: '2026-07-14T05:14:52.654Z'
-updated_at: '2026-07-14T05:14:53.216Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # global-locale-config-shape: Use an XDG-compatible global locale configuration
 
@@ -57,7 +57,8 @@ Add `sduck config locale en|ko`, persisting the preference in a user-global XDG-
       "src/core/v2/policy.ts:6-40"
     ],
     "createdAt": "2026-07-14T05:14:52.654Z",
-    "updatedAt": "2026-07-14T05:14:53.216Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "로케일/국제화"
   }
 }
 ```

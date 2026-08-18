@@ -1,8 +1,11 @@
 import { enV2Messages } from './messages.js';
 import { renderBriefMarkdown } from '../../core/v2/brief.js';
+import { DEFAULT_CATEGORY_SUGGESTIONS } from '../../core/v2/policy.js';
 
 import type { V2MessageCatalog } from './messages.js';
+import type { CategoryBrowseView, CategoryListView } from '../../core/v2/categories.js';
 import type { DoctorResult } from '../../core/v2/doctor.js';
+import type { GraphShowView } from '../../core/v2/graph.js';
 import type { DistillMemoryResult } from '../../core/v2/memory.js';
 import type { RebuildResult } from '../../core/v2/rebuild.js';
 import type { RememberResult } from '../../core/v2/remember.js';
@@ -228,6 +231,33 @@ export function renderTrace(view: TraceView, messages: V2MessageCatalog = enV2Me
   return lines.join('\n');
 }
 
+function mermaidNodeId(id: string): string {
+  return `n_${id.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+}
+
+function mermaidLabel(text: string): string {
+  return text
+    .replaceAll('"', "'")
+    .replaceAll('\n', ' ')
+    .replaceAll('[', '(')
+    .replaceAll(']', ')')
+    .slice(0, 80);
+}
+
+export function renderGraphMermaid(view: GraphShowView): string {
+  const lines = ['```mermaid', 'flowchart LR'];
+  for (const node of view.nodes) {
+    const label = mermaidLabel(`${node.id}: ${node.label}`);
+    lines.push(`  ${mermaidNodeId(node.id)}["${label}"]`);
+  }
+  for (const edge of view.edges) {
+    lines.push(`  ${mermaidNodeId(edge.from)} -->|${edge.kind}| ${mermaidNodeId(edge.to)}`);
+  }
+  if (view.truncated) lines.push('  %% truncated: graph exceeded node/edge display limits');
+  lines.push('```');
+  return lines.join('\n');
+}
+
 export function renderRecall(result: RecallResult): string {
   return renderRecallLocalized(result, enV2Messages);
 }
@@ -249,12 +279,16 @@ export function renderRecallLocalized(
   lines.push('', `${messages.labels.relatedDecisions}:`);
   if (result.decisions.length === 0) lines.push(`  - ${messages.common.none}`);
   for (const decision of result.decisions) {
-    lines.push(`  - ${decision.id} [${decision.kind}] ${decision.title}`);
+    const statusSuffix = decision.status === 'CONFIRMED' ? '' : ` (${decision.status})`;
+    lines.push(`  - ${decision.id} [${decision.kind}]${statusSuffix} ${decision.title}`);
     lines.push(`    ${decision.summary}`);
   }
   lines.push('', `${messages.labels.relatedTraces}:`);
   if (result.traces.length === 0) lines.push(`  - ${messages.common.none}`);
   for (const trace of result.traces) lines.push(`  - ${trace.id}: ${trace.summary}`);
+  lines.push('', `${messages.labels.relatedGraph}:`);
+  if (result.related.length === 0) lines.push(`  - ${messages.common.none}`);
+  for (const item of result.related) lines.push(`  - ${item.id} [${item.kind}] ${item.label}`);
   return lines.join('\n');
 }
 
@@ -295,6 +329,39 @@ export function renderMemoryStatus(
         : ` — ${entry.reasons.map(messages.labels.memoryReason).join(', ')}`;
     lines.push(`  - ${entry.taskId}: ${entry.state} (${capsule})${reasons}`);
   }
+  return lines.join('\n');
+}
+
+export function renderCategoriesSuggest(messages: V2MessageCatalog = enV2Messages): string {
+  return [
+    messages.commands.categoriesSuggestHint,
+    ...DEFAULT_CATEGORY_SUGGESTIONS.map((category) => `  - ${category}`),
+  ].join('\n');
+}
+
+export function renderCategoriesList(
+  view: CategoryListView,
+  messages: V2MessageCatalog = enV2Messages,
+): string {
+  const lines = [`${messages.labels.categories}:`];
+  if (view.counts.length === 0) lines.push(`  - ${messages.common.none}`);
+  for (const entry of view.counts) lines.push(`  - ${entry.category}: ${String(entry.count)}`);
+  lines.push(`${messages.labels.uncategorized}: ${String(view.uncategorized)}`);
+  return lines.join('\n');
+}
+
+export function renderCategoryBrowse(
+  view: CategoryBrowseView,
+  messages: V2MessageCatalog = enV2Messages,
+): string {
+  const heading = view.category ?? messages.labels.uncategorized;
+  const lines = [`${messages.labels.categories}: ${heading}`];
+  if (view.items.length === 0) lines.push(`  - ${messages.common.none}`);
+  for (const item of view.items) {
+    const statusSuffix = item.status === 'CONFIRMED' ? '' : ` (${item.status})`;
+    lines.push(`  - ${item.id}${statusSuffix} ${item.title}`);
+  }
+  if (view.truncated) lines.push(`  (${messages.labels.truncated})`);
   return lines.join('\n');
 }
 

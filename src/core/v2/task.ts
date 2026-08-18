@@ -81,17 +81,25 @@ export function createTask(
       updatedAt: createdAt,
     };
     bundle.tasks.push(task);
-    appendSourceEvent(bundle, {
-      taskId: task.id,
-      type: 'TASK_CREATED',
-      payload: { description, policy },
-    });
-    if (guided) {
-      appendSourceEvent(bundle, {
+    appendSourceEvent(
+      bundle,
+      {
         taskId: task.id,
-        type: 'GRILL_STARTED',
-        payload: { automatic: true },
-      });
+        type: 'TASK_CREATED',
+        payload: { description, policy },
+      },
+      projectRoot,
+    );
+    if (guided) {
+      appendSourceEvent(
+        bundle,
+        {
+          taskId: task.id,
+          type: 'GRILL_STARTED',
+          payload: { automatic: true },
+        },
+        projectRoot,
+      );
     }
     state.currentTaskId = task.id;
     state.updatedAt = createdAt;
@@ -129,11 +137,15 @@ export function setTerminalStatus(projectRoot: string, status: 'CLOSED' | 'ABAND
     new TaskLifecycle(bundle, taskId).setTerminal(status, updatedAt);
     const updated = bundle.tasks.find((item) => item.id === taskId);
     if (updated === undefined) throw taskNotFound(taskId);
-    appendSourceEvent(bundle, {
-      taskId: task.id,
-      type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
-      payload: {},
-    });
+    appendSourceEvent(
+      bundle,
+      {
+        taskId: task.id,
+        type: status === 'CLOSED' ? 'TASK_CLOSED' : 'TASK_ABANDONED',
+        payload: {},
+      },
+      projectRoot,
+    );
     state.currentTaskId = null;
     state.updatedAt = updatedAt;
     return updated;

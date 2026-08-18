@@ -74,6 +74,7 @@ The Git-tracked Markdown Wiki under `docs/wiki/` is the default human reading vi
 - Preserve content outside generated ownership markers. Never use Wiki sync `--force` without explicit authorization to replace an edited generated section.
 - Keep decision intent, recorded implementation claims, changed-file tracking, reported validation outcomes, and agent-proposed semantic conflicts distinct. Do not claim the CLI verified code meaning or executed CI.
 - Wiki status and lint are advisory. A dirty/stale Wiki or sync failure must remain visible but must not block task close. Do not commit Wiki changes automatically.
+- If oh-my-claudecode (OMC) tooling is active, its `wiki_*` MCP tools (add/delete/ingest/lint/list/query/read) are a separate OMC-owned system with its own storage and schema. They are not an alternate interface to `docs/wiki/`. Never use OMC `wiki_*` tools to read, create, or modify `docs/wiki/` content — doing so bypasses generated-section ownership markers and `sduck wiki lint` validation entirely. Manage `docs/wiki/` only through `sduck wiki build|status|sync|lint`.
 
 ## Best-effort retrospective marker
 

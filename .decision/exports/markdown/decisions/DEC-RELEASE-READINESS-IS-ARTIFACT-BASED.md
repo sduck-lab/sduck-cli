@@ -18,7 +18,7 @@ avoids:
   - version mutation
   - Git mutation
 created_at: '2026-07-22T06:57:25.712Z'
-updated_at: '2026-07-22T06:57:25.970Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-RELEASE-READINESS-IS-ARTIFACT-BASED: Validate the packaged CLI rather than only the source tree
 
@@ -61,7 +61,8 @@ Release readiness will require declared source checks plus an isolated npm tarba
       "package.json"
     ],
     "createdAt": "2026-07-22T06:57:25.712Z",
-    "updatedAt": "2026-07-22T06:57:25.970Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "릴리스/배포"
   }
 }
 ```

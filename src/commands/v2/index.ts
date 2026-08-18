@@ -9,6 +9,12 @@ import {
 } from '../../core/init.js';
 import { confirmBrief, buildBriefView } from '../../core/v2/brief.js';
 import { ensureReadableCache } from '../../core/v2/cache.js';
+import {
+  browseCategory,
+  listCategoryCounts,
+  tagDecisionCategories,
+  type CategoryAssignment,
+} from '../../core/v2/categories.js';
 import { addContextPath, buildContextIndex, getContextPack } from '../../core/v2/context.js';
 import { doctorDecisionWorkspace } from '../../core/v2/doctor.js';
 import { submitDraft } from '../../core/v2/draft.js';
@@ -23,9 +29,11 @@ import {
 import { distillMemory, getMemoryStatus } from '../../core/v2/memory.js';
 import { policyPath } from '../../core/v2/paths.js';
 import {
+  DEFAULT_CATEGORY_SUGGESTIONS,
   DEFAULT_REQUIRED_POLICY,
   getWorkflowStatus,
   readDecisionWorkspacePolicy,
+  setCategories,
 } from '../../core/v2/policy.js';
 import { answerQuestion, getNextOpenQuestion } from '../../core/v2/question.js';
 import { rebuildDecisionCache } from '../../core/v2/rebuild.js';
@@ -58,8 +66,12 @@ import { enV2Messages, getV2Messages } from '../../ui/v2/messages.js';
 import { promptForQuestionAnswer } from '../../ui/v2/prompts.js';
 import {
   renderBriefTerminal,
+  renderCategoriesList,
+  renderCategoriesSuggest,
+  renderCategoryBrowse,
   renderDoctorResult,
   renderContextPack,
+  renderGraphMermaid,
   renderMemoryDistillResult,
   renderMemoryStatus,
   renderRecallLocalized,
@@ -222,7 +234,7 @@ export function runEvaluateCommand(
 export function runGraphShowCommand(
   projectRoot: string,
   root: string,
-  options: { depth?: string; json?: boolean },
+  options: { depth?: string; json?: boolean; mermaid?: boolean },
   runtime: V2Runtime = DEFAULT_RUNTIME,
 ): CommandResult {
   try {
@@ -230,6 +242,7 @@ export function runGraphShowCommand(
     const depth = /^\d+$/.test(depthText) ? Number.parseInt(depthText, 10) : Number.NaN;
     const view = showGraph(projectRoot, root, depth);
     if (options.json === true) return ok(JSON.stringify(view, null, 2));
+    if (options.mermaid === true) return ok(renderGraphMermaid(view));
     return ok(
       [
         runtime.messages.commands.graphFor(view.root),
@@ -283,6 +296,139 @@ export function runWorkflowEnableCommand(
   try {
     const view = setWorkflowEnabledSafely(projectRoot, true);
     return ok(asJson ? JSON.stringify(view, null, 2) : runtime.messages.commands.workflowEnabled);
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runCategoriesSuggestCommand(
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  return ok(
+    asJson
+      ? JSON.stringify({ suggestions: [...DEFAULT_CATEGORY_SUGGESTIONS] }, null, 2)
+      : renderCategoriesSuggest(runtime.messages),
+  );
+}
+
+export function runCategoriesSetCommand(
+  projectRoot: string,
+  categories: string[],
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const view = setCategories(projectRoot, categories);
+    return ok(
+      asJson
+        ? JSON.stringify(view, null, 2)
+        : runtime.messages.commands.categoriesSet(view.categories),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runCategoriesBrowseCommand(
+  projectRoot: string,
+  category: string | undefined,
+  options: { uncategorized?: boolean; limit?: number; json?: boolean },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const target = options.uncategorized === true ? null : (category ?? null);
+    if (target === null && options.uncategorized !== true) {
+      throw new V2ExpectedError('CATEGORY_NOT_FOUND', { category: '' });
+    }
+    const view =
+      options.limit === undefined
+        ? browseCategory(projectRoot, target)
+        : browseCategory(projectRoot, target, options.limit);
+    return ok(
+      options.json === true
+        ? JSON.stringify(view, null, 2)
+        : renderCategoryBrowse(view, runtime.messages),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+function parseTagAssignments(raw: string): CategoryAssignment[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new V2ExpectedError('DRAFT_JSON_INVALID', {
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new V2ExpectedError('DRAFT_FIELD', { field: 'payload', problemCode: 'json-object' });
+  }
+  const assignments = (parsed as Record<string, unknown>)['assignments'];
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    throw new V2ExpectedError('DRAFT_FIELD', {
+      field: 'assignments',
+      problemCode: 'non-empty-array',
+    });
+  }
+  return assignments.map((item, index) => {
+    if (
+      typeof item !== 'object' ||
+      item === null ||
+      typeof (item as Record<string, unknown>)['id'] !== 'string' ||
+      typeof (item as Record<string, unknown>)['category'] !== 'string'
+    ) {
+      throw new V2ExpectedError('DRAFT_FIELD', {
+        field: `assignments[${String(index)}]`,
+        problemCode: 'json-object',
+      });
+    }
+    const record = item as { id: string; category: string };
+    return { id: record.id, category: record.category };
+  });
+}
+
+export function runCategoriesTagCommand(
+  projectRoot: string,
+  id: string | undefined,
+  category: string | undefined,
+  options: { stdin?: boolean; json?: boolean },
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const assignments =
+      options.stdin === true
+        ? parseTagAssignments(readStdinIfRequested(options.stdin, runtime))
+        : (() => {
+            if (id === undefined || category === undefined) {
+              throw new V2CommandError('TAG_ARGS_REQUIRED');
+            }
+            return [{ id, category }];
+          })();
+    const result = tagDecisionCategories(projectRoot, assignments);
+    return ok(
+      options.json === true
+        ? JSON.stringify(result, null, 2)
+        : runtime.messages.commands.categoriesTagged(result.updated.length),
+    );
+  } catch (error) {
+    return fail(formatError(error, runtime));
+  }
+}
+
+export function runCategoriesListCommand(
+  projectRoot: string,
+  asJson: boolean,
+  runtime: V2Runtime = DEFAULT_RUNTIME,
+): CommandResult {
+  try {
+    const view = listCategoryCounts(projectRoot);
+    return ok(
+      asJson ? JSON.stringify(view, null, 2) : renderCategoriesList(view, runtime.messages),
+    );
   } catch (error) {
     return fail(formatError(error, runtime));
   }
@@ -749,10 +895,21 @@ export function runDoctorCommand(
 export function runRecallCommand(
   projectRoot: string,
   query: string,
+  options: { depth?: string; json?: boolean } = {},
   runtime: V2Runtime = DEFAULT_RUNTIME,
 ): CommandResult {
   try {
-    return ok(renderRecallLocalized(recall(projectRoot, query), runtime.messages));
+    const depthText = options.depth;
+    const recallOptions =
+      depthText === undefined
+        ? {}
+        : { depth: /^\d+$/.test(depthText) ? Number.parseInt(depthText, 10) : Number.NaN };
+    const result = recall(projectRoot, query, recallOptions);
+    return ok(
+      options.json === true
+        ? JSON.stringify(result, null, 2)
+        : renderRecallLocalized(result, runtime.messages),
+    );
   } catch (error) {
     return fail(formatError(error, runtime));
   }
@@ -922,6 +1079,8 @@ export function renderV2CommandError(error: V2CommandError, messages: V2MessageC
       return messages.errors.useStdin;
     case 'ANSWER_INPUT_CONFLICT':
       return messages.errors.provideOneAnswer;
+    case 'TAG_ARGS_REQUIRED':
+      return messages.errors.tagArgsRequired;
     case 'NO_CURRENT_TASK':
       return messages.errors.noCurrentTask;
     case 'INVALID_LOCALE':

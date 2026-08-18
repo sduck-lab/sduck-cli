@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "v2alpha1",
+  "requireGrillMe": true,
+  "workflowEnabled": true,
+  "categories": [
+    "검색/리콜",
+    "워크플로우 라이프사이클",
+    "MCP 계약 설계",
+    "릴리스/배포",
+    "메모리 캡슐",
+    "Wiki",
+    "컨텍스트 인덱싱",
+    "로케일/국제화",
+    "테스트/CI/품질"
+  ]
+}

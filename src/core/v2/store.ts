@@ -193,6 +193,7 @@ export function ensureSchema(db: DatabaseSyncType): void {
   ensureColumn(db, 'tasks', 'guided', 'INTEGER');
   ensureColumn(db, 'tasks', 'retrospective', 'INTEGER');
   ensureColumn(db, 'tasks', 'record_depth', 'TEXT');
+  ensureColumn(db, 'decisions', 'category', 'TEXT');
   db.exec(`
     CREATE TABLE IF NOT EXISTS evaluations (
       id TEXT PRIMARY KEY,
@@ -215,6 +216,16 @@ export function ensureSchema(db: DatabaseSyncType): void {
     );
     CREATE INDEX IF NOT EXISTS graph_edges_from_idx ON graph_edges(from_id, kind, to_id);
     CREATE INDEX IF NOT EXISTS graph_edges_to_idx ON graph_edges(to_id, kind, from_id);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(
+      id UNINDEXED, title, summary, tokenize = 'trigram'
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS traces_fts USING fts5(
+      id UNINDEXED, summary, files_changed, tokenize = 'trigram'
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+      id UNINDEXED, title, summary, topics, claims, tokenize = 'trigram'
+    );
   `);
 }
 

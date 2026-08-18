@@ -17,7 +17,7 @@ avoids:
   - Task-size, CI, TTY, or intent-based bypasses
   - Claiming that hooks can prevent arbitrary editor or shell writes
 created_at: '2026-07-14T03:39:55.380Z'
-updated_at: '2026-07-14T03:39:55.380Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # require-grill-before-brief: Require grill-me before a new task can be briefed
 
@@ -59,7 +59,8 @@ Every task created in a newly initialized sduck workspace must enter a durable g
       ".sduck/sduck-assets/agent-rules/core.md:3-16"
     ],
     "createdAt": "2026-07-14T03:39:55.380Z",
-    "updatedAt": "2026-07-14T03:39:55.380Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

@@ -92,6 +92,8 @@ export interface V2MessageCatalog {
     implementationBrief: string;
     decisions: string;
     evidence: string;
+    categories: string;
+    uncategorized: string;
     priorMemories: string;
     priorDecisions: string;
     priorTraces: string;
@@ -103,6 +105,7 @@ export interface V2MessageCatalog {
     relatedMemories: string;
     relatedDecisions: string;
     relatedTraces: string;
+    relatedGraph: string;
     explicit: string;
     inferred: string;
     carried: string;
@@ -172,6 +175,9 @@ export interface V2MessageCatalog {
     workflowStatus: (enabled: boolean) => string;
     workflowEnabled: string;
     workflowDisabled: string;
+    categoriesSuggestHint: string;
+    categoriesSet: (categories: string[]) => string;
+    categoriesTagged: (count: number) => string;
     retrospectiveCaptured: string;
     memoryCreated: string;
     memoryUpdated: string;
@@ -184,6 +190,7 @@ export interface V2MessageCatalog {
     noDraftStdin: string;
     useStdin: string;
     provideOneAnswer: string;
+    tagArgsRequired: string;
     expected: (code: V2ExpectedErrorCode, params: V2ExpectedErrorParams) => string;
   };
   doctor: {
@@ -305,6 +312,8 @@ export const enV2Messages = {
     implementationBrief: 'Implementation Brief',
     decisions: 'Decisions',
     evidence: 'Evidence',
+    categories: 'Categories',
+    uncategorized: 'Uncategorized',
     priorMemories: 'Prior memory capsules',
     priorDecisions: 'Prior decisions',
     priorTraces: 'Prior implementation traces',
@@ -316,6 +325,7 @@ export const enV2Messages = {
     relatedMemories: 'Related memory capsules',
     relatedDecisions: 'Related decisions',
     relatedTraces: 'Related implementation traces',
+    relatedGraph: 'Related via graph',
     explicit: 'A. Explicit decisions',
     inferred: 'B. Inferred decisions',
     carried: 'C. Carried decisions',
@@ -385,6 +395,10 @@ export const enV2Messages = {
     workflowStatus: (enabled) => `Workflow: ${enabled ? 'enabled' : 'disabled'}`,
     workflowEnabled: 'Workflow enabled.',
     workflowDisabled: 'Workflow disabled.',
+    categoriesSuggestHint:
+      'Suggested starter categories (edit to fit this project, then `sduck categories set <name...>`):',
+    categoriesSet: (categories) => `Categories updated: ${categories.join(', ')}`,
+    categoriesTagged: (count) => `Decision(s) tagged: ${String(count)}`,
     retrospectiveCaptured: 'Retrospective capture recorded.',
     memoryCreated: 'Memory capsule created.',
     memoryUpdated: 'Memory capsule updated.',
@@ -397,6 +411,7 @@ export const enV2Messages = {
     noDraftStdin: 'No draft received on stdin.',
     useStdin: 'Use --stdin to read draft content.',
     provideOneAnswer: 'Provide exactly one of --option or --text.',
+    tagArgsRequired: 'Provide <id> and <category>, or use --stdin for a bulk payload.',
     expected: renderEnExpectedError,
   },
   doctor: {
@@ -607,6 +622,18 @@ function renderEnExpectedError(code: V2ExpectedErrorCode, params: V2ExpectedErro
       return `Invalid decision kind: ${p('kind')}`;
     case 'DRAFT_CONFIDENCE':
       return `${p('field')} confidence must be between 0 and 1: ${p('ref')}`;
+    case 'DRAFT_CATEGORY_INVALID':
+      return p('allowed')
+        ? `Invalid decision category "${p('category')}". Allowed: ${p('allowed')}.`
+        : `Invalid decision category "${p('category')}". No categories are configured yet -- run \`sduck categories set\` first.`;
+    case 'CATEGORIES_EMPTY':
+      return 'Provide at least one category name.';
+    case 'CATEGORY_NOT_FOUND':
+      return `Unknown category "${p('category')}". Run \`sduck categories list\` to see configured categories.`;
+    case 'BROWSE_LIMIT_INVALID':
+      return `--limit must be an integer greater than or equal to 1: ${p('limit')}`;
+    case 'DECISION_NOT_FOUND':
+      return `Decision not found: ${p('id')}`;
     case 'QUESTION_NOT_FOUND':
       return `Question not found: ${p('questionId')}`;
     case 'QUESTION_TASK_MISMATCH':
@@ -720,6 +747,18 @@ function renderKoExpectedError(code: V2ExpectedErrorCode, params: V2ExpectedErro
       return `잘못된 decision kind: ${p('kind')}`;
     case 'DRAFT_CONFIDENCE':
       return `${p('field')} confidence는 0과 1 사이여야 합니다: ${p('ref')}`;
+    case 'DRAFT_CATEGORY_INVALID':
+      return p('allowed')
+        ? `잘못된 decision category "${p('category')}". 허용된 값: ${p('allowed')}.`
+        : `잘못된 decision category "${p('category')}". 아직 카테고리가 설정되지 않았습니다 -- 먼저 \`sduck categories set\`을 실행하세요.`;
+    case 'CATEGORIES_EMPTY':
+      return '카테고리 이름을 하나 이상 입력하세요.';
+    case 'CATEGORY_NOT_FOUND':
+      return `알 수 없는 카테고리 "${p('category')}". \`sduck categories list\`로 설정된 카테고리를 확인하세요.`;
+    case 'BROWSE_LIMIT_INVALID':
+      return `--limit은 1 이상의 정수여야 합니다: ${p('limit')}`;
+    case 'DECISION_NOT_FOUND':
+      return `결정을 찾을 수 없습니다: ${p('id')}`;
     case 'QUESTION_NOT_FOUND':
       return `질문을 찾을 수 없습니다: ${p('questionId')}`;
     case 'QUESTION_TASK_MISMATCH':
@@ -918,6 +957,8 @@ export const koV2Messages = {
     implementationBrief: '구현 Brief',
     decisions: '결정',
     evidence: '근거',
+    categories: '카테고리',
+    uncategorized: '미분류',
     priorMemories: '이전 Memory Capsule',
     priorDecisions: '이전 결정',
     priorTraces: '이전 구현 trace',
@@ -929,6 +970,7 @@ export const koV2Messages = {
     relatedMemories: '관련 Memory Capsule',
     relatedDecisions: '관련 결정',
     relatedTraces: '관련 구현 trace',
+    relatedGraph: '그래프로 연결된 항목',
     explicit: 'A. 명시적 결정',
     inferred: 'B. 추론한 결정',
     carried: 'C. 이어받은 결정',
@@ -998,6 +1040,10 @@ export const koV2Messages = {
     workflowStatus: (enabled) => `Workflow: ${enabled ? '활성화됨' : '비활성화됨'}`,
     workflowEnabled: 'Workflow를 활성화했습니다.',
     workflowDisabled: 'Workflow를 비활성화했습니다.',
+    categoriesSuggestHint:
+      '기초 제안 카테고리(프로젝트에 맞게 고친 뒤 `sduck categories set <이름...>`으로 확정하세요):',
+    categoriesSet: (categories) => `카테고리를 갱신했습니다: ${categories.join(', ')}`,
+    categoriesTagged: (count) => `${String(count)}개 결정에 카테고리를 부여했습니다.`,
     retrospectiveCaptured: 'Retrospective capture를 기록했습니다.',
     memoryCreated: 'Memory Capsule을 생성했습니다.',
     memoryUpdated: 'Memory Capsule을 갱신했습니다.',
@@ -1010,6 +1056,7 @@ export const koV2Messages = {
     noDraftStdin: 'stdin으로 받은 draft가 없습니다.',
     useStdin: 'draft 내용을 읽으려면 --stdin을 사용하세요.',
     provideOneAnswer: '--option 또는 --text 중 하나만 제공하세요.',
+    tagArgsRequired: '<id>와 <category>를 입력하거나, 일괄 처리는 --stdin을 사용하세요.',
     expected: renderKoExpectedError,
   },
   doctor: {

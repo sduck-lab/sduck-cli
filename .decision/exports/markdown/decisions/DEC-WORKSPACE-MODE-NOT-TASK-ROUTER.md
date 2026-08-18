@@ -18,7 +18,7 @@ avoids:
   - automatic sduck workflow enable or disable invocation
   - unrecorded enabled-workspace implementation
 created_at: '2026-07-22T05:41:57.908Z'
-updated_at: '2026-07-22T06:48:11.316Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-WORKSPACE-MODE-NOT-TASK-ROUTER: Keep workspace mode separate from task record depth
 
@@ -61,7 +61,8 @@ Do not automatically toggle the workspace-wide workflow mode for individual task
       "src/core/v2/task-lifecycle.ts"
     ],
     "createdAt": "2026-07-22T05:41:57.908Z",
-    "updatedAt": "2026-07-22T06:48:11.316Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

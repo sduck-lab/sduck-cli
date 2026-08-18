@@ -17,7 +17,7 @@ avoids:
   - Locale-dependent canonical digests
   - Changing machine-readable reason slugs
 created_at: '2026-08-12T05:10:34.572Z'
-updated_at: '2026-08-12T05:10:34.572Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-PORTABLE-SEARCH-LOCALE: Make memory digests, search patterns, and localized reasons portable
 
@@ -56,7 +56,8 @@ Use code-unit ordering for digests, escape SQL LIKE wildcards, retain two-charac
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-12T05:10:34.572Z",
-    "updatedAt": "2026-08-12T05:10:34.572Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```

@@ -14,7 +14,7 @@ avoids:
   - Cold archive migration
   - Incremental cache rebuild
 created_at: '2026-08-11T14:37:48.747Z'
-updated_at: '2026-08-11T14:37:48.747Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-DEFER-COLD-ARCHIVE: Defer destructive compaction and storage-engine optimization
 
@@ -53,7 +53,8 @@ This slice does not delete or cold-archive canonical history and does not change
       "src/core/v2/decision-workspace.ts"
     ],
     "createdAt": "2026-08-11T14:37:48.747Z",
-    "updatedAt": "2026-08-11T14:37:48.747Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```

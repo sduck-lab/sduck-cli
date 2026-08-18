@@ -20,3 +20,4 @@ coverage/
 test/workspaces/
 .slim/deepwork/
 .decision/.commit-*.json
+.omc/

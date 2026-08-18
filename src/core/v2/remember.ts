@@ -60,7 +60,11 @@ export function remember(projectRoot: string): RememberResult {
       `${JSON.stringify(buildDecisionGraph(task, decisions, evidence, traces), null, 2)}\n`,
     );
     const created = [...sourcePaths, reportPath, graphPath];
-    appendSourceEvent(bundle, { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } });
+    appendSourceEvent(
+      bundle,
+      { taskId: task.id, type: 'EXPORT_WRITTEN', payload: { created } },
+      projectRoot,
+    );
     return { created, next: guidedNeedsEvaluation(task, bundle) ? 'evaluate' : 'recall-close' };
   });
 }

@@ -12,7 +12,7 @@ applies_to:
 avoids:
   - Restricting ordinary prose from documenting source fences
 created_at: '2026-08-12T05:10:34.572Z'
-updated_at: '2026-08-12T05:10:34.572Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-SOURCE-CANONICAL-LAST-BLOCK: Parse and verify the final canonical sduck-source block
 
@@ -46,7 +46,8 @@ Markdown loaders read the final sduck-source fence emitted at the document tail 
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-12T05:10:34.572Z",
-    "updatedAt": "2026-08-12T05:10:34.572Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

@@ -162,6 +162,7 @@ export function buildContextIndex(projectRoot: string, task: Task): ContextItem[
       previous.filter((item) => item.sourceType !== 'FILE'),
       dedupeContextCandidates(candidates),
       contextIds,
+      projectRoot,
     );
     const next = [...explicit, ...automatic];
     bundle.contextItems = [
@@ -169,11 +170,15 @@ export function buildContextIndex(projectRoot: string, task: Task): ContextItem[
       ...next,
     ];
     if (!sameContextItems(previous, next)) {
-      appendSourceEvent(bundle, {
-        taskId: canonicalTask.id,
-        type: 'CONTEXT_INDEXED',
-        payload: { itemCount: automatic.length },
-      });
+      appendSourceEvent(
+        bundle,
+        {
+          taskId: canonicalTask.id,
+          type: 'CONTEXT_INDEXED',
+          payload: { itemCount: automatic.length },
+        },
+        projectRoot,
+      );
     }
     return automatic;
   });
@@ -518,6 +523,7 @@ function reconcileAutomaticContext(
   existingItems: ContextItem[],
   candidates: ContextCandidate[],
   existingIds: string[],
+  projectRoot: string,
 ): ContextItem[] {
   const existingByKey = new Map(
     dedupePersistedContextItems(existingItems).map((item) => [contextKey(item), item]),
@@ -528,7 +534,7 @@ function reconcileAutomaticContext(
     const key = contextKey(candidate);
     const existing = existingByKey.get(key);
     if (existing === undefined) {
-      const created = makeSourceContextItem(ids, candidate);
+      const created = makeSourceContextItem(ids, candidate, projectRoot);
       ids = [...ids, created.id];
       currentByKey.set(key, created);
       continue;
@@ -627,24 +633,32 @@ export function addContextPath(projectRoot: string, pathOrGlob: string): Context
     const items = matches
       .filter((file) => !existingKeys.has(`FILE\0${file}`))
       .map((file) => {
-        const item = makeSourceContextItem(contextIds, {
-          taskId,
-          sourceType: 'FILE',
-          sourceRef: file,
-          summary: `Added by agent/user context request: ${file}`,
-          metadata: { requested: pathOrGlob },
-        });
+        const item = makeSourceContextItem(
+          contextIds,
+          {
+            taskId,
+            sourceType: 'FILE',
+            sourceRef: file,
+            summary: `Added by agent/user context request: ${file}`,
+            metadata: { requested: pathOrGlob },
+          },
+          projectRoot,
+        );
         contextIds = [...contextIds, item.id];
         existingKeys.add(contextKey(item));
         return item;
       });
     bundle.contextItems.push(...items);
     if (items.length > 0) {
-      appendSourceEvent(bundle, {
-        taskId,
-        type: 'CONTEXT_ITEM_ADDED',
-        payload: { pathOrGlob, count: items.length },
-      });
+      appendSourceEvent(
+        bundle,
+        {
+          taskId,
+          type: 'CONTEXT_ITEM_ADDED',
+          payload: { pathOrGlob, count: items.length },
+        },
+        projectRoot,
+      );
     }
     return items;
   });
@@ -658,8 +672,9 @@ function requireCurrentTaskIdFromState(taskId: string | null): string {
 function makeSourceContextItem(
   existingIds: string[],
   input: Omit<ContextItem, 'id' | 'createdAt'>,
+  projectRoot: string,
 ): ContextItem {
-  return { ...input, id: nextSourceEntityId(existingIds, 'CTX'), createdAt: nowIso() };
+  return { ...input, id: nextSourceEntityId(existingIds, 'CTX', projectRoot), createdAt: nowIso() };
 }
 
 function buildDraftSchemaExample(taskId: string): SduckDraft {

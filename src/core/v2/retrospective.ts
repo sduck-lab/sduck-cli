@@ -170,15 +170,23 @@ export function captureRetrospective(
         updatedAt: now,
       };
       bundle.tasks.push(task);
-      appendSourceEvent(bundle, {
-        taskId,
-        type: 'TASK_CREATED',
-        payload: { retrospective: true, commitSha: marker.commitSha, parentSha: marker.parentSha },
-      });
+      appendSourceEvent(
+        bundle,
+        {
+          taskId,
+          type: 'TASK_CREATED',
+          payload: {
+            retrospective: true,
+            commitSha: marker.commitSha,
+            parentSha: marker.parentSha,
+          },
+        },
+        projectRoot,
+      );
 
       let decisionIds = bundle.decisions.map((item) => item.id);
       for (const draftDecision of draft.decisions ?? []) {
-        const id = draftDecision.id ?? nextSourceEntityId(decisionIds, 'DEC');
+        const id = draftDecision.id ?? nextSourceEntityId(decisionIds, 'DEC', projectRoot);
         decisionIds = [...decisionIds, id];
         const decision: Decision = {
           id,
@@ -196,15 +204,19 @@ export function captureRetrospective(
           updatedAt: now,
         };
         bundle.decisions.push(decision);
-        appendSourceEvent(bundle, {
-          taskId,
-          type: 'DECISION_CREATED',
-          payload: { decisionId: id },
-        });
+        appendSourceEvent(
+          bundle,
+          {
+            taskId,
+            type: 'DECISION_CREATED',
+            payload: { decisionId: id },
+          },
+          projectRoot,
+        );
       }
 
       let evidenceIds = bundle.evidence.map((item) => item.id);
-      const markerEvidenceId = nextSourceEntityId(evidenceIds, 'EVD');
+      const markerEvidenceId = nextSourceEntityId(evidenceIds, 'EVD', projectRoot);
       evidenceIds = [...evidenceIds, markerEvidenceId];
       bundle.evidence.push({
         id: markerEvidenceId,
@@ -217,7 +229,7 @@ export function captureRetrospective(
         createdAt: now,
       });
       for (const draftEvidence of draft.evidence ?? []) {
-        const id = draftEvidence.id ?? nextSourceEntityId(evidenceIds, 'EVD');
+        const id = draftEvidence.id ?? nextSourceEntityId(evidenceIds, 'EVD', projectRoot);
         evidenceIds = [...evidenceIds, id];
         const item: Evidence = {
           id,
@@ -232,31 +244,43 @@ export function captureRetrospective(
         bundle.evidence.push(item);
       }
 
-      appendSourceEvent(bundle, {
-        taskId,
-        type: 'DRAFT_SUBMITTED',
-        payload: {
-          retrospective: true,
-          decisions: draft.decisions?.length ?? 0,
-          questions: 0,
-          evidence: draft.evidence?.length ?? 0,
-          expectedScope: draft.expectedScope ?? [],
-          avoidScope: draft.avoidScope ?? [],
-          implementationPlan: draft.implementationPlan ?? [],
-          verificationPlan: draft.verificationPlan ?? [],
+      appendSourceEvent(
+        bundle,
+        {
+          taskId,
+          type: 'DRAFT_SUBMITTED',
+          payload: {
+            retrospective: true,
+            decisions: draft.decisions?.length ?? 0,
+            questions: 0,
+            evidence: draft.evidence?.length ?? 0,
+            expectedScope: draft.expectedScope ?? [],
+            avoidScope: draft.avoidScope ?? [],
+            implementationPlan: draft.implementationPlan ?? [],
+            verificationPlan: draft.verificationPlan ?? [],
+          },
         },
-      });
-      appendSourceEvent(bundle, {
-        taskId,
-        type: 'RETROSPECTIVE_CAPTURED',
-        payload: {
-          commitSha: marker.commitSha,
-          parentSha: marker.parentSha,
-          createdAt: marker.createdAt,
-          markerEvidenceId,
+        projectRoot,
+      );
+      appendSourceEvent(
+        bundle,
+        {
+          taskId,
+          type: 'RETROSPECTIVE_CAPTURED',
+          payload: {
+            commitSha: marker.commitSha,
+            parentSha: marker.parentSha,
+            createdAt: marker.createdAt,
+            markerEvidenceId,
+          },
         },
-      });
-      appendSourceEvent(bundle, { taskId, type: 'TASK_CLOSED', payload: { retrospective: true } });
+        projectRoot,
+      );
+      appendSourceEvent(
+        bundle,
+        { taskId, type: 'TASK_CLOSED', payload: { retrospective: true } },
+        projectRoot,
+      );
       state.currentTaskId = null;
       state.updatedAt = now;
 

@@ -11,7 +11,7 @@ applies_to:
 avoids:
   - Evicting explicit FILE context
 created_at: '2026-08-12T05:10:34.572Z'
-updated_at: '2026-08-12T05:10:34.572Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-CONTEXT-CURRENT-CANDIDATE-SNAPSHOT: Reconcile automatic context from the current candidate snapshot
 
@@ -44,7 +44,8 @@ Each context refresh reuses stable IDs for still-matching candidates, applies cu
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-12T05:10:34.572Z",
-    "updatedAt": "2026-08-12T05:10:34.572Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "컨텍스트 인덱싱"
   }
 }
 ```

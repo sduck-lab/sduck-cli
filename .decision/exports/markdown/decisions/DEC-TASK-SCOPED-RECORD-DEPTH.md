@@ -19,7 +19,7 @@ avoids:
   - .decision/policy.json
   - automatic sduck workflow enable or disable invocation
 created_at: '2026-07-22T03:49:48.147Z'
-updated_at: '2026-07-22T06:48:11.316Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-TASK-SCOPED-RECORD-DEPTH: Choose task-scoped record depth without changing workspace mode
 
@@ -63,7 +63,8 @@ Keep the repository workflow mode unchanged. Agent guidance will select full dec
       "src/commands/v2/index.ts"
     ],
     "createdAt": "2026-07-22T03:49:48.147Z",
-    "updatedAt": "2026-07-22T06:48:11.316Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

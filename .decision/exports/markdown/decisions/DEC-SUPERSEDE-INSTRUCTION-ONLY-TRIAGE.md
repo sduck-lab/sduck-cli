@@ -21,7 +21,7 @@ avoids:
   - instruction-only lifecycle bypass
   - automatic sduck workflow enable or disable invocation
 created_at: '2026-07-22T05:44:00.965Z'
-updated_at: '2026-07-22T06:48:11.316Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-SUPERSEDE-INSTRUCTION-ONLY-TRIAGE: Replace instruction-only triage with durable task classification
 
@@ -67,7 +67,8 @@ Supersede the earlier template-only record-depth proposal. The target is a first
       "src/core/v2/retrospective.ts"
     ],
     "createdAt": "2026-07-22T05:44:00.965Z",
-    "updatedAt": "2026-07-22T06:48:11.316Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

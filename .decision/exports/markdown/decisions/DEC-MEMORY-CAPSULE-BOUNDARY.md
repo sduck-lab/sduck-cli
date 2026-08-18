@@ -19,7 +19,7 @@ avoids:
   - Deleting canonical source records
   - Storing capsules inside growing task documents
 created_at: '2026-08-11T14:37:48.747Z'
-updated_at: '2026-08-11T14:37:48.747Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-CAPSULE-BOUNDARY: Store one source-backed Memory Capsule per task
 
@@ -63,7 +63,8 @@ Add a separate Git-tracked canonical Memory Capsule document per task. Re-distil
       "user:작업 해줘"
     ],
     "createdAt": "2026-08-11T14:37:48.747Z",
-    "updatedAt": "2026-08-11T14:37:48.747Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```

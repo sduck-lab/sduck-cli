@@ -13,7 +13,7 @@ applies_to:
 avoids:
   - Implicit historical task mutation
 created_at: '2026-08-12T05:10:34.572Z'
-updated_at: '2026-08-12T05:10:34.572Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-EXPLICIT-BACKFILL: Target the current task by default and make backfill explicit
 
@@ -48,7 +48,8 @@ memory distill rejects a payload for a non-current task unless the caller explic
     ],
     "sourceRefs": [],
     "createdAt": "2026-08-12T05:10:34.572Z",
-    "updatedAt": "2026-08-12T05:10:34.572Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```

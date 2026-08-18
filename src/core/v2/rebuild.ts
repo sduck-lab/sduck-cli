@@ -18,7 +18,7 @@ import { withDecisionWorkspaceLock } from './workspace-lock.js';
 import type { SourceBundle } from './source-types.js';
 import type { DatabaseSync } from 'node:sqlite';
 
-export const GRAPH_PROJECTION_VERSION = 'v1';
+export const GRAPH_PROJECTION_VERSION = 'v3';
 
 export interface RebuildResult {
   tasks: number;
@@ -160,8 +160,8 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
 
   const insertDecision = db.prepare(
     `INSERT INTO decisions
-      (id, task_id, title, kind, status, confidence, summary, rationale_json, applies_to_json, avoids_json, source_refs_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, task_id, title, kind, status, confidence, summary, rationale_json, applies_to_json, avoids_json, source_refs_json, category, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const decision of bundle.decisions) {
     insertDecision.run(
@@ -176,6 +176,7 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
       encodeJson(decision.appliesTo),
       encodeJson(decision.avoids),
       encodeJson(decision.sourceRefs),
+      decision.category ?? null,
       decision.createdAt,
       decision.updatedAt,
     );
@@ -305,6 +306,34 @@ function insertBundle(db: DatabaseSync, bundle: SourceBundle): void {
     );
   }
   insertGraph(db, bundle);
+  insertFts(db, bundle);
+}
+
+function insertFts(db: DatabaseSync, bundle: SourceBundle): void {
+  const insertDecisionFts = db.prepare(
+    `INSERT INTO decisions_fts (id, title, summary) VALUES (?, ?, ?)`,
+  );
+  for (const decision of bundle.decisions) {
+    insertDecisionFts.run(decision.id, decision.title, decision.summary);
+  }
+  const insertTraceFts = db.prepare(
+    `INSERT INTO traces_fts (id, summary, files_changed) VALUES (?, ?, ?)`,
+  );
+  for (const trace of bundle.implementationTraces) {
+    insertTraceFts.run(trace.id, trace.summary, trace.filesChanged.join(' '));
+  }
+  const insertMemoryFts = db.prepare(
+    `INSERT INTO memory_fts (id, title, summary, topics, claims) VALUES (?, ?, ?, ?, ?)`,
+  );
+  for (const memory of bundle.memoryCapsules) {
+    insertMemoryFts.run(
+      memory.id,
+      memory.title,
+      memory.summary,
+      memory.topics.join(' '),
+      memory.claims.map((claim) => claim.text).join(' '),
+    );
+  }
 }
 
 function insertGraph(db: DatabaseSync, bundle: SourceBundle): void {
@@ -317,8 +346,15 @@ function insertGraph(db: DatabaseSync, bundle: SourceBundle): void {
   for (const decision of bundle.decisions) {
     addNode(decision.id, 'decision', decision.title);
     addEdge(decision.taskId, decision.id, 'HAS_DECISION');
-    for (const ref of decision.kind === 'CARRIED' ? decision.sourceRefs : [])
-      addEdge(decision.id, ref, 'CARRIED_FROM');
+    // Every decision's sourceRefs becomes a traversable edge, not just CARRIED ones -- CARRIED_FROM
+    // keeps its strong "supersedes/continues" meaning, CITES covers the far more common "referenced
+    // this as background" case. Without this, recall()'s graph hop-distance signal never activates
+    // for the vast majority of real citations (measured: 26/28 focused gold pairs in sdcuk-cli's own
+    // history had no graph edge at all despite a real sourceRefs citation existing in the data).
+    for (const ref of decision.sourceRefs) {
+      if (!ref.startsWith('DEC-')) continue;
+      addEdge(decision.id, ref, decision.kind === 'CARRIED' ? 'CARRIED_FROM' : 'CITES');
+    }
     for (const file of decision.appliesTo) {
       addNode(`file:${file}`, 'file', file);
       addEdge(decision.id, `file:${file}`, 'APPLIES_TO');

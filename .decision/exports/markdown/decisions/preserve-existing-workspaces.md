@@ -16,7 +16,7 @@ avoids:
   - Retroactively marking historic tasks as grilled
   - Breaking current workspaces on package upgrade
 created_at: '2026-07-14T03:39:55.380Z'
-updated_at: '2026-07-14T03:39:55.380Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # preserve-existing-workspaces: Grandfather existing workspaces and tasks
 
@@ -57,7 +57,8 @@ The required grill policy is written into newly initialized workspaces; workspac
       "src/core/v2/source-store.ts"
     ],
     "createdAt": "2026-07-14T03:39:55.380Z",
-    "updatedAt": "2026-07-14T03:39:55.380Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "워크플로우 라이프사이클"
   }
 }
 ```

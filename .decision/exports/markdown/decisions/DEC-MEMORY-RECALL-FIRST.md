@@ -17,7 +17,7 @@ applies_to:
 avoids:
   - Removing existing recall result categories
 created_at: '2026-08-11T14:37:48.747Z'
-updated_at: '2026-08-11T14:37:48.747Z'
+updated_at: '2026-08-18T06:10:30.112Z'
 ---
 # DEC-MEMORY-RECALL-FIRST: Search distilled memory before raw history
 
@@ -59,7 +59,8 @@ Add capsule-first results to recall and a memory status command that reports mis
       "src/core/v2/context.ts:240"
     ],
     "createdAt": "2026-08-11T14:37:48.747Z",
-    "updatedAt": "2026-08-11T14:37:48.747Z"
+    "updatedAt": "2026-08-18T06:10:30.112Z",
+    "category": "메모리 캡슐"
   }
 }
 ```
